@@ -31,7 +31,7 @@
 
 ## Web
 
-- When implementing or reviewing frontend UI, or when visual, responsive, layout, or browser verification is requested, read `.agents/skills/ui-verification/SKILL.md` before using browser automation. Use the isolated browser and `/e2e_login` for authenticated local pages.
+- When implementing or reviewing frontend UI, or when visual, responsive, layout, or browser verification is requested, read `.agents/skills/ui-verification/SKILL.md` before using browser automation. Use the isolated browser and `/e2e_login` with already running local services; do not start frontend or backend processes automatically.
 
 - 新页面沿用 shadcn/ui 和 `apps/web/src/components/ui`，不要引入第二套 UI 或图标集；图标用 Hugeicons。交互控件优先用已有基础组件，现有组件无法表达语义时才用原生元素。
 - 日期、时间和日期时间输入统一使用共享 UI 组件：日期和日期时间使用 `apps/web/src/components/ui/date-time-picker.tsx` 导出的 `DatePicker` / `DateTimePicker`，仅选择时间时使用 `apps/web/src/components/ui/time-picker.tsx` 的 `TimePicker`。组件能力不足时扩展共享组件；业务页面不得使用浏览器原生 `<input type="date">`、`<input type="time">` 或 `<input type="datetime-local">`。

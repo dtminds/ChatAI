@@ -23,6 +23,10 @@
 .workflow-node-card {
   --node-accent: rgb(var(--workflow-node-accent-rgb));
   --node-surface: var(--workflow-panel-bg);
+  position: relative;
+  width: 320px;
+  border-radius: 15px;
+  padding-bottom: 4px;
   border: 1px solid var(--node-border);
   background: var(--node-surface);
   box-shadow: 0 5px 16px -10px color-mix(in srgb, var(--shadow-soft) 65%, transparent), 0 12px 28px -18px color-mix(in srgb, var(--shadow-soft) 45%, transparent);
@@ -42,6 +46,8 @@
 }
 
 .workflow-node-card::before {
+  position: absolute;
+  pointer-events: none;
   inset: -1px;
   height: auto;
   padding: 1px;
@@ -52,6 +58,8 @@
     color-mix(in srgb, var(--node-accent) var(--node-highlight-soft), transparent) 45%,
     transparent
   );
+  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
   mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
   mask-composite: exclude;
   content: "";
@@ -91,11 +99,6 @@
 
 .dark .workflow-node-header-icon {
   color: color-mix(in oklch, var(--node-accent) 80%, white);
-}
-
-.workflow-node-header-icon > svg {
-  width: 18px;
-  height: 18px;
 }
 
 .workflow-node-title-only .workflow-node-header {

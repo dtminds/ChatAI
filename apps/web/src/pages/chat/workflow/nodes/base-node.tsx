@@ -59,7 +59,6 @@ function WorkflowBaseNodeComponent({
       className={cn(
         "workflow-node-shell",
         data.readOnly && "nopan",
-        isSelected ? "border-[var(--workflow-blue)]" : "border-border/70",
       )}
       data-read-only={data.readOnly ? "true" : undefined}
       data-selected={isSelected ? "true" : undefined}
@@ -69,7 +68,7 @@ function WorkflowBaseNodeComponent({
           "workflow-node-card group",
           definition.body.kind === "none" && "!pb-0",
           definition.body.kind === "none" && "workflow-node-title-only",
-          visual.accentRgb === "10 10 10" && "workflow-node-neutral",
+          (data.kind === "agent" || data.kind === "llm") && "workflow-node-neutral",
           definition.cardClassName,
         )}
         style={nodeCardStyle}
@@ -175,11 +174,11 @@ function NodeHeader({
     <span className="workflow-node-header flex items-center rounded-t-2xl py-3 pl-4 pr-10">
       <span
         className={cn(
-          "workflow-node-header-icon mr-1.5 flex size-4 shrink-0 items-center justify-center rounded-lg",
+          "workflow-node-header-icon mr-1.5 flex size-4.5 shrink-0 items-center justify-center rounded-lg",
           visual.accentClassName,
         )}
       >
-        <HugeiconsIcon icon={visual.icon} size={14} strokeWidth={1.8} />
+        <HugeiconsIcon icon={visual.icon} size={18} strokeWidth={1.8} />
       </span>
       <span className="flex min-h-7 min-w-0 flex-1 items-center">
         {isRenaming ? (

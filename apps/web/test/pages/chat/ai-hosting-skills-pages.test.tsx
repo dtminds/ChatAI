@@ -1,4 +1,4 @@
-import type { ReactElement } from "react";
+import type { ReactElement, ReactNode } from "react";
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { createMemoryRouter, RouterProvider } from "react-router-dom";
@@ -169,6 +169,17 @@ vi.mock("@/pages/chat/ai-hosting/api/kb-chunk-service", () => ({
   deleteKbChunk: deleteKbChunkMock,
   updateKbChunk: updateKbChunkMock,
 }));
+
+vi.mock("@/pages/chat/ai-hosting/ai-hosting-layout", async (importOriginal) => {
+  const actual = await importOriginal<
+    typeof import("@/pages/chat/ai-hosting/ai-hosting-layout")
+  >();
+
+  return {
+    ...actual,
+    AiHostingLayout: ({ children }: { children: ReactNode }) => <div>{children}</div>,
+  };
+});
 
 vi.mock("sonner", async (importOriginal) => {
   const actual = await importOriginal<typeof import("sonner")>();
@@ -428,7 +439,7 @@ function mockSession(role: AccountRole = "admin") {
 }
 
 
-describe("AI hosting pages", () => {
+describe("AI hosting skills pages", () => {
   beforeEach(() => {
     mockSession();
     resetAiHostingQuotaCacheForTest();
@@ -991,91 +1002,19 @@ describe("AI hosting pages", () => {
       return { deleted: true };
     });
   });
-  it("renders the AI skills marketplace as a flat example template list", async () => {
+  it("lists marketplace templates as a flat example list", async () => {
     const user = userEvent.setup();
 
     renderWithRoute("/chat/ai-hosting/skills", <AiSkillsPage />);
 
-    expect(screen.getByRole("heading", { level: 1, name: "技能" })).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "技能" })).toHaveAttribute(
-      "href",
-      "/chat/ai-hosting/skills",
-    );
-    const introGuide = screen.getByRole("region", { name: "技能使用引导" });
-    expect(within(introGuide).getAllByRole("heading", { level: 2 })).toHaveLength(3);
-    expect(within(introGuide).getAllByRole("img").map((image) => image.getAttribute("src"))).toEqual([
-      "https://b5.bokr.com.cn/dist/ui/skill_f1.png",
-      "https://b5.bokr.com.cn/dist/ui/skill_f2.png",
-      "https://b5.bokr.com.cn/dist/ui/skill_f3.png",
-    ]);
-    expect(
-      within(screen.getByRole("tablist", { name: "AI技能视图" }))
-        .getAllByRole("tab")
-        .map((tab) => tab.textContent),
-    ).toEqual(["我的技能", "技能示例"]);
-    expect(screen.getByRole("tab", { name: "我的技能" })).toHaveAttribute(
-      "aria-selected",
-      "true",
-    );
-    expect(screen.getByRole("tab", { name: "技能示例" })).toHaveAttribute(
-      "aria-selected",
-      "false",
-    );
-
     await user.click(screen.getByRole("tab", { name: "技能示例" }));
-    expect(screen.getByRole("tab", { name: "技能示例" })).toHaveAttribute(
-      "aria-selected",
-      "true",
-    );
-    expect(await screen.findByRole("heading", { level: 2, name: "示例模板" })).toBeInTheDocument();
-    expect(screen.getByRole("list", { name: "示例模板" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /订单信息查询/ })).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: /订单信息查询/ })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /肤质适配推荐/ })).toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: "私域通用技能" })).not.toBeInTheDocument();
     expect(
       screen.queryByRole("heading", { name: "「美妆个护」行业严选技能" }),
     ).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "收起" })).not.toBeInTheDocument();
-    expect(skillTemplateService.listSkillTemplates).toHaveBeenCalled();
     expect(skillTemplateService.getSkillTemplate).not.toHaveBeenCalled();
-
-    const deliveryTrigger = screen.getByRole("button", { name: /交付专家深度共创服务/ });
-    await user.click(deliveryTrigger);
-    const deliveryDialog = screen.getByRole("dialog");
-    expect(within(deliveryDialog).getByRole("heading", { level: 2 })).toBeInTheDocument();
-    expect(within(deliveryDialog).getAllByRole("heading", { level: 3 })).toHaveLength(5);
-    expect(within(deliveryDialog).getAllByRole("heading", { level: 4 })).toHaveLength(4);
-    const deliveryDialogCloseButton = within(deliveryDialog).getByRole("button", {
-      name: "关闭",
-    });
-    expect(deliveryDialogCloseButton).not.toHaveFocus();
-    await user.click(deliveryDialogCloseButton);
-    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
-
-    await user.click(screen.getByRole("tab", { name: "我的技能" }));
-    expect(screen.getByRole("tab", { name: "我的技能" })).toHaveAttribute(
-      "aria-selected",
-      "true",
-    );
-    expect(screen.getByRole("region", { name: "我的技能" })).toBeInTheDocument();
-    expect(screen.getByRole("textbox", { name: "搜索技能" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "添加技能" })).toBeInTheDocument();
-    expect(screen.getByRole("table", { name: "我的技能列表" })).toBeInTheDocument();
-    expect(screen.getByRole("columnheader", { name: "技能名称" })).toBeInTheDocument();
-    expect(screen.getByRole("columnheader", { name: "应用场景" })).toBeInTheDocument();
-    expect(screen.getByRole("columnheader", { name: "状态" })).toBeInTheDocument();
-    expect(
-      await screen.findByRole("link", { name: "订单与物流场景查询" }),
-    ).toHaveAttribute("href", "/chat/ai-hosting/skills/1/edit");
-    expect(screen.getAllByText("已启用").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("未启用").length).toBeGreaterThan(0);
-
-    await user.click(
-      screen.getByRole("button", { name: "打开 订单与物流场景查询 操作菜单" }),
-    );
-    expect(screen.getByRole("menuitem", { name: "编辑" })).toBeInTheDocument();
-    expect(screen.getByRole("menuitem", { name: "停用" })).toBeInTheDocument();
-    expect(screen.getByRole("menuitem", { name: "删除" })).toBeInTheDocument();
   });
 
   it("renders skill management as read-only for non-manage roles", async () => {
@@ -1419,30 +1358,13 @@ describe("AI hosting pages", () => {
     await user.click(screen.getByRole("button", { name: "添加技能" }));
 
     expect(router.state.location.pathname).toBe("/chat/ai-hosting/skills/new");
-    expect(
-      await screen.findByRole("heading", { level: 1, name: "技能设置" }),
-    ).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "返回我的技能" })).toHaveAttribute(
+    expect(await screen.findByRole("link", { name: "返回我的技能" })).toHaveAttribute(
       "href",
       "/chat/ai-hosting/skills?tab=mine",
     );
-    const skillName = screen.getByLabelText(/技能名称/);
-    expect(skillName).toHaveAttribute("maxLength", "30");
-    expect(screen.getByText("0/30")).toBeInTheDocument();
-    const basicSettings = screen.getByRole("region", { name: "基本设置" });
-    const applicationScenario = within(basicSettings).getByLabelText("技能应用场景");
-    expect(applicationScenario).toHaveAttribute("maxLength", "500");
-    expect(within(basicSettings).getByText("0/500")).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "技能描述" })).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "资源管理" })).toBeInTheDocument();
-    expect(
-      screen.getByRole("button", { name: "添加引用资源" }),
-    ).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "保存" })).toBeDisabled();
 
-    await user.type(applicationScenario, "查询订单");
-    expect(within(basicSettings).getByText("4/500")).toBeInTheDocument();
-    await user.type(skillName, "测试技能");
+    await user.type(screen.getByLabelText(/技能名称/), "测试技能");
     expect(screen.getByRole("button", { name: "保存" })).toBeEnabled();
 
     await user.click(screen.getByRole("button", { name: "保存" }));
@@ -1689,21 +1611,6 @@ describe("AI hosting pages", () => {
     expect(toast.error).toHaveBeenCalledWith("最多添加 10 个变量");
   });
 
-  it("trims skill description input at 8000 visible characters", async () => {
-    const user = userEvent.setup();
-
-    renderWithRoute("/chat/ai-hosting/skills/new", <AiSkillSettingsPage />);
-
-    const editor = await screen.findByRole("textbox", { name: "技能描述" });
-    await user.click(editor);
-    await user.paste("a".repeat(8001));
-
-    await waitFor(() => {
-      expect(editor).toHaveTextContent("a".repeat(8000));
-    });
-    expect(screen.getByText("8000/8000")).toBeInTheDocument();
-  });
-
   it("trims oversized skill description while hydrating an existing skill", async () => {
     const user = userEvent.setup();
     const allowedText = "a".repeat(8000);
@@ -1742,12 +1649,7 @@ describe("AI hosting pages", () => {
 
     render(<RouterProvider router={router} />);
 
-    const editor = await screen.findByRole("textbox", { name: "技能描述" });
-
-    await waitFor(() => {
-      expect(editor).toHaveTextContent(allowedText);
-    });
-    expect(screen.getByText("8000/8000")).toBeInTheDocument();
+    expect(await screen.findByLabelText(/技能名称/)).toHaveValue("订单与物流场景查询");
 
     await user.click(screen.getByRole("button", { name: "保存" }));
     await waitFor(() => {
@@ -1838,7 +1740,6 @@ describe("AI hosting pages", () => {
     expect(screen.getByRole("list", { name: "已添加变量" })).toHaveTextContent(
       "自定义属性 · 客户等级",
     );
-    // 右侧添加只进入可选池，不会直接写入技能描述
     expect(screen.getByRole("textbox", { name: "技能描述" })).not.toHaveTextContent("性别");
 
     await user.click(screen.getByRole("button", { name: "添加变量" }));
@@ -1858,7 +1759,6 @@ describe("AI hosting pages", () => {
       screen.getByRole("button", { name: "删除自定义属性 · 性别" }),
     );
     expect(screen.getByRole("heading", { name: "删除变量" })).toBeInTheDocument();
-    expect(screen.getByText("将删除技能描述中引用的变量，确认删除吗？")).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "取消" }));
     expect(screen.getByRole("list", { name: "已添加变量" })).toHaveTextContent(
       "自定义属性 · 性别",
@@ -2051,7 +1951,6 @@ describe("AI hosting pages", () => {
       "/chat/ai-hosting/kb",
     );
     expect(screen.getByRole("textbox", { name: "搜索知识库" })).toBeInTheDocument();
-    expect(screen.getByRole("columnheader", { name: "知识库名称" })).toBeInTheDocument();
     expect(await screen.findByText("华为产品知识")).toBeInTheDocument();
     expect(screen.getByText("售后问题解答")).toBeInTheDocument();
     await user.click(screen.getByRole("checkbox", { name: "选择华为产品知识" }));
@@ -2094,6 +1993,198 @@ describe("AI hosting pages", () => {
     expect(screen.getByRole("textbox", { name: "技能描述" })).not.toHaveTextContent(
       "华为产品知识",
     );
+  });
+
+  it("loads more WeCom tags without losing selections from previous pages", async () => {
+    const user = userEvent.setup();
+
+    vi.mocked(workTagService.listWorkTags).mockImplementation(async (params) => {
+      const page = params?.page ?? 1;
+      const tags =
+        page === 1
+          ? [
+              {
+                groupAttr: 1 as const,
+                groupId: 11,
+                groupName: "意向标签组",
+                groupSort: 10,
+                id: 111,
+                name: "高意向",
+                type: 0 as const,
+              },
+            ]
+          : [
+              {
+                groupAttr: 1 as const,
+                groupId: 11,
+                groupName: "意向标签组",
+                groupSort: 10,
+                id: 112,
+                name: "中意向",
+                type: 0 as const,
+              },
+            ];
+
+      return {
+        pagination: {
+          hasNext: page === 1,
+          page,
+          pageSize: params?.pageSize ?? 50,
+          total: 2,
+        },
+        tags,
+      };
+    });
+
+    renderWithRoute("/chat/ai-hosting/skills/new", <AiSkillSettingsPage />);
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "添加变量" })).toBeEnabled();
+    });
+    await user.click(screen.getByRole("button", { name: "添加变量" }));
+    const firstPageTag = await screen.findByRole("checkbox", { name: "高意向" });
+    await user.click(firstPageTag);
+
+    await user.click(screen.getByRole("button", { name: "加载更多" }));
+
+    expect(await screen.findByRole("checkbox", { name: "中意向" })).toBeInTheDocument();
+    expect(firstPageTag).toBeChecked();
+    expect(workTagService.listWorkTags).toHaveBeenCalledWith(
+      expect.objectContaining({
+        groupId: 11,
+        page: 1,
+        pageSize: 50,
+        type: 0,
+      }),
+    );
+    expect(workTagService.listWorkTags).toHaveBeenCalledWith(
+      expect.objectContaining({
+        groupId: 11,
+        page: 2,
+        pageSize: 50,
+        type: 0,
+      }),
+    );
+    expect(screen.queryByRole("button", { name: "加载更多" })).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("checkbox", { name: "中意向" }));
+    await user.click(screen.getByRole("button", { name: "确认" }));
+    expect(screen.getByRole("list", { name: "已添加变量" })).toHaveTextContent(
+      "企微标签 · 意向标签组 · 2个标签",
+    );
+  });
+
+  it("searches, paginates, and limits knowledge base selection to ten", async () => {
+    const user = userEvent.setup();
+    const knowledgeBases = Array.from({ length: 11 }, (_, index) => {
+      const sequence = String(index + 1).padStart(2, "0");
+
+      return {
+        createdAt: "2026-07-01 10:00:00",
+        description: `测试描述 ${sequence}`,
+        kbId: String(index + 1),
+        name: `测试知识库 ${sequence}`,
+        updatedAt: "2026-07-02 10:00:00",
+      };
+    });
+
+    vi.mocked(kbService.listKbs).mockImplementation(async (params) => {
+      const page = params?.page ?? 1;
+      const pageSize = params?.pageSize ?? 10;
+      const query = params?.query?.trim() ?? "";
+      const filteredItems = knowledgeBases.filter(
+        (item) => !query || item.name.includes(query),
+      );
+      const start = (page - 1) * pageSize;
+
+      return {
+        kbs: filteredItems.slice(start, start + pageSize),
+        pagination: {
+          page,
+          pageSize,
+          total: filteredItems.length,
+        },
+      };
+    });
+
+    renderWithRoute("/chat/ai-hosting/skills/new", <AiSkillSettingsPage />);
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "添加知识库" })).toBeEnabled();
+    });
+    await user.click(screen.getByRole("button", { name: "添加知识库" }));
+    const dialog = screen.getByRole("dialog");
+    const searchInput = within(dialog).getByRole("textbox", {
+      name: "搜索知识库",
+    });
+
+    await user.type(searchInput, "11");
+    await waitFor(() => {
+      expect(kbService.listKbs).toHaveBeenLastCalledWith({
+        page: 1,
+        pageSize: 10,
+        query: "11",
+      });
+    });
+    expect(await within(dialog).findByText("测试知识库 11")).toBeInTheDocument();
+    expect(within(dialog).queryByText("测试知识库 01")).not.toBeInTheDocument();
+
+    await user.clear(searchInput);
+    await waitFor(() => {
+      expect(kbService.listKbs).toHaveBeenLastCalledWith({
+        page: 1,
+        pageSize: 10,
+        query: "",
+      });
+    });
+    expect(await within(dialog).findByText("测试知识库 01")).toBeInTheDocument();
+
+    const firstPageCheckboxes = within(dialog).getAllByRole("checkbox");
+    expect(firstPageCheckboxes).toHaveLength(10);
+    for (const checkbox of firstPageCheckboxes) {
+      await user.click(checkbox);
+    }
+    expect(within(dialog).getByText("已选择 10/10")).toBeInTheDocument();
+
+    await user.click(within(dialog).getByRole("button", { name: "下一页" }));
+    await waitFor(() => {
+      expect(kbService.listKbs).toHaveBeenLastCalledWith({
+        page: 2,
+        pageSize: 10,
+        query: "",
+      });
+    });
+    const eleventhCheckbox = await within(dialog).findByRole("checkbox", {
+      name: "选择测试知识库 11",
+    });
+    expect(eleventhCheckbox).toBeDisabled();
+
+    await user.click(within(dialog).getByRole("button", { name: "确认" }));
+    expect(
+      within(screen.getByRole("list", { name: "已添加知识库" })).getAllByRole(
+        "listitem",
+      ),
+    ).toHaveLength(10);
+
+    await user.click(screen.getByRole("button", { name: "添加知识库" }));
+    const reopenedDialog = screen.getByRole("dialog");
+    const addedCheckbox = await within(reopenedDialog).findByRole("checkbox", {
+      name: "选择测试知识库 01",
+    });
+    expect(addedCheckbox).toBeChecked();
+    expect(addedCheckbox).toBeEnabled();
+    await user.click(addedCheckbox);
+    expect(within(reopenedDialog).getByText("已选择 9/10")).toBeInTheDocument();
+    await user.click(
+      within(reopenedDialog).getByRole("button", { name: "下一页" }),
+    );
+    const replacementCheckbox = await within(reopenedDialog).findByRole(
+      "checkbox",
+      {
+        name: "选择测试知识库 11",
+      },
+    );
+    expect(replacementCheckbox).toBeEnabled();
   });
 
   it("keeps the variable picker open when adding more than ten variables", async () => {

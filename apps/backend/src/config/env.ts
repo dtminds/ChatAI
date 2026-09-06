@@ -7,6 +7,8 @@ import { parseInsightsWorkerObserverSubjects } from "../modules/insights/insight
 
 export const EnvSchema = Type.Object({
   AUTH_COOKIE_SECURE: Type.Optional(Type.String()),
+  E2E_LOGIN_ENABLED: Type.Optional(Type.String()),
+  E2E_LOGIN_USER_ID: Type.Optional(Type.String()),
   JAVA_INTERNAL_API_BASE_URL: Type.Optional(Type.String()),
   JAVA_INTERNAL_API_TOKEN: Type.Optional(Type.String()),
   DATABASE_URL: Type.Optional(Type.String()),
@@ -123,6 +125,14 @@ export function validateBackendEnv(env: NodeJS.ProcessEnv = process.env) {
     throw new Error(
       `Missing required environment variables${environmentLabel}: ${missingVariables.join(", ")}`,
     );
+  }
+
+  if (env.E2E_LOGIN_ENABLED === "true" && env.NODE_ENV === "production") {
+    throw new Error("E2E_LOGIN_ENABLED cannot be enabled in production");
+  }
+
+  if (env.E2E_LOGIN_ENABLED === "true" && !env.E2E_LOGIN_USER_ID?.trim()) {
+    throw new Error("E2E_LOGIN_USER_ID is required when E2E_LOGIN_ENABLED is true");
   }
 
   if (env.REDIS_ENABLED === "true" && !env.REDIS_URL) {

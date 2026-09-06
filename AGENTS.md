@@ -16,7 +16,7 @@
 - 浏览器 API 走同源 `/api`，公开业务接口 `/api/server/*`；不要硬编码环境域名，也不要在 URL 中暴露内部实现命名。
 - 业务请求从 `apps/web/src/lib/request.ts` 发起；工作台 UI 走 `pages/chat/api`，不要直接拼后端 URL 或裸写 `fetch`。
 - DTO 和响应结构放 `packages/contracts`，不要在 web / backend 两侧复制。
-- 鉴权一律 Bearer JWT + session，所有环境都走正常登录，不提供开发绕过。
+- 鉴权走 Bearer JWT + session。
 - MySQL 业务 ID 用 `number`；按容量约定不会触及 `Number.MAX_SAFE_INTEGER`。
 
 ## Coding Standards
@@ -25,10 +25,6 @@
 - 新增或修改 `/third-internal/*` 调用时，读取其中的 Java internal API 返回协议；新增或修改测试时，读取其中的 Testing。
 - 审查 PR、分支、Commit、未提交改动或复审前同样读取该文件；审查时额外应用其中的 Review 章节。通用审查流程沿用 Review Skill。
 
-## Workflow Node Development
-
-- 设计、开发、修改、评审或接通 Workflow 节点运行能力前，读取 `docs/agents/workflow-node-development.md`；实现前完成其中的 Readiness Gate，测试和验收按该文档执行。
-
 ## Web
 
 - 新页面沿用 shadcn/ui 和 `apps/web/src/components/ui`，不要引入第二套 UI 或图标集；图标用 Hugeicons。交互控件优先用已有基础组件，现有组件无法表达语义时才用原生元素。
@@ -36,7 +32,7 @@
 - 不要覆盖基础组件已有的 `disabled` / `hover` / `focus` / `active` / `loading` 状态，除非用户明确要求或基础组件有缺陷。
 - UI 改动限制在用户指出的范围内，先查同模块相邻页面和 `components/ui` 再复用；额外调整先说明并取得确认。
 - 新增或修改 Web 错误反馈时，读取并执行 `CODING_STANDARDS.md` 的 Extra Checks → Web 错误反馈；展示位置、文案和例外统一在该处定义。
-- 登录态页面不要用浏览器自动化验证；用代码路径、Vitest 和 build。
+- 常规改动优先使用代码路径、Vitest 和 build 验证；登录态页面不要用浏览器自动化验证，除非用户明确要求。
 - 保持基础语义和可访问名称；不要为无障碍手写复杂焦点管理或引入额外产品复杂度。完整 WCAG 不是当前目标。
 - 截图只取结构、层级、相对关系、状态和可见文案，必须覆盖截图中出现的信息节点。不要用截图像素或显示大小推导字号、间距、圆角或控件高度，尤其不要因为截图看起来大就把界面做大；尺寸沿用现有 token 和 shadcn 源码。
 - 写 UI 文案时，只写用户需要知道和可以操作的内容，不要解释内部实现。
@@ -73,3 +69,4 @@
 - Issue tracker：Issues and specs are tracked in GitHub Issues via the `gh` CLI. See `docs/agents/issue-tracker.md`.
 - Triage labels：Use the default five-role triage label vocabulary. See `docs/agents/triage-labels.md`.
 - Domain docs: Use a single-context layout with root `CONTEXT.md` and `docs/adr/`. See `docs/agents/domain.md`.
+- E2E Login: When an Agent needs to log in to the ChatAI development environment, read `.agents/skills/chatai-dev-e2e-login/SKILL.md` and follow its login entrypoint and failure handling.

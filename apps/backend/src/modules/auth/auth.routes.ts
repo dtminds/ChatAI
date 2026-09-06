@@ -11,6 +11,7 @@ import type { FastifyInstance, FastifyRequest } from "fastify";
 import { createAltchaChallenge, verifyAltchaPayload } from "./altcha.service.js";
 import {
   getCurrentSession,
+  loginWithE2eUser,
   loginWithPassword,
   refreshAccessToken,
   revokeSession,
@@ -64,6 +65,18 @@ export async function registerAuthRoutes(app: FastifyInstance) {
       return apiSuccess({ verified: true });
     },
   );
+
+  if (process.env.NODE_ENV !== "production") {
+    app.get("/api/auth/e2e-login", async (request, reply) => {
+      requireAuthHost(request, "app");
+      const login = await loginWithE2eUser(app, {
+        ip: getRequestIp(request),
+        userAgent: request.headers["user-agent"],
+      });
+      setLoginCookies(reply, login);
+      return reply.redirect("/chat");
+    });
+  }
 
   app.post<{ Body: AuthLoginRequest }>(
     "/api/auth/login",

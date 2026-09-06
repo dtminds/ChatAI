@@ -82,6 +82,41 @@ export type AuthSessionTokens = {
   tokenType: "Bearer";
 };
 
+export async function loginWithE2eUser(app: FastifyInstance, metadata: LoginRequestMetadata = {}) {
+  if (process.env.NODE_ENV === "production") {
+    throw new UnauthorizedError();
+  }
+
+  if (process.env.E2E_LOGIN_ENABLED !== "true") {
+    throw new AppError(
+      "E2E_LOGIN_NOT_ENABLED",
+      "E2E 登录未启用，请在后端本地环境配置 E2E_LOGIN_ENABLED=true",
+      503,
+    );
+  }
+
+  const rawUserId = process.env.E2E_LOGIN_USER_ID?.trim();
+  const userId = Number(rawUserId);
+  if (!rawUserId || !Number.isSafeInteger(userId) || userId <= 0) {
+    throw new AppError(
+      "E2E_LOGIN_USER_NOT_CONFIGURED",
+      "E2E 登录账号未配置，请在后端本地环境配置 E2E_LOGIN_USER_ID",
+      503,
+    );
+  }
+
+  const subUser = await findActiveSubUser(app.db, userId, "app");
+  if (!subUser) {
+    throw new AppError(
+      "E2E_LOGIN_USER_NOT_FOUND",
+      "E2E_LOGIN账号不存在或已停用，请检查 E2E_LOGIN_USER_ID",
+      503,
+    );
+  }
+
+  return issueAuthSession(app, subUser, metadata, "app");
+}
+
 export async function loginWithPassword(
   app: FastifyInstance,
   payload: AuthLoginRequest,

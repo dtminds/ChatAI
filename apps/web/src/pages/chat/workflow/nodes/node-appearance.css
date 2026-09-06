@@ -1,0 +1,107 @@
+.workflow-node-card {
+  --node-outline-strength: 65%;
+  --node-border: color-mix(in oklch, var(--workflow-border) 78%, var(--foreground) 4%);
+  --node-wash-strong: 9%;
+  --node-wash-soft: 3%;
+  --node-highlight-strong: 35%;
+  --node-highlight-soft: 12%;
+}
+
+.dark .workflow-node-card {
+  --node-outline-strength: 65%;
+  --node-border: var(--workflow-border);
+  --node-wash-strong: 24%;
+  --node-wash-soft: 8%;
+  --node-highlight-strong: 80%;
+  --node-highlight-soft: 35%;
+}
+
+.workflow-node-shell {
+  border-color: transparent;
+}
+
+.workflow-node-card {
+  --node-accent: rgb(var(--workflow-node-accent-rgb));
+  --node-surface: var(--workflow-panel-bg);
+  border: 1px solid var(--node-border);
+  background: var(--node-surface);
+  box-shadow: 0 5px 16px -10px color-mix(in srgb, var(--shadow-soft) 65%, transparent), 0 12px 28px -18px color-mix(in srgb, var(--shadow-soft) 45%, transparent);
+}
+
+.workflow-node-shell[data-selected="true"] .workflow-node-card {
+  border-color: color-mix(in oklch, var(--node-accent) var(--node-outline-strength), transparent);
+}
+
+.dark .workflow-node-card {
+  --node-surface: color-mix(in oklch, var(--workflow-panel-bg) 60%, var(--workflow-canvas-bg));
+  box-shadow: 0 4px 10px -8px var(--shadow-strong);
+}
+
+.workflow-node-card.workflow-node-neutral {
+  --node-accent: var(--muted-foreground);
+}
+
+.workflow-node-card::before {
+  inset: -1px;
+  height: auto;
+  padding: 1px;
+  border-radius: inherit;
+  background: radial-gradient(
+    ellipse 160% 80px at top left,
+    color-mix(in srgb, var(--node-accent) var(--node-highlight-strong), transparent),
+    color-mix(in srgb, var(--node-accent) var(--node-highlight-soft), transparent) 45%,
+    transparent
+  );
+  mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  mask-composite: exclude;
+  content: "";
+}
+
+.workflow-node-card::after {
+  position: absolute;
+  inset: 0 0 auto;
+  height: 80px;
+  max-height: 100%;
+  border-radius: 14px 14px 0 0;
+  background: linear-gradient(
+    to bottom right,
+    color-mix(in srgb, var(--node-accent) var(--node-wash-strong), transparent),
+    color-mix(in srgb, var(--node-accent) var(--node-wash-soft), transparent) 45%,
+    transparent
+  );
+  mask-image: linear-gradient(#fff, transparent);
+  content: "";
+  pointer-events: none;
+}
+
+.workflow-node-header {
+  position: relative;
+  border-radius: 14px 14px 0 0;
+  margin-bottom: 0;
+  min-height: 52px;
+  padding-top: 0;
+  padding-bottom: 0;
+  background: transparent;
+}
+
+.workflow-node-header-icon {
+  background: transparent;
+  color: var(--node-accent);
+}
+
+.dark .workflow-node-header-icon {
+  color: color-mix(in oklch, var(--node-accent) 80%, white);
+}
+
+.workflow-node-header-icon > svg {
+  width: 18px;
+  height: 18px;
+}
+
+.workflow-node-title-only .workflow-node-header {
+  margin-bottom: 0;
+  min-height: 52px;
+  padding-top: 0;
+  padding-bottom: 0;
+  border-radius: 14px;
+}

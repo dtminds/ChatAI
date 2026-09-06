@@ -27,6 +27,7 @@ import {
 } from "../node-definitions";
 import type { NodeVisual } from "../node-definitions";
 import type { WorkflowNodeRenderData } from "../types";
+import "./node-appearance.css";
 
 function WorkflowBaseNodeComponent({
   body,
@@ -61,11 +62,14 @@ function WorkflowBaseNodeComponent({
         isSelected ? "border-[var(--workflow-blue)]" : "border-border/70",
       )}
       data-read-only={data.readOnly ? "true" : undefined}
+      data-selected={isSelected ? "true" : undefined}
     >
       <div
         className={cn(
           "workflow-node-card group",
           definition.body.kind === "none" && "!pb-0",
+          definition.body.kind === "none" && "workflow-node-title-only",
+          visual.accentRgb === "10 10 10" && "workflow-node-neutral",
           definition.cardClassName,
         )}
         style={nodeCardStyle}
@@ -168,10 +172,10 @@ function NodeHeader({
   visual: NodeVisual;
 }) {
   return (
-    <span className="flex items-center rounded-t-2xl py-3 pl-4 pr-10">
+    <span className="workflow-node-header flex items-center rounded-t-2xl py-3 pl-4 pr-10">
       <span
         className={cn(
-          "mr-1 flex size-5 shrink-0 items-center justify-center rounded-lg",
+          "workflow-node-header-icon mr-1.5 flex size-4 shrink-0 items-center justify-center rounded-lg",
           visual.accentClassName,
         )}
       >
@@ -209,7 +213,7 @@ function NodeHeader({
         ) : (
           <span className="flex min-w-0 items-center gap-2">
             <span
-              className="truncate text-base font-semibold text-foreground"
+              className="truncate text-sm font-bold text-foreground"
               onDoubleClick={(event) => {
                 if (!canRename) return;
 

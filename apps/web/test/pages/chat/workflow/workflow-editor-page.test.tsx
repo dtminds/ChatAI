@@ -1153,10 +1153,13 @@ describe("Agent workflow page", () => {
 
     await user.click(within(canvas).getByRole("button", { name: "观察期" }));
     expect(insertedNodeWrapper).not.toHaveAttribute("data-selected", "true");
+    expect(screen.getByTestId("workflow-node-wait-2d")).toHaveAttribute("data-selected", "true");
 
     await user.click(getUndoButton(canvas));
 
-    expect(within(canvas).queryByRole("button", { name: "转人工" })).not.toBeInTheDocument();
+    await waitFor(() => {
+      expect(within(canvas).queryByRole("button", { name: "转人工" })).not.toBeInTheDocument();
+    });
     expect(screen.getByTestId("workflow-node-wait-2d")).toHaveAttribute("data-selected", "true");
   });
 

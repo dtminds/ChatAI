@@ -659,7 +659,9 @@ describe("Agent workflow page", () => {
     const operatorSection = operatorMessage.closest("section")!;
     await user.click(within(operatorSection).getByRole("button", { name: "插入变量" }));
     await user.click(screen.getByRole("menuitem", { name: "全局变量" }));
-    fireEvent.pointerDown(await screen.findByRole("menuitem", { name: /^客户 ID文本$/ }));
+    fireEvent.pointerDown(
+      (await screen.findAllByRole("menuitem", { name: /^客户 ID文本$/ })).at(-1)!,
+    );
 
     const customerSection = customerMessage.closest("section")!;
     await waitFor(() => {
@@ -668,7 +670,9 @@ describe("Agent workflow page", () => {
     });
     await user.click(within(customerSection).getByRole("button", { name: "插入变量" }));
     await user.click(screen.getByRole("menuitem", { name: "全局变量" }));
-    fireEvent.pointerDown(await screen.findByRole("menuitem", { name: /^客户 ID文本$/ }));
+    fireEvent.pointerDown(
+      (await screen.findAllByRole("menuitem", { name: /^客户 ID文本$/ })).at(-1)!,
+    );
 
     await waitFor(() => {
       expect(within(canvas).getByRole("button", { name: "转人工" }))

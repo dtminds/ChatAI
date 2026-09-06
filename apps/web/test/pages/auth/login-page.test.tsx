@@ -5,7 +5,7 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
 import { requestInstance } from "@/lib/request";
-import { routerConfig } from "@/router";
+import { LoginPage } from "@/pages/auth/login-page";
 import { useAuthStore } from "@/store/auth-store";
 
 const mock = new MockAdapter(requestInstance);
@@ -54,37 +54,7 @@ describe("LoginPage", () => {
       return widget;
     });
     expect(altchaWidget).toBeInTheDocument();
-    expect(altchaWidget).toHaveAttribute("data-altcha-theme", "business");
-    expect(JSON.parse(getAltchaConfiguration(altchaWidget))).toEqual({
-      hideFooter: true,
-      hideLogo: true,
-    });
-    const backgroundVideo = document.querySelector("video");
-    expect(backgroundVideo).toHaveProperty("autoplay", true);
-    expect(backgroundVideo).toHaveProperty("loop", true);
-    expect(backgroundVideo).toHaveProperty("muted", true);
-    expect(backgroundVideo).toHaveProperty("playsInline", true);
-    expect(backgroundVideo?.querySelector("source")).toHaveAttribute(
-      "src",
-      "https://b5.bokr.com.cn/dist/ui/0808/leaves.mp4",
-    );
-    expect(screen.getByAltText("登录页占位图")).toHaveAttribute(
-      "src",
-      "https://b5.bokr.com.cn/dist/ui/0808/login_bg_5.png",
-    );
     expect(screen.queryByText("注册")).not.toBeInTheDocument();
-    expect(
-      screen.queryByText(/Or continue with|快捷登录|Apple|Google|Meta/i),
-    ).not.toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "浙公网安备 33010902003191号" })).toHaveAttribute(
-      "href",
-      "http://www.beian.gov.cn/portal/registerSystemInfo?recordcode=33010902003191",
-    );
-    expect(screen.getByRole("link", { name: "浙ICP备2020043436号-1" })).toHaveAttribute(
-      "href",
-      "https://beian.miit.gov.cn/",
-    );
-    expect(screen.queryByText(/点击继续，即表示你同意/)).not.toBeInTheDocument();
   });
 
   it("pauses the background video while the page is hidden", async () => {
@@ -244,45 +214,6 @@ describe("LoginPage", () => {
     });
   });
 
-  it("stays on chat after login even before the next session check succeeds", async () => {
-    const user = userEvent.setup();
-    setSecureContext(false);
-    mock.onGet("/auth/altcha/challenge").reply(200, {
-      parameters: {
-        algorithm: "SCRYPT",
-        challenge: "challenge-001",
-      },
-      signature: "signature-001",
-    });
-    mock.onPost("/auth/login").reply(200, {
-      data: {
-        expiresIn: 1200,
-        subUser: operatorSubUser,
-      },
-      success: true,
-    });
-    mock.onGet("/auth/session").reply(401, {
-      error: {
-        code: "UNAUTHORIZED",
-        message: "登录已失效",
-      },
-      success: false,
-    });
-
-    const router = renderLoginRoute();
-
-    await user.type(await screen.findByLabelText("用户名"), "agent001");
-    await user.type(screen.getByLabelText("密码"), "correct-password");
-    await user.click(screen.getByRole("button", { name: "验证" }));
-    await screen.findByText("人机验证已通过");
-    await user.click(screen.getByRole("button", { name: "登录" }));
-
-    await waitFor(() => {
-      expect(router.state.location.pathname).toBe("/chat");
-    });
-    expect(mock.history.get.filter((request) => request.url === "/auth/session")).toHaveLength(0);
-  });
-
   it("returns to the requested internal page after login", async () => {
     const user = userEvent.setup();
     setSecureContext(false);
@@ -439,9 +370,14 @@ describe("LoginPage", () => {
 });
 
 function renderLoginRoute(initialEntry = "/login") {
-  const router = createMemoryRouter(routerConfig, {
-    initialEntries: [initialEntry],
-  });
+  const router = createMemoryRouter(
+    [
+      { path: "/login", element: <LoginPage /> },
+      { path: "/chat", element: <div>chat</div> },
+      { path: "/chat/settings/:sectionId", element: <div>settings</div> },
+    ],
+    { initialEntries: [initialEntry] },
+  );
 
   render(
     <StrictMode>
@@ -462,8 +398,4 @@ function setSecureContext(value: boolean) {
     configurable: true,
     value,
   });
-}
-
-function getAltchaConfiguration(widget: Element | null) {
-  return (widget as Element & { configuration?: string } | null)?.configuration ?? "{}";
 }

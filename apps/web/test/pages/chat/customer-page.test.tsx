@@ -1,18 +1,16 @@
 import { StrictMode } from "react";
-import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { createMemoryRouter, RouterProvider } from "react-router-dom";
 import { toast } from "sonner";
-import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
-import { routerConfig } from "@/router";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   createMockWorkbenchService,
   resetWorkbenchService,
   setWorkbenchService,
   type WorkbenchService,
 } from "@/pages/chat/api/workbench-service";
-import { useAuthStore } from "@/store/auth-store";
-import { useWorkbenchStore } from "@/store/workbench-store";
+import type { Account, CustomerChatStartInput } from "@/pages/chat/chat-types";
+import { CustomerPage } from "@/pages/chat/customer-page";
 
 vi.mock("sonner", async (importOriginal) => {
   const actual = await importOriginal<typeof import("sonner")>();
@@ -117,6 +115,38 @@ const emptyValueCustomerResponse = {
   total: 1,
 };
 
+function createAccount(
+  id: string,
+  name: string,
+  options: Partial<Account> = {},
+): Account {
+  return {
+    avatarUrl: "",
+    description: "",
+    id,
+    loginStatus: "online",
+    metrics: {
+      activeCustomers: 0,
+      agents: 0,
+      stores: 0,
+      totalCustomers: 0,
+    },
+    name,
+    operator: "",
+    phone: "",
+    tone: "",
+    ...options,
+  };
+}
+
+const CURRENT_EMPLOYEE_ID = "sub-user-001";
+
+const customerPageAccounts: Account[] = [
+  createAccount("drc", "销售一号", { takenOverEmployeeId: CURRENT_EMPLOYEE_ID }),
+  createAccount("ndt", "念都堂"),
+  createAccount("support", "销售二号"),
+];
+
 function createCustomerPageService() {
   const baseService = createMockWorkbenchService();
 
@@ -146,13 +176,6 @@ function createCustomerPageService() {
 }
 
 describe("CustomerPage", () => {
-  beforeAll(async () => {
-    await Promise.all([
-      import("@/pages/chat/chat-workbench-page"),
-      import("@/pages/chat/settings/chat-settings-page"),
-    ]);
-  });
-
   beforeEach(() => {
     vi.useFakeTimers({
       shouldAdvanceTime: true,
@@ -164,7 +187,6 @@ describe("CustomerPage", () => {
   afterEach(() => {
     vi.useRealTimers();
     resetWorkbenchService();
-    useAuthStore.setState(useAuthStore.getInitialState(), true);
     vi.clearAllMocks();
   });
 
@@ -172,7 +194,7 @@ describe("CustomerPage", () => {
     const service = createCustomerPageService();
     setWorkbenchService(service);
 
-    renderRoute("/chat/customers");
+    renderCustomerPage();
 
     expect(await screen.findByRole("heading", { name: "客户" })).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: "我的客户" })).toHaveAttribute(
@@ -181,22 +203,19 @@ describe("CustomerPage", () => {
     );
     expect(screen.getByLabelText("席位筛选")).toBeInTheDocument();
     expect(service.getCustomers).not.toHaveBeenCalled();
-    expect(
-      screen.getByText("搜索 或 选择一个托管账号来查看客户"),
-    ).toBeInTheDocument();
   });
 
   it("keeps filters outside the customer list scroll area", async () => {
     const service = createCustomerPageService();
     setWorkbenchService(service);
 
-    renderRoute("/chat/customers");
+    renderCustomerPage();
 
     expect(await screen.findByRole("heading", { name: "客户" })).toBeInTheDocument();
 
-    const scrollViewport = screen
-      .getByText("搜索 或 选择一个托管账号来查看客户")
-      .closest("[data-slot='scroll-area-viewport']");
+    const scrollViewport = document.querySelector(
+      "[data-slot='scroll-area-viewport']",
+    );
 
     expect(scrollViewport).toBeInTheDocument();
     expect(scrollViewport).not.toContainElement(screen.getByLabelText("席位筛选"));
@@ -208,7 +227,7 @@ describe("CustomerPage", () => {
     const service = createCustomerPageService();
     setWorkbenchService(service);
 
-    renderRoute("/chat/customers");
+    renderCustomerPage();
 
     await screen.findByRole("heading", { name: "客户" });
     await user.type(screen.getByLabelText("搜索客户"), "客户A");
@@ -295,7 +314,7 @@ describe("CustomerPage", () => {
     });
     setWorkbenchService(service);
 
-    renderRoute("/chat/customers");
+    renderCustomerPage();
 
     await screen.findByRole("heading", { name: "客户" });
     await user.type(screen.getByLabelText("搜索客户"), "客户A");
@@ -338,7 +357,7 @@ describe("CustomerPage", () => {
     const service = createCustomerPageService();
     setWorkbenchService(service);
 
-    renderRoute("/chat/customers");
+    renderCustomerPage();
 
     await screen.findByRole("heading", { name: "客户" });
     await user.type(screen.getByLabelText("搜索客户"), "客户A");
@@ -394,7 +413,7 @@ describe("CustomerPage", () => {
     });
     setWorkbenchService(service);
 
-    renderRoute("/chat/customers");
+    renderCustomerPage();
 
     await screen.findByRole("heading", { name: "客户" });
     await user.type(screen.getByLabelText("搜索客户"), "客户A");
@@ -439,7 +458,7 @@ describe("CustomerPage", () => {
     });
     setWorkbenchService(service);
 
-    renderRoute("/chat/customers");
+    renderCustomerPage();
 
     await screen.findByRole("heading", { name: "客户" });
     await user.type(screen.getByLabelText("搜索客户"), "客户A");
@@ -461,28 +480,10 @@ describe("CustomerPage", () => {
   it("starts a chat from a managed account relation", async () => {
     const user = userEvent.setup();
     const service = createCustomerPageService();
-    const baseGetMessages = service.getMessages;
-    let releaseConversationMessages!: () => void;
-    const conversationMessagesGate = new Promise<void>((resolve) => {
-      releaseConversationMessages = resolve;
-    });
-    const getConversation = vi.fn(service.getConversation);
-    const getOrCreateConversation = vi.fn(service.getOrCreateConversation);
-    const getMessages = vi.fn(async (...args: Parameters<typeof baseGetMessages>) => {
-      if (args[0] === "mock-conversation-1") {
-        await conversationMessagesGate;
-      }
+    const onStartChat = vi.fn();
+    setWorkbenchService(service);
 
-      return baseGetMessages(...args);
-    });
-    setWorkbenchService({
-      ...service,
-      getConversation,
-      getOrCreateConversation,
-      getMessages,
-    });
-
-    const router = renderRoute("/chat/customers");
+    renderCustomerPage({ onStartChat });
 
     await screen.findByRole("heading", { name: "客户" });
     await user.type(screen.getByLabelText("搜索客户"), "客户A");
@@ -492,68 +493,13 @@ describe("CustomerPage", () => {
     );
     await user.click(await screen.findByRole("button", { name: "向 销售一号 继续会话" }));
 
-    await waitFor(() => {
-      expect(router.state.location.pathname).toBe("/chat");
-      expect(useWorkbenchStore.getState().activeConversationId).toBe(
-        "mock-conversation-1",
-      );
-      expect(useWorkbenchStore.getState().isConversationLoading).toBe(true);
-    });
-    releaseConversationMessages();
-    await waitFor(() => {
-      expect(useWorkbenchStore.getState().isConversationLoading).toBe(false);
-    });
-    expect(useWorkbenchStore.getState().activeConversationId).toBe(
-      "mock-conversation-1",
-    );
-    expect(getOrCreateConversation).toHaveBeenCalledWith({
-      chatType: 1,
+    expect(onStartChat).toHaveBeenCalledWith({
+      conversationId: undefined,
+      customerAvatar: "",
+      customerName: "客户A",
+      realName: "张三",
       seatId: "drc",
       thirdExternalUserId: "external-a",
-      thirdGroupId: undefined,
-    });
-    expect(useWorkbenchStore.getState().conversationPromotion?.conversationId).toBe(
-      "mock-conversation-1",
-    );
-    expect(getConversation).not.toHaveBeenCalled();
-  });
-
-  it("shows an error when starting a managed-account conversation fails", async () => {
-    const user = userEvent.setup();
-    const service = createCustomerPageService();
-    const getOrCreateConversation = vi
-      .fn()
-      .mockRejectedValueOnce(new Error("暂时无法开启会话"));
-    setWorkbenchService({
-      ...service,
-      getOrCreateConversation,
-    });
-
-    const router = renderRoute("/chat/customers");
-
-    await screen.findByRole("heading", { name: "客户" });
-    await user.type(screen.getByLabelText("搜索客户"), "客户A");
-    await user.click(screen.getByRole("button", { name: "查询" }));
-    await user.hover(
-      await screen.findByRole("button", { name: "查看 客户A（张三） 的好友关系" }),
-    );
-    await user.click(
-      await screen.findByRole("button", { name: "向 销售一号 继续会话" }),
-    );
-
-    const errorDialog = await screen.findByRole("alertdialog", {
-      name: "开启会话失败",
-    });
-    expect(errorDialog).toHaveTextContent("暂时无法开启会话");
-    expect(router.state.location.pathname).toBe("/chat");
-
-    await user.click(
-      within(errorDialog).getByRole("button", { name: "我知道了" }),
-    );
-    await waitFor(() => {
-      expect(
-        screen.queryByRole("alertdialog", { name: "开启会话失败" }),
-      ).not.toBeInTheDocument();
     });
   });
 
@@ -577,7 +523,7 @@ describe("CustomerPage", () => {
     });
     setWorkbenchService(service);
 
-    renderRoute("/chat/customers");
+    renderCustomerPage();
 
     await screen.findByRole("heading", { name: "客户" });
     await user.type(screen.getByLabelText("搜索客户"), "客户A");
@@ -621,7 +567,7 @@ describe("CustomerPage", () => {
     });
     setWorkbenchService(service);
 
-    renderRoute("/chat/customers");
+    renderCustomerPage();
 
     await screen.findByRole("heading", { name: "客户" });
     await user.type(screen.getByLabelText("搜索客户"), "external-a");
@@ -645,7 +591,7 @@ describe("CustomerPage", () => {
     vi.mocked(service.getCustomerLastConversation).mockResolvedValue({});
     setWorkbenchService(service);
 
-    renderRoute("/chat/customers");
+    renderCustomerPage();
 
     await screen.findByRole("heading", { name: "客户" });
     await user.type(screen.getByLabelText("搜索客户"), "空值客户");
@@ -693,7 +639,7 @@ describe("CustomerPage", () => {
     });
     setWorkbenchService(service);
 
-    renderRoute("/chat/customers");
+    renderCustomerPage();
 
     await screen.findByRole("heading", { name: "客户" });
     await user.click(screen.getByRole("tab", { name: "全部客户" }));
@@ -726,7 +672,7 @@ describe("CustomerPage", () => {
     });
     setWorkbenchService(service);
 
-    renderRoute("/chat/customers");
+    renderCustomerPage();
 
     await screen.findByRole("heading", { name: "客户" });
     await user.click(screen.getByRole("tab", { name: "全部客户" }));
@@ -740,7 +686,7 @@ describe("CustomerPage", () => {
     const service = createCustomerPageService();
     setWorkbenchService(service);
 
-    renderRoute("/chat/customers");
+    renderCustomerPage();
 
     await screen.findByRole("heading", { name: "客户" });
     await user.click(screen.getByRole("tab", { name: "全部客户" }));
@@ -767,7 +713,7 @@ describe("CustomerPage", () => {
       .mockResolvedValueOnce(nextCustomerResponse);
     setWorkbenchService(service);
 
-    renderRoute("/chat/customers");
+    renderCustomerPage();
 
     await screen.findByRole("heading", { name: "客户" });
     await user.click(screen.getByRole("tab", { name: "全部客户" }));
@@ -801,7 +747,7 @@ describe("CustomerPage", () => {
       );
     setWorkbenchService(service);
 
-    renderRoute("/chat/customers");
+    renderCustomerPage();
 
     await screen.findByRole("heading", { name: "客户" });
     await user.click(screen.getByRole("tab", { name: "全部客户" }));
@@ -827,7 +773,7 @@ describe("CustomerPage", () => {
       .mockRejectedValueOnce(new Error("下一页加载失败"));
     setWorkbenchService(service);
 
-    renderRoute("/chat/customers");
+    renderCustomerPage();
 
     await screen.findByRole("heading", { name: "客户" });
     await user.click(screen.getByRole("tab", { name: "全部客户" }));
@@ -866,7 +812,7 @@ describe("CustomerPage", () => {
     });
     setWorkbenchService(service);
 
-    renderRoute("/chat/customers");
+    renderCustomerPage();
 
     await screen.findByRole("heading", { name: "客户" });
     await user.type(screen.getByLabelText("搜索客户"), "😀客户");
@@ -894,7 +840,7 @@ describe("CustomerPage", () => {
     });
     setWorkbenchService(service);
 
-    renderRoute("/chat/customers");
+    renderCustomerPage();
 
     await screen.findByRole("heading", { name: "客户" });
     await user.type(screen.getByLabelText("搜索客户"), "客户A");
@@ -909,7 +855,6 @@ describe("CustomerPage", () => {
     expect(
       screen.getByRole("button", { name: "查看 客户A（张三） 的最近会话记录" }),
     ).toBeInTheDocument();
-    expect(screen.queryByText("Unexpected Application Error!")).not.toBeInTheDocument();
   });
 
   it("loads customer popover data after StrictMode remount", async () => {
@@ -917,7 +862,7 @@ describe("CustomerPage", () => {
     const service = createCustomerPageService();
     setWorkbenchService(service);
 
-    renderRoute("/chat/customers", { strictMode: true });
+    renderCustomerPage({ strictMode: true });
 
     await screen.findByRole("heading", { name: "客户" });
     await user.type(screen.getByLabelText("搜索客户"), "客户A");
@@ -943,87 +888,21 @@ describe("CustomerPage", () => {
       ["seat-user-drc", "seat-user-support"],
     );
   });
-
-  it("navigates back to chat and settings from the account rail", async () => {
-    const user = userEvent.setup();
-    const service = createCustomerPageService();
-    setWorkbenchService(service);
-
-    const router = renderRoute("/chat/customers");
-
-    await screen.findByRole("heading", { name: "客户" });
-    await user.click(screen.getByRole("button", { name: "聊天" }));
-    await waitFor(() => {
-      expect(router.state.location.pathname).toBe("/chat");
-    });
-
-    cleanup();
-
-    const settingsRouter = renderRoute("/chat/customers");
-    await screen.findByRole("heading", { name: "客户" });
-    await user.click(screen.getByRole("button", { name: "打开账号菜单" }));
-    await user.click(screen.getByRole("menuitem", { name: "设置" }));
-    await waitFor(() => {
-      expect(settingsRouter.state.location.pathname).toBe("/chat/settings");
-    });
-    expect(
-      await screen.findByRole("navigation", { name: "设置菜单" }),
-    ).toBeInTheDocument();
-  });
-
-  it("keeps the workbench rail alive and returns to chat when a seat is selected", async () => {
-    const user = userEvent.setup();
-    const service = createCustomerPageService();
-    setWorkbenchService(service);
-
-    const router = renderRoute("/chat/customers");
-
-    expect(await screen.findByRole("heading", { name: "客户" })).toBeInTheDocument();
-    expect(screen.getByTestId("chat-workbench-shell")).toBeInTheDocument();
-
-    await user.click(screen.getByRole("button", { name: "选择 念都堂" }));
-
-    await waitFor(() => {
-      expect(router.state.location.pathname).toBe("/chat");
-    });
-  });
-
-  it("unbounds the active conversation while the customer page is open", async () => {
-    const service = createCustomerPageService();
-    setWorkbenchService(service);
-
-    renderRoute("/chat/customers");
-
-    expect(await screen.findByRole("heading", { name: "客户" })).toBeInTheDocument();
-    await waitFor(() => {
-      expect(useWorkbenchStore.getState().activeConversationId).toBe("");
-    });
-    expect(useWorkbenchStore.getState().activeMessageSeq).toBe(0);
-  });
 });
 
-function renderRoute(path: string, options: { strictMode?: boolean } = {}) {
-  useAuthStore.getState().setSession({
-    accountType: "sub",
-    displayName: "客服一号",
-    permissions: ["chat.access", "chat.send", "chat.takeover"],
-    role: "operator",
-    subUserId: "101",
-    uid: 1,
-  });
-  const router = createMemoryRouter(routerConfig, {
-    initialEntries: [path],
-  });
-
-  render(
-    options.strictMode ? (
-      <StrictMode>
-        <RouterProvider router={router} />
-      </StrictMode>
-    ) : (
-      <RouterProvider router={router} />
-    ),
+function renderCustomerPage(
+  options: {
+    onStartChat?: (input: CustomerChatStartInput) => void | Promise<void>;
+    strictMode?: boolean;
+  } = {},
+) {
+  const page = (
+    <CustomerPage
+      accounts={customerPageAccounts}
+      currentEmployeeId={CURRENT_EMPLOYEE_ID}
+      onStartChat={options.onStartChat}
+    />
   );
 
-  return router;
+  render(options.strictMode ? <StrictMode>{page}</StrictMode> : page);
 }

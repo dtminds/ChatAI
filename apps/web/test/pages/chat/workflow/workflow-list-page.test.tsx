@@ -17,6 +17,7 @@ import type { WorkflowNodeKind } from "@/pages/chat/workflow/types";
 import {
   getWorkflowDocument,
   getWorkflowDraftRepository,
+  listWorkflowDocuments,
   resetWorkflowDocumentsForTest,
   type WorkflowListInput,
   type WorkflowListPage,
@@ -710,9 +711,27 @@ describe("Agent workflow page", () => {
 
   it("renders workflows in a table with navigation and row actions", async () => {
     const user = userEvent.setup();
-    renderWorkflowPage("/chat/workflows");
+    render(
+      <RouterProvider
+        router={createMemoryRouter([
+          {
+            path: "/",
+            element: (
+              <WorkflowListTable
+                loading={false}
+                onDelete={vi.fn()}
+                onLifecycleAction={vi.fn()}
+                onRename={vi.fn()}
+                operationPendingId={null}
+                workflows={listWorkflowDocuments()}
+              />
+            ),
+          },
+        ])}
+      />,
+    );
 
-    const table = await screen.findByRole("table");
+    const table = screen.getByRole("table");
     const row = within(table).getByRole("row", { name: /新人转化旅程/ });
     const activeRow = within(table).getByRole("row", { name: /会员复购唤醒/ });
     const pausedRow = within(table).getByRole("row", { name: /直播后跟进/ });

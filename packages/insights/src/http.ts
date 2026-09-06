@@ -4,4 +4,4 @@ export * from "./insight-prompt-builder.js";
 export * from "./insights-feature-config-mapper.js";
 export * from "./insights-seeds.js";
 export * from "./insights-worker-observer-access.js";
-export * from "./insights.types.js";
+export type * from "./insights.types.js";

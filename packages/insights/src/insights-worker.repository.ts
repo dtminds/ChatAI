@@ -30,7 +30,7 @@ import type {
   DiscoverMessageUidsBatchResult,
   FinalizeOpenSessionInput,
 } from "./insights-worker.js";
-import { parseWorkerFeatureConfigRow } from "./insights-feature-config-mapper.js";
+import { parseWorkerFeatureConfigRow } from "./worker-feature-config-mapper.js";
 import { TicketsRepository } from "@chatai/tickets";
 import { readCurrentAnalysisOutput } from "./current-analysis-output-reader.js";
 

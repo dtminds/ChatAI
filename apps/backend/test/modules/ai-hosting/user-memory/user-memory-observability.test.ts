@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { resolveTenantState, resolveWorkerHealth } from "../../../../src/modules/ai-hosting/user-memory/user-memory-observability.service.js";
-import { UserMemoryWorkerObservability } from "../../../../src/modules/ai-hosting/user-memory/user-memory-worker-observability.js";
+import { UserMemoryWorkerObservability } from "@chatai/user-memory/worker";
 
 describe("user memory observability", () => {
   it("marks stale heartbeats offline and unrecovered failures as errors", () => {

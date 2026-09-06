@@ -5,4 +5,4 @@ export {
   SYSTEM_PRESET_LABEL_CONFIGS,
   SYSTEM_PRESET_QA_RULE_CONFIGS,
   systemPresetCodePrefix,
-} from "@chatai/insights";
+} from "@chatai/insights/http";

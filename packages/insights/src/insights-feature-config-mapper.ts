@@ -1,5 +1,4 @@
 import type { InsightFeatureConfig } from "@chatai/contracts";
-import type { InsightWorkerFeatureConfig } from "./insights-worker.js";
 
 export type InsightFeatureConfigRow = {
   entity_enabled: number | string;
@@ -21,13 +20,6 @@ export function parseFeatureConfigRow(row: InsightFeatureConfigRow): InsightFeat
     lastEnableTime: row.last_enable_time == null ? undefined : parseNumber(row.last_enable_time),
     qaEnabled: parseNumber(row.qa_enabled) === 1,
     todoEnabled: parseNumber(row.todo_enabled) === 1,
-  };
-}
-
-export function parseWorkerFeatureConfigRow(row: InsightFeatureConfigRow): InsightWorkerFeatureConfig {
-  return {
-    ...parseFeatureConfigRow(row),
-    uid: parseNumber(row.uid),
   };
 }
 

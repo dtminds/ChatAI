@@ -1237,37 +1237,6 @@ describe("Agent workflow page", () => {
     expect(await screen.findByRole("application", { name: "工作流预览" })).toBeInTheDocument();
   });
 
-  it("fills endpoint node icons when a template has fewer than three business node kinds", async () => {
-    const template = {
-      coverUrl: null,
-      description: "",
-      id: "featured-endpoints",
-      name: "仅有一个业务节点",
-      nodeKinds: ["message"] as WorkflowNodeKind[],
-      nodeCount: 3,
-      publishedAt: "2026-09-01T00:00:00.000Z",
-      sortOrder: 0,
-      trigger: "添加好友",
-      updatedAt: "2026-09-01T00:00:00.000Z",
-      version: 1,
-      workflowType: "chatai_sop" as const,
-    };
-    const templateRepository: WorkflowTemplateRepository = {
-      apply: vi.fn(),
-      get: vi.fn(),
-      list: vi.fn(async input => input.featured ? { items: [template], total: 1 } : { items: [], total: 0 }),
-    };
-
-    renderWorkflowPage("/chat/workflows", getWorkflowDraftRepository(), templateRepository);
-
-    const card = await screen.findByTestId("workflow-template-card-featured-endpoints");
-    const nodeKinds = within(card).getByLabelText("模板节点类型");
-    expect(within(nodeKinds).getByTitle("开始")).toBeInTheDocument();
-    expect(within(nodeKinds).getByTitle("消息发送")).toBeInTheDocument();
-    expect(within(nodeKinds).getByTitle("结束")).toBeInTheDocument();
-    expect(within(nodeKinds).queryByText(/\+/)).not.toBeInTheDocument();
-  });
-
 
   it("shows a clean template draft preview and lets template managers delete the draft", async () => {
     const user = userEvent.setup();

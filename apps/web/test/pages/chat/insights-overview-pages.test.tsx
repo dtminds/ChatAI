@@ -1870,9 +1870,8 @@ describe("conversation insights pages", () => {
   it("renders quality result list and agent report", async () => {
     renderRoute("/chat/insights/quality");
 
-    expect(
-      await screen.findByRole("heading", { name: "服务质检" }),
-    ).toBeInTheDocument();
+    const qualityMetrics = await screen.findByRole("region", { name: "质检指标" });
+    expect(await within(qualityMetrics).findByText("22")).toBeInTheDocument();
     expect(
       screen.queryByText(
         "按咨询会话判断客户问题是否解决，辅助主管复核服务质量",
@@ -1899,8 +1898,6 @@ describe("conversation insights pages", () => {
       "quality-overview-content",
     );
     expect(qualityOverviewContent).toBeInTheDocument();
-    const qualityMetrics = screen.getByRole("region", { name: "质检指标" });
-    expect(qualityMetrics).toBeInTheDocument();
     const qualityDistribution = screen.getByRole("region", {
       name: "质检分布",
     });
@@ -1915,7 +1912,6 @@ describe("conversation insights pages", () => {
       within(qualityDistribution).getByText("2026-05-28 至 2026-06-03"),
     ).toBeInTheDocument();
     expect(within(qualityMetrics).getByText("会话数")).toBeInTheDocument();
-    expect(within(qualityMetrics).getByText("22")).toBeInTheDocument();
     expect(within(qualityMetrics).getByText("质检会话数")).toBeInTheDocument();
     expect(within(qualityMetrics).getByText("19")).toBeInTheDocument();
     expect(within(qualityMetrics).getByText("质检覆盖率")).toBeInTheDocument();
@@ -2000,7 +1996,7 @@ describe("conversation insights pages", () => {
       "质检未通过数",
       "质检通过率",
     ]);
-    expect(screen.getByText("企微小助手1号")).toBeInTheDocument();
+    expect(await screen.findByText("企微小助手1号")).toBeInTheDocument();
     expect(
       screen.getByRole("img", { name: "企微小助手1号" }),
     ).toBeInTheDocument();
@@ -2011,11 +2007,12 @@ describe("conversation insights pages", () => {
 
     await userEvent.click(screen.getByRole("tab", { name: "质检结果" }));
 
-    await waitFor(() => {
-      expect(serviceMocks.getInsightQualityResults).toHaveBeenCalledTimes(
-        callsBeforeQualityResults + 1,
-      );
-    });
+    expect(
+      await screen.findByRole("columnheader", { name: "客户" }),
+    ).toBeInTheDocument();
+    expect(serviceMocks.getInsightQualityResults).toHaveBeenCalledTimes(
+      callsBeforeQualityResults + 1,
+    );
     expect(within(qualityMetrics).getByText("19")).toBeInTheDocument();
     expect(serviceMocks.getInsightQualityResults).toHaveBeenLastCalledWith(
       expect.objectContaining({
@@ -2026,9 +2023,6 @@ describe("conversation insights pages", () => {
       }),
       expect.objectContaining({ signal: expect.any(AbortSignal) }),
     );
-    expect(
-      screen.getByRole("columnheader", { name: "客户" }),
-    ).toBeInTheDocument();
     expect(
       screen.getByRole("columnheader", { name: "接待客服" }),
     ).toBeInTheDocument();
@@ -2110,8 +2104,11 @@ describe("conversation insights pages", () => {
     const qualityDistribution = await screen.findByRole("region", {
       name: "质检分布",
     });
+    expect(
+      await within(qualityDistribution).findByText("客户问题是否解决"),
+    ).toBeInTheDocument();
     const distributionItems =
-      await within(qualityDistribution).findAllByRole("listitem");
+      within(qualityDistribution).getAllByRole("listitem");
 
     expect(distributionItems).toHaveLength(10);
     expect(

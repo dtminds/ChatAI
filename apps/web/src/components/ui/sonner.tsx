@@ -9,6 +9,7 @@ import {
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import type * as React from "react";
+import { createPortal } from "react-dom";
 import { Toaster as Sonner, type ToasterProps } from "sonner";
 import { Spinner } from "@/components/ui/spinner";
 import { cn } from "@/lib/utils";
@@ -21,7 +22,7 @@ const Toaster = ({
   toastOptions,
   ...props
 }: ToasterProps) => {
-  return (
+  const toaster = (
     <Sonner
       theme="system"
       className={cn("toaster group", className)}
@@ -58,6 +59,12 @@ const Toaster = ({
       {...props}
     />
   );
+
+  if (typeof document === "undefined") {
+    return toaster;
+  }
+
+  return createPortal(toaster, document.body);
 };
 
 function ToastIcon({

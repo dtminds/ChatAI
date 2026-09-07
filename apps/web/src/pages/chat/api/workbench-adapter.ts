@@ -53,6 +53,7 @@ export function adaptAccount(dto: WorkbenchSeatDto, unreadCount = dto.unreadCoun
     seatGroupAIAssistantEnabled: dto.seatGroupAIAssistantEnabled === true,
     id: dto.seatId,
     lastMessageTime: dto.lastMessageTime,
+    thirdUserId: dto.thirdUserId,
     loginStatus: dto.loginStatus,
     metrics: {
       activeCustomers: 0,
@@ -112,7 +113,7 @@ export function adaptGroupMember(dto: WorkbenchGroupMemberDto) {
   return {
     avatarUrl: dto.avatarUrl,
     displayName: dto.displayName,
-    id: dto.thirdUserId,
+    id: dto.thirdUserId.trim(),
     isOpeningAccount: dto.isOpeningAccount,
     isReceptionAccount: dto.isReceptionAccount,
     type: dto.type,

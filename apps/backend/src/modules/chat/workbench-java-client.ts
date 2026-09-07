@@ -41,6 +41,11 @@ import {
   type AppLogger,
   type RequestAwareLogger,
 } from "../../shared/logger.js";
+import {
+  createWecomMemberJavaClient,
+  JAVA_WECOM_MEMBER_ALL,
+  type WecomMemberJavaTree,
+} from "../workflow/wecom-member-java-client.js";
 
 const DEFAULT_JAVA_INTERNAL_API_TIMEOUT_MS = 8000;
 const DEFAULT_JAVA_INTERNAL_API_TRANS_MSG_FILE_TIMEOUT_MS = 120000;
@@ -319,6 +324,23 @@ export type WorkbenchJavaClient = {
     platform: number;
     uid: number;
   }): Promise<void>;
+  pullFriendsInGroup(input: {
+    contactThirdUserids: string[];
+    groupSeatId: number;
+    platform: number;
+    subUserId: number;
+    uid: number;
+  }): Promise<void>;
+  kickOutOfGroup(input: {
+    groupSeatId: number;
+    kickOutThirdUserid: string;
+    platform: number;
+    subUserId: number;
+    uid: number;
+  }): Promise<void>;
+  listEnterpriseDepartmentUsers(input: {
+    uid: number;
+  }): Promise<WecomMemberJavaTree>;
   testAgent(input: {
     messages: Array<{
       contents: Array<{
@@ -350,6 +372,7 @@ export function createWorkbenchJavaClient(
 ): WorkbenchJavaClient {
   const baseUrl = process.env.JAVA_INTERNAL_API_BASE_URL?.replace(/\/+$/, "");
   const token = process.env.JAVA_INTERNAL_API_TOKEN;
+  const wecomMemberClient = createWecomMemberJavaClient(logger);
 
   return {
     getBroadcastProtectionStatus(input) {
@@ -814,6 +837,44 @@ export function createWorkbenchJavaClient(
         logger,
         "set-group-seat-host-user-seat-ids",
       ).then(() => undefined);
+    },
+    pullFriendsInGroup(input) {
+      return postJavaEnvelope<number>(
+        baseUrl,
+        token,
+        "/third-internal/wap-embed/group-seat/pull-fre-in-group",
+        {
+          contactThirdUserids: input.contactThirdUserids,
+          groupSeatId: input.groupSeatId,
+          platform: input.platform,
+          subUserId: input.subUserId,
+          uid: input.uid,
+        },
+        logger,
+        "pull-friends-in-group",
+      ).then(() => undefined);
+    },
+    kickOutOfGroup(input) {
+      return postJavaEnvelope<number>(
+        baseUrl,
+        token,
+        "/third-internal/wap-embed/group-seat/group-del-user",
+        {
+          groupSeatId: input.groupSeatId,
+          kickOutThirdUserid: input.kickOutThirdUserid,
+          platform: input.platform,
+          subUserId: input.subUserId,
+          uid: input.uid,
+        },
+        logger,
+        "kick-out-of-group",
+      ).then(() => undefined);
+    },
+    listEnterpriseDepartmentUsers(input) {
+      return wecomMemberClient.listDepartmentUsers({
+        isExternal: JAVA_WECOM_MEMBER_ALL,
+        uid: input.uid,
+      });
     },
     testAgent(input) {
       return postJavaEnvelope<unknown>(

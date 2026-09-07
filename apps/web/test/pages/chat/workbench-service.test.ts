@@ -95,6 +95,54 @@ describe("createWorkbenchService", () => {
     });
   });
 
+  it("fetches enterprise members from the employees API", async () => {
+    const service = createHttpWorkbenchService();
+    mock.onGet("/server/employees").reply(200, {
+      items: [
+        {
+          avatarUrl: "https://example.com/hua.png",
+          displayName: "花花",
+          thirdUserId: "seat-user-hua",
+        },
+      ],
+    });
+
+    await expect(service.getEnterpriseMembers()).resolves.toEqual({
+      items: [
+        {
+          avatarUrl: "https://example.com/hua.png",
+          displayName: "花花",
+          thirdUserId: "seat-user-hua",
+        },
+      ],
+    });
+    expect(mock.history.get[0]?.url).toBe("/server/employees");
+  });
+
+  it("fetches current-seat friends from the seat friends API", async () => {
+    const service = createHttpWorkbenchService();
+    mock.onGet("/server/seats/12/friends").reply(200, {
+      items: [
+        {
+          avatarUrl: "https://example.com/xiaoming.png",
+          displayName: "小明",
+          thirdExternalUserId: "external-xiaoming",
+        },
+      ],
+    });
+
+    await expect(service.getSeatFriends("12")).resolves.toEqual({
+      items: [
+        {
+          avatarUrl: "https://example.com/xiaoming.png",
+          displayName: "小明",
+          thirdExternalUserId: "external-xiaoming",
+        },
+      ],
+    });
+    expect(mock.history.get[0]?.url).toBe("/server/seats/12/friends");
+  });
+
   it("passes customer pagination and search params", async () => {
     const service = createHttpWorkbenchService();
     mock.onGet("/server/customers").reply((config) => [
@@ -142,6 +190,42 @@ describe("createWorkbenchService", () => {
       scope: "all",
       seat_ids: undefined,
     });
+  });
+
+  it("posts selected friends to pull them into a group", async () => {
+    const service = createHttpWorkbenchService();
+    mock.onPost("/server/conversations/88/group-members").reply(200, {
+      conversationId: "88",
+    });
+
+    await expect(
+      service.pullGroupMembers("88", {
+        contactThirdUserIds: ["external-a", "external-b"],
+      }),
+    ).resolves.toEqual({ conversationId: "88" });
+    expect(mock.history.post[0]?.data).toBe(
+      JSON.stringify({
+        contactThirdUserIds: ["external-a", "external-b"],
+      }),
+    );
+  });
+
+  it("posts the selected member to kick them from a group", async () => {
+    const service = createHttpWorkbenchService();
+    mock.onPost("/server/conversations/88/group-members/remove").reply(200, {
+      conversationId: "88",
+    });
+
+    await expect(
+      service.kickGroupMember("88", {
+        kickOutThirdUserId: "member-xiaoming",
+      }),
+    ).resolves.toEqual({ conversationId: "88" });
+    expect(mock.history.post[0]?.data).toBe(
+      JSON.stringify({
+        kickOutThirdUserId: "member-xiaoming",
+      }),
+    );
   });
 
   it("fetches one customer last conversation on demand", async () => {

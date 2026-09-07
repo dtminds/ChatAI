@@ -6712,6 +6712,21 @@ describe("useWorkbenchStore", () => {
     );
   });
 
+  it("keeps group members that a forced refresh still returns", async () => {
+    await useWorkbenchStore.getState().initializeWorkbench();
+    await useWorkbenchStore.getState().setActiveMode("group");
+
+    await useWorkbenchStore.getState().loadActiveGroupMembers({ force: true });
+
+    expect(
+      useWorkbenchStore.getState().groupMembersByConversationId["conv-004"],
+    ).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: "member-002" }),
+      ]),
+    );
+  });
+
   it("reuses fresh group member cache within five minutes", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-05-18T10:00:00+08:00"));

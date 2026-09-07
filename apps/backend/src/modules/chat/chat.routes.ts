@@ -3,6 +3,8 @@ import type {
   WorkbenchRetryMessageRequest,
   WorkbenchSendMessagePayload,
   WorkbenchGetOrCreateConversationRequestDto,
+  WorkbenchKickGroupMemberRequest,
+  WorkbenchPullGroupMembersRequest,
   WorkbenchSmartReplyAttachmentsRequest,
   WorkbenchSmartReplyAutoGeneralAnswerRequest,
   WorkbenchSmartReplyGeneralAnswerRequest,
@@ -64,6 +66,18 @@ const ConversationListQuerySchema = Type.Object({
 const ConversationParamsSchema = Type.Object({
   conversationId: Type.String(),
 });
+
+const PullGroupMembersBodySchema = Type.Object({
+  contactThirdUserIds: Type.Array(Type.String({ minLength: 1 }), { minItems: 1 }),
+});
+
+type PullGroupMembersBody = Static<typeof PullGroupMembersBodySchema>;
+
+const KickGroupMemberBodySchema = Type.Object({
+  kickOutThirdUserId: Type.String({ minLength: 1 }),
+});
+
+type KickGroupMemberBody = Static<typeof KickGroupMemberBodySchema>;
 
 const ConversationFullAutoRequestSchema = Type.Object({
   enabled: Type.Boolean(),
@@ -744,6 +758,25 @@ export async function registerChatRoutes(app: FastifyInstance) {
     getWorkbenchService(app, request).getSeats(getSubUserId(request)),
   );
 
+  app.get("/api/server/employees", { preHandler: app.authenticate }, async (request) =>
+    getWorkbenchService(app, request).getEnterpriseMembers(getSubUserId(request)),
+  );
+
+  app.get<{ Params: SeatParams }>(
+    "/api/server/seats/:seatId/friends",
+    {
+      preHandler: app.authenticate,
+      schema: {
+        params: SeatParamsSchema,
+      },
+    },
+    async (request) =>
+      getWorkbenchService(app, request).getSeatFriends(
+        getSubUserId(request),
+        request.params.seatId,
+      ),
+  );
+
   app.get<{ Querystring: CustomersQuery }>(
     "/api/server/customers",
     {
@@ -1150,6 +1183,48 @@ export async function registerChatRoutes(app: FastifyInstance) {
         getSubUserId(request),
         request.params.conversationId,
       ),
+  );
+
+  app.post<{ Body: PullGroupMembersBody; Params: ConversationParams }>(
+    "/api/server/conversations/:conversationId/group-members",
+    {
+      preHandler: app.authenticate,
+      schema: {
+        body: PullGroupMembersBodySchema,
+        params: ConversationParamsSchema,
+      },
+    },
+    async (request) => {
+      assertChatWriteAccess(request);
+      return getWorkbenchService(app, request).pullGroupMembers(
+        getSubUserId(request),
+        request.params.conversationId,
+        {
+          contactThirdUserIds: request.body.contactThirdUserIds,
+        } satisfies WorkbenchPullGroupMembersRequest,
+      );
+    },
+  );
+
+  app.post<{ Body: KickGroupMemberBody; Params: ConversationParams }>(
+    "/api/server/conversations/:conversationId/group-members/remove",
+    {
+      preHandler: app.authenticate,
+      schema: {
+        body: KickGroupMemberBodySchema,
+        params: ConversationParamsSchema,
+      },
+    },
+    async (request) => {
+      assertChatWriteAccess(request);
+      return getWorkbenchService(app, request).kickGroupMember(
+        getSubUserId(request),
+        request.params.conversationId,
+        {
+          kickOutThirdUserId: request.body.kickOutThirdUserId,
+        } satisfies WorkbenchKickGroupMemberRequest,
+      );
+    },
   );
 
   app.get<{ Querystring: MaterialGroupsQuery }>(

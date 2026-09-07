@@ -6,13 +6,12 @@ import {
 import { Value } from "@sinclair/typebox/value";
 import type { Static, TSchema } from "@sinclair/typebox";
 import type { WorkflowCapabilityDefinition, WorkflowCapabilityKind, WorkflowCapabilityPort, WorkflowCapabilityRequest } from "@chatai/workflow-runtime";
-import { requestSmartsheetBytes } from "./smartsheet-http.js";
 
 export const SMARTSHEET_IMAGE_MAX_BYTES = 5 * 1024 * 1024;
 export const SMARTSHEET_IMAGES_TOTAL_MAX_BYTES = 20 * 1024 * 1024;
 
 export class HttpWorkflowSmartsheetWriteCapabilityPort implements WorkflowCapabilityPort {
-  constructor(private readonly requestBytes = requestSmartsheetBytes) {}
+  constructor(private readonly fetchImpl: typeof fetch = fetch) {}
 
   async execute<TCommandSchema extends TSchema, TResultSchema extends TSchema, TKind extends WorkflowCapabilityKind>(
     definition: WorkflowCapabilityDefinition<TCommandSchema, TResultSchema, TKind>,
@@ -61,14 +60,14 @@ export class HttpWorkflowSmartsheetWriteCapabilityPort implements WorkflowCapabi
       }
       signal.throwIfAborted();
       // Never retry a POST: neither an HTTP error nor a broken response proves no row was inserted.
-      const body = await this.requestBytes({
-        url: command.webhookUrl,
+      const response = await this.fetchImpl(command.webhookUrl, {
         method: "POST",
+        headers: { "content-type": "application/json" },
         body: JSON.stringify({ add_records: [{ values }] }),
-        maxBytes: 1024 * 1024,
         signal,
       });
-      const result: unknown = JSON.parse(body.toString("utf8"));
+      if (!response.ok) return { success: false, errorCode: "WEBHOOK_REQUEST_FAILED" };
+      const result: unknown = await response.json();
       if (typeof result !== "object" || result === null || !("errcode" in result)) return { success: false, errorCode: "INVALID_WEBHOOK_RESPONSE" };
       return result.errcode === 0 ? { success: true } : { success: false, errorCode: `WECOM_ERR_${String(result.errcode).slice(0, 32)}` };
     } catch {
@@ -85,10 +84,14 @@ export class HttpWorkflowSmartsheetWriteCapabilityPort implements WorkflowCapabi
       const controller = new AbortController();
       const timer = setTimeout(() => controller.abort(), 10_000);
       try {
-        return await this.requestBytes({
-          url, method: "GET", maxBytes: SMARTSHEET_IMAGE_MAX_BYTES,
+        const response = await this.fetchImpl(url, {
+          method: "GET",
           signal: AbortSignal.any([signal, controller.signal]),
         });
+        if (!response.ok) throw new Error("IMAGE_DOWNLOAD_FAILED");
+        const bytes = Buffer.from(await response.arrayBuffer());
+        if (bytes.length > SMARTSHEET_IMAGE_MAX_BYTES) throw new Error("IMAGE_TOO_LARGE");
+        return bytes;
       } catch (error) {
         if (attempt >= 1 || signal.aborted) throw error;
       } finally {

@@ -82,6 +82,8 @@ export function validateOrderQueryConditions(
   const errors: OrderQueryConditionValidationErrors = {};
   if (!hasValidWorkflowOrderQueryAmountPrecision(conditions.amount)) {
     errors.amount = "金额最多支持两位小数";
+  } else if ([conditions.amount.min, conditions.amount.max].some(value => value !== undefined && value > 100000)) {
+    errors.amount = "金额不能超过100000";
   } else if (conditions.amount.min !== undefined
     && conditions.amount.max !== undefined
     && conditions.amount.min > conditions.amount.max) {

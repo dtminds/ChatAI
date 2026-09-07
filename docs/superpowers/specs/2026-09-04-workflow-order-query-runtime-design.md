@@ -39,29 +39,26 @@ Compiler 校验动态时间变量的 datetime 类型、确定前序可用性和�
 
 执行查询：
 
-- `POST /third-internal/cdp-order/search-order`
-- 固定只请求 `pageNum = 1`、`pageSize = 100`，不自动读取后续页。
-- 条件查询按 `tradeTimeAsc = true` 请求稳定顺序。
+- `POST /third-internal/cdp-order/statistics-order`
+- 每次执行只请求一次统计接口，不传分页和排序字段，不拉取订单列表；由 Java 统计全部命中订单。
 - 未选择店铺时省略 `shopIdList`，表示不限制店铺。
 - Java 标准信封统一通过 `decodeJavaInternalApiEnvelope` 解码。
 
-HTTP 或网络失败进入 Runtime retry；Java 业务拒绝或非法响应时 terminal。Java 返回的 `count` 超过 100 时不视为失败，Runtime 仅按第一页最多 100 条计算并继续流程。
+HTTP 或网络失败进入 Runtime retry；Java 业务拒绝或非法响应时 terminal。统计不再受原先第一页 100 条限制。
 
 ## 3. 订单统计与金额
 
-金额筛选由 Worker 按第一页订单的 `actuPayment` 复核，可配置最低金额、最高金额或双边区间，边界均包含在内。Worker 只聚合本次返回的最多 100 条订单。
+金额筛选由 Java 按主单实付金额执行，`priceRange` 为双闭合区间数组，已设置的一端传金额字符串，不筛选的一端传 JSON `null`。例如 ≥90 元传 `["90", null]`，≤90 元传 `[null, "90"]`；显式设置的 `0` 传 `"0"`，不能当作未设置。两端均未填时不传 `priceRange`。前台配置的最低金额和最高金额均不得超过 `100000`，超限时就地提示并阻止保存；允许 `100000` 和最多两位小数。Node 不再本地筛选或聚合订单。
 
-Java 查询响应使用顶层 `count`、`page`、`pageSize` 和 `list`；Runtime 校验响应为第一页且列表不超过 100 条，不根据 `count` 继续翻页。Runtime 使用第一页中最终通过金额复核的订单数作为累计订单数，不直接使用 Java 在复核前返回的 `count`。因此 `count > 100` 时，三项输出都明确是第一页最多 100 条订单的截断统计。
+Java 成功响应固定读取 `data.orderCount`、`data.orderAmount`、`data.netTransactionAmount`。无命中时三个字段均返回 `0`；缺字段、空值或非法类型不作为空结果处理。
 
 输出：
 
-- `orderCount`：最终满足全部条件的累计订单数。
-- `totalAmount`：命中订单的 `actuPayment` 累计值。
-- `netAmount`：每笔 `actuPayment` 扣除已完成退款后的累计值，最低为 0。
+- `orderCount`：直接映射 Java `orderCount`，为全部命中订单数。
+- `totalAmount`：直接映射 Java `orderAmount`，为命中订单的主单 `actuPayment` 合计。
+- `netAmount`：映射 Java `netTransactionAmount`，为命中订单子单 `shareAmount` 合计减去售后成功子单的 `subRefundAmount` 合计；负数防御性归一化为 `0`。
 
-当前 Java 文档没有提供 `subRefundState` 枚举，因此以非空 `subRefundFinishTime` 作为退款已完成的权威证据，再扣除对应 `subRefundAmount`。若 Java 后续提供稳定枚举，需单独更新该判定并补兼容测试。
-
-每笔订单必须返回 `subOrders` 数组，空数组表示没有子单退款明细。字段缺失或类型错误时无法证明净成交金额正确，Runtime 按非法响应终止，不将其静默当作无退款。
+退款状态和金额计算口径由 Java 负责，Node 不读取子单、不自行扣退款或舍入统计金额。单次执行的请求数和 Node 内存使用不随命中订单数量增长。
 
 ## 4. 试运行
 
@@ -71,7 +68,7 @@ Java 查询响应使用顶层 `count`、`page`、`pageSize` 和 `list`；Runtime
 - Embed Surface 使用对应的 `/api/server/embed/workflows` 前缀。
 - Backend 校验操作者权限、租户权益、当前已保存的 `draftVersion`、节点类型和 Execution Config 完整性。
 - 单次试运行整体超时 12 秒；前端关闭或停止运行时取消当前 HTTP 请求。
-- Backend 与生产 Worker 复用同一个订单查询 HTTP Capability Port，保持 Java DTO、分页、聚合和输出映射一致。
+- Backend 与生产 Worker 复用同一个订单查询 HTTP Capability Port，保持 Java 统计请求、响应校验和输出映射一致。
 
 临时输入按当前节点模式决定：
 

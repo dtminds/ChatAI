@@ -357,6 +357,33 @@ describe("workflow Order Query node", () => {
     })));
   });
 
+  it.each([
+    { key: "min", label: "最低订单金额" },
+    { key: "max", label: "最高订单金额" },
+  ])("rejects $label above 100000 and accepts the boundary", async ({ key, label }) => {
+    const user = userEvent.setup();
+    const onNodeChange = vi.fn();
+    render(<StatefulOrderQueryConfig listShops={vi.fn().mockResolvedValue([])} onNodeChange={onNodeChange} />);
+    await user.click(screen.getByRole("radio", { name: "按条件" }));
+    await user.click(screen.getByRole("button", { name: "修改条件" }));
+    const input = screen.getByRole("textbox", { name: label });
+    onNodeChange.mockClear();
+
+    await user.type(input, "100000.01");
+    await user.click(screen.getByRole("button", { name: "保存" }));
+    expect(screen.getByText("金额不能超过100000")).toBeInTheDocument();
+    expect(input).toHaveAttribute("aria-invalid", "true");
+    expect(onNodeChange).not.toHaveBeenCalled();
+
+    await user.clear(input);
+    await user.type(input, "100000.00");
+    await user.click(screen.getByRole("button", { name: "保存" }));
+    expect(onNodeChange).toHaveBeenLastCalledWith(expect.objectContaining({
+      conditions: expect.objectContaining({ amount: { [key]: 100000 } }),
+    }));
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
+
   it("limits shop and influencer selection to 20 items", async () => {
     const user = userEvent.setup();
     const onNodeChange = vi.fn();

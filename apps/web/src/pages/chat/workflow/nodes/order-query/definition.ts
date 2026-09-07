@@ -33,7 +33,7 @@ export const orderQueryNodeDefinition: WorkflowNodeDefinition<"order-query"> = {
   getOutputVariables: () => [
     { description: "符合条件的累计订单数量", key: "orderCount", label: "累计订单数", usages: ["variable"], valueType: { kind: "number" } },
     { description: "符合条件订单的累计实付金额", key: "totalAmount", label: "累计订单金额", usages: ["variable"], valueType: { kind: "number" } },
-    { description: "累计实付金额扣除已完成退款后的金额", key: "netAmount", label: "净成交金额", usages: ["variable"], valueType: { kind: "number" } },
+    { description: "命中订单的子单实付金额合计，扣除售后成功退款金额，最低为0", key: "netAmount", label: "净成交金额", usages: ["variable"], valueType: { kind: "number" } },
   ],
   sanitizeData: (data) => {
     if (data.mode === "conditions") {

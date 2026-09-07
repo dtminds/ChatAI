@@ -2,149 +2,93 @@ import { describe, expect, it, vi } from "vitest";
 import { executeWorkflowOrderQuery } from "../src/order-query-capability-port.js";
 
 describe("Workflow Order Query Java port", () => {
-  it("uses only the first 100 customer orders, applies inclusive actuPayment bounds, and deducts completed refunds", async () => {
-    const unmatchedOrders = Array.from({ length: 99 }, () => ({
-      actuPayment: 50,
-      goodsAmount: 40,
-      subOrders: [],
+  it("requests all matching statistics once and maps authoritative amounts", async () => {
+    const fetchMock = vi.fn<typeof fetch>(async () => javaResponse({
+      data: { netTransactionAmount: 9876.54, orderAmount: 12345.67, orderCount: 250 },
+      success: true,
     }));
-    const fetchMock = vi.fn(async () => new Response(JSON.stringify({
-      count: 101,
-      list: [
-        {
-          actuPayment: 110,
-          goodsAmount: 10,
-          subOrders: [{
-            goodsId: "g1",
-            goodsName: "T恤",
-            num: 2,
-            skuName: "黑色",
-            subRefundAmount: 20,
-            subRefundFinishTime: "2026-09-03 12:00:00",
-          }],
-        },
-        ...unmatchedOrders,
-      ],
-      page: 1,
-      pageSize: 100,
-      success: true,
-    }), { status: 200 }));
-    const result = await executeWorkflowOrderQuery({
-      baseUrl: "https://java.example.com/internal",
+    await expect(executeWorkflowOrderQuery({
+      ...orderNumberInput(fetchMock),
       command: {
-        amount: { max: 110, min: 110 },
-        goodsName: "T恤",
-        mode: "conditions",
-        platformId: 2,
-        shopIds: [11],
-        timeField: "pay-time",
-        timeRange: ["2026-08-28 00:00:00", "2026-09-04 23:59:00"],
+        amount: { max: 110.99, min: 10.01 }, goodsName: "T恤", mode: "conditions",
+        orderStatus: 0, platformId: 2, shopIds: [11], timeField: "pay-time",
+        timeRange: ["2026-08-28 00:00:00", "2026-09-04 23:59:59"],
       },
-      fetch: fetchMock as typeof fetch,
-      signal: new AbortController().signal,
-      token: "token",
-      uid: 9,
-      xyId: 303,
-    });
-    expect(result).toEqual({
-      netAmount: 90,
-      orderCount: 1,
-      totalAmount: 110,
-    });
+      token: "token", xyId: 303,
+    })).resolves.toEqual({ netAmount: 9876.54, orderCount: 250, totalAmount: 12345.67 });
     expect(fetchMock).toHaveBeenCalledTimes(1);
-    expect(JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body))).toEqual({
-      goodsName: "T恤",
-      orderType: [0, 1],
-      pageNum: 1,
-      pageSize: 100,
-      payTimes: ["2026-08-28 00:00:00", "2026-09-04 23:59:00"],
-      platform: 2,
-      shopIdList: [11],
-      tradeTimeAsc: true,
-      uid: 9,
-      xyId: 303,
+    const [url, init] = fetchMock.mock.calls[0]!;
+    expect(String(url)).toBe("https://java.example.com/third-internal/cdp-order/statistics-order");
+    expect(init).toMatchObject({ method: "POST", headers: { authorization: "Bearer token" } });
+    expect(JSON.parse(String(init?.body))).toEqual({
+      goodsName: "T恤", orderStatus: 0, orderType: [0, 1],
+      payTimes: ["2026-08-28 00:00:00", "2026-09-04 23:59:59"],
+      platform: 2, priceRange: ["10.01", "110.99"], shopIdList: [11], uid: 9, xyId: 303,
     });
-  });
-
-  it("uses the returned list without requiring pagination metadata", async () => {
-    const fetchMock = vi.fn(async () => new Response(JSON.stringify({
-      count: 101,
-      list: [],
-      success: true,
-    }), { status: 200 }));
-
-    await expect(executeWorkflowOrderQuery({
-      baseUrl: "https://java.example.com/internal",
-      command: { mode: "order-number", orderNumber: "SO-1001" },
-      fetch: fetchMock as typeof fetch,
-      signal: new AbortController().signal,
-      token: null,
-      uid: 9,
-    })).resolves.toEqual({ netAmount: 0, orderCount: 0, totalAmount: 0 });
-    expect(fetchMock).toHaveBeenCalledTimes(1);
-  });
-
-  it("does not require product fields when calculating order totals", async () => {
-    const fetchMock = vi.fn(async () => new Response(JSON.stringify({
-      count: 1,
-      list: [{
-        actuPayment: 25,
-        subOrders: [{
-          subRefundAmount: 0,
-        }],
-      }],
-      page: 1,
-      pageSize: 100,
-      success: true,
-    }), { status: 200 }));
-
-    await expect(executeWorkflowOrderQuery({
-      baseUrl: "https://java.example.com/internal",
-      command: { mode: "order-number", orderNumber: "SO-1001" },
-      fetch: fetchMock as typeof fetch,
-      signal: new AbortController().signal,
-      token: null,
-      uid: 9,
-    })).resolves.toMatchObject({
-      netAmount: 25,
-      orderCount: 1,
-      totalAmount: 25,
-    });
-  });
-
-  it("treats omitted or malformed subOrders as having no refundable items", async () => {
-    await expect(executeWorkflowOrderQuery(orderNumberInput(vi.fn(async () => javaResponse({
-      count: 1,
-      list: [{ actuPayment: 25 }, { actuPayment: 10, subOrders: [null, { subRefundAmount: "invalid" }] }],
-      success: true,
-    }))))).resolves.toEqual({ netAmount: 35, orderCount: 2, totalAmount: 35 });
   });
 
   it.each([
-    {
-      code: "WORKFLOW_ORDER_QUERY_FAILED",
-      fetch: vi.fn(async () => { throw new Error("network"); }),
-    },
-    {
-      code: "WORKFLOW_ORDER_QUERY_UNAVAILABLE",
-      fetch: vi.fn(async () => new Response(null, { status: 503 })),
-    },
-  ])("classifies transport or HTTP failure as $code", async ({ code, fetch }) => {
-    await expect(executeWorkflowOrderQuery(orderNumberInput(fetch))).rejects.toMatchObject({
-      code,
-      failureKind: "retryable",
+    { amount: {}, priceRange: undefined },
+    { amount: { min: 12.34 }, priceRange: ["12.34", "999999"] },
+    { amount: { max: 56.78 }, priceRange: ["0", "56.78"] },
+    { amount: { max: 0 }, priceRange: ["0", "0"] },
+  ])("encodes optional inclusive price bounds: $amount", async ({ amount, priceRange }) => {
+    const fetchMock = vi.fn<typeof fetch>(async () => javaResponse(zeroStatistics()));
+    await executeWorkflowOrderQuery({
+      ...orderNumberInput(fetchMock),
+      command: {
+        amount, mode: "conditions", shopIds: [], timeField: "finish-time",
+        timeRange: ["2026-09-01 00:00:00", "2026-09-04 23:59:59"],
+      },
+      xyId: 303,
+    });
+    expect(JSON.parse(String(fetchMock.mock.calls[0]![1]?.body))).toEqual({
+      orderType: [0, 1], finishTime: ["2026-09-01 00:00:00", "2026-09-04 23:59:59"],
+      ...(priceRange ? { priceRange } : {}), uid: 9, xyId: 303,
     });
   });
 
-  it("classifies a Java business rejection as terminal with upstream diagnostics", async () => {
-    await expect(executeWorkflowOrderQuery(orderNumberInput(vi.fn(async () => javaResponse({
-      error: 40001,
-      errorMsg: "订单查询参数无效",
-      success: false,
-    }))))).rejects.toMatchObject({
+  it("returns zeros for an unmatched order number without customer filters", async () => {
+    const fetchMock = vi.fn<typeof fetch>(async () => javaResponse(zeroStatistics()));
+    await expect(executeWorkflowOrderQuery(orderNumberInput(fetchMock)))
+      .resolves.toEqual({ netAmount: 0, orderCount: 0, totalAmount: 0 });
+    expect(JSON.parse(String(fetchMock.mock.calls[0]![1]?.body))).toEqual({
+      orderNo: "SO-1001", orderType: [0, 1], uid: 9,
+    });
+  });
+
+  it("normalizes only negative net amounts to zero", async () => {
+    await expect(executeWorkflowOrderQuery(orderNumberInput(async () => javaResponse({
+      data: { netTransactionAmount: -12.34, orderAmount: 10.01, orderCount: 1 },
+      success: true, error: "ignored on success",
+    })))).resolves.toEqual({ netAmount: 0, orderCount: 1, totalAmount: 10.01 });
+  });
+
+  it.each([
+    null, {},
+    { netTransactionAmount: null, orderAmount: 0, orderCount: 0 },
+    { netTransactionAmount: "10", orderAmount: 10, orderCount: 1 },
+    { netTransactionAmount: 0, orderAmount: -1, orderCount: 1 },
+    { netTransactionAmount: 0, orderAmount: 0, orderCount: 1.5 },
+    { netTransactionAmount: 0, orderAmount: 0, orderCount: -1 },
+  ])("rejects invalid statistics instead of guessing zeros: %j", async data => {
+    await expect(executeWorkflowOrderQuery(orderNumberInput(async () => javaResponse({ data, success: true }))))
+      .rejects.toMatchObject({ code: "WORKFLOW_ORDER_QUERY_RESPONSE_INVALID", failureKind: "terminal" });
+  });
+
+  it.each([
+    { code: "WORKFLOW_ORDER_QUERY_FAILED", fetch: async () => { throw new Error("network"); } },
+    { code: "WORKFLOW_ORDER_QUERY_UNAVAILABLE", fetch: async () => new Response(null, { status: 503 }) },
+  ])("classifies transport or HTTP failure as $code", async ({ code, fetch }) => {
+    await expect(executeWorkflowOrderQuery(orderNumberInput(fetch))).rejects.toMatchObject({ code, failureKind: "retryable" });
+  });
+
+  it("preserves terminal Java rejection diagnostics", async () => {
+    await expect(executeWorkflowOrderQuery(orderNumberInput(async () => javaResponse({
+      error: 40001, errorMsg: "订单查询参数无效", success: false,
+    })))).rejects.toMatchObject({
       code: "WORKFLOW_ORDER_QUERY_REJECTED",
-      diagnosticMessage:
-        "Workflow Order Query Java endpoint rejected the request: 40001 订单查询参数无效",
+      diagnosticMessage: "Workflow Order Query Java endpoint rejected the request: 40001 订单查询参数无效",
       failureKind: "terminal",
     });
   });
@@ -154,40 +98,8 @@ describe("Workflow Order Query Java port", () => {
     const controller = new AbortController();
     const reason = new Error("cancelled");
     controller.abort(reason);
-
-    await expect(executeWorkflowOrderQuery(orderNumberInput(
-      fetchMock,
-      controller.signal,
-    ))).rejects.toBe(reason);
+    await expect(executeWorkflowOrderQuery(orderNumberInput(fetchMock, controller.signal))).rejects.toBe(reason);
     expect(fetchMock).not.toHaveBeenCalled();
-  });
-
-  it("omits platform from customer queries that target all platforms", async () => {
-    const fetchMock = vi.fn(async () => new Response(JSON.stringify({
-      count: 0,
-      list: [],
-      page: 1,
-      pageSize: 100,
-      success: true,
-    }), { status: 200 }));
-
-    await executeWorkflowOrderQuery({
-      baseUrl: "https://java.example.com/internal",
-      command: {
-        amount: {},
-        mode: "conditions",
-        shopIds: [],
-        timeField: "order-time",
-        timeRange: ["2026-09-01 00:00:00", "2026-09-04 23:59:59"],
-      },
-      fetch: fetchMock as typeof fetch,
-      signal: new AbortController().signal,
-      token: null,
-      uid: 9,
-      xyId: 303,
-    });
-
-    expect(JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body))).not.toHaveProperty("platform");
   });
 });
 
@@ -195,11 +107,12 @@ function orderNumberInput(fetch: typeof fetch, signal = new AbortController().si
   return {
     baseUrl: "https://java.example.com/internal",
     command: { mode: "order-number" as const, orderNumber: "SO-1001" },
-    fetch,
-    signal,
-    token: null,
-    uid: 9,
+    fetch, signal, token: null, uid: 9,
   };
+}
+
+function zeroStatistics() {
+  return { data: { netTransactionAmount: 0, orderAmount: 0, orderCount: 0 }, success: true };
 }
 
 function javaResponse(body: unknown) {

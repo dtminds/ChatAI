@@ -1,7 +1,7 @@
 import {
   decodeJavaInternalApiEnvelope,
-  WORKFLOW_ORDER_QUERY_PAGE_SIZE,
   WorkflowOrderQueryCommandSchema,
+  WorkflowOrderQueryResultSchema,
   type WorkflowOrderQueryCommand,
   type WorkflowOrderQueryResult,
 } from "@chatai/contracts";
@@ -16,7 +16,7 @@ import {
 } from "./capability-port.js";
 import { WORKFLOW_ORDER_QUERY_CAPABILITY_BINDING } from "./order-query.js";
 
-const JAVA_ORDER_QUERY_PATH = "/third-internal/cdp-order/search-order";
+const JAVA_ORDER_QUERY_PATH = "/third-internal/cdp-order/statistics-order";
 const throwIfAborted = createAbortGuard(
   "WORKFLOW_ORDER_QUERY_ABORTED",
   "订单查询暂时失败",
@@ -80,76 +80,12 @@ export async function executeWorkflowOrderQuery(input: {
   uid: number;
   xyId?: number;
 }): Promise<WorkflowOrderQueryResult> {
-  const aggregate = {
-    matchedOrderCount: 0,
-    netAmountCents: 0,
-    totalAmountCents: 0,
-  };
-  const orders = await fetchFirstOrderPage(input);
-  for (const order of orders) aggregateOrder(input.command, order, aggregate);
-
-  return {
-    netAmount: aggregate.netAmountCents / 100,
-    orderCount: aggregate.matchedOrderCount,
-    totalAmount: aggregate.totalAmountCents / 100,
-  };
-}
-
-function aggregateOrder(
-  command: WorkflowOrderQueryCommand,
-  order: Record<string, unknown>,
-  aggregate: {
-    matchedOrderCount: number;
-    netAmountCents: number;
-    totalAmountCents: number;
-  },
-) {
-  const actuPayment = readMoney(order.actuPayment, "actuPayment");
-  if (command.mode === "conditions" && !matchesAmount(actuPayment, command.amount)) return;
-
-  aggregate.matchedOrderCount += 1;
-  aggregate.totalAmountCents = addSafeCents(
-    aggregate.totalAmountCents,
-    toCents(actuPayment),
-  );
-  let refundCents = 0;
-  // Java may omit subOrders for orders without item/refund details. The aggregate only
-  // depends on refund fields when they are present, so an omitted or malformed collection
-  // must not turn an otherwise usable order response into a terminal failure.
-  const subOrders = Array.isArray(order.subOrders) ? order.subOrders : [];
-  for (const item of subOrders) {
-    if (!isRecord(item)) continue;
-    if (typeof item.subRefundFinishTime === "string" && item.subRefundFinishTime.trim()
-      && typeof item.subRefundAmount === "number"
-      && Number.isFinite(item.subRefundAmount) && item.subRefundAmount >= 0) {
-      refundCents = addSafeCents(
-        refundCents, toCents(item.subRefundAmount),
-      );
-    }
-  }
-  aggregate.netAmountCents = addSafeCents(
-    aggregate.netAmountCents,
-    Math.max(0, toCents(actuPayment) - refundCents),
-  );
-}
-
-async function fetchFirstOrderPage(input: {
-  baseUrl: string;
-  command: WorkflowOrderQueryCommand;
-  fetch: typeof fetch;
-  signal: AbortSignal;
-  token: string | null;
-  uid: number;
-  xyId?: number;
-}) {
   throwIfAborted(input.signal);
   let response: Response;
   try {
     response = await input.fetch(new URL(JAVA_ORDER_QUERY_PATH, `${input.baseUrl}/`), {
       body: JSON.stringify({
         orderType: [0, 1],
-        pageNum: 1,
-        pageSize: WORKFLOW_ORDER_QUERY_PAGE_SIZE,
         uid: input.uid,
         ...(input.command.mode === "order-number"
           ? { orderNo: input.command.orderNumber }
@@ -160,7 +96,11 @@ async function fetchFirstOrderPage(input: {
               ...(input.command.shopIds.length > 0
                 ? { shopIdList: input.command.shopIds }
                 : {}),
-              tradeTimeAsc: true,
+              // Java applies inclusive bounds before aggregating all matches. An absent
+              // range is unrestricted; a single bound uses the agreed API defaults.
+              ...(input.command.amount.min !== undefined || input.command.amount.max !== undefined
+                ? { priceRange: [String(input.command.amount.min ?? 0), String(input.command.amount.max ?? 999999)] }
+                : {}),
               xyId: input.xyId,
               [getJavaTimeRangeField(input.command.timeField)]: input.command.timeRange,
             }),
@@ -204,14 +144,22 @@ async function fetchFirstOrderPage(input: {
       `Workflow Order Query Java endpoint rejected the request: ${envelope.error} ${envelope.errorMsg.trim()}`.trim(),
     );
   }
-  const list = envelope.payload.list;
-  // Only the first page is intentionally used by the product. Java's count/page metadata
-  // is informational here; success plus a list is sufficient for this bounded calculation.
-  if (!Array.isArray(list)) throw invalidResponse("Workflow Order Query Java endpoint returned an invalid list");
-  return list.map((item) => {
-    if (!isRecord(item)) throw invalidResponse("Workflow Order Query page contains a non-object order");
-    return item;
-  });
+  const data = envelope.payload.data;
+  if (!isRecord(data)
+    || typeof data.netTransactionAmount !== "number"
+    || !Number.isFinite(data.netTransactionAmount)) {
+    throw invalidResponse("Workflow Order Query Java endpoint returned invalid statistics");
+  }
+  const result = {
+    // Java owns the net-amount calculation; only normalize negative results as agreed.
+    netAmount: Math.max(0, data.netTransactionAmount),
+    orderCount: data.orderCount,
+    totalAmount: data.orderAmount,
+  };
+  if (!Value.Check(WorkflowOrderQueryResultSchema, result)) {
+    throw invalidResponse("Workflow Order Query Java endpoint returned invalid statistics");
+  }
+  return result;
 }
 
 function getJavaTimeRangeField(
@@ -220,34 +168,6 @@ function getJavaTimeRangeField(
   if (field === "pay-time") return "payTimes";
   if (field === "finish-time") return "finishTime";
   return "orderTimes";
-}
-
-function matchesAmount(
-  value: number,
-  amount: Extract<WorkflowOrderQueryCommand, { mode: "conditions" }>["amount"],
-) {
-  if (amount.min !== undefined && value < amount.min) return false;
-  if (amount.max !== undefined && value > amount.max) return false;
-  return true;
-}
-
-function readMoney(value: unknown, field: string) {
-  if (typeof value !== "number" || !Number.isFinite(value) || value < 0) {
-    throw invalidResponse(`Order Query result has invalid ${field}`);
-  }
-  return value;
-}
-
-function toCents(value: number) {
-  const cents = Math.round(value * 100);
-  if (!Number.isSafeInteger(cents)) throw invalidResponse("Order Query money exceeds safe range");
-  return cents;
-}
-
-function addSafeCents(left: number, right: number) {
-  const result = left + right;
-  if (!Number.isSafeInteger(result)) throw invalidResponse("Order Query aggregate exceeds safe range");
-  return result;
 }
 
 function assertCapabilityDefinition(

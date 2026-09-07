@@ -82,12 +82,15 @@ function hasInvalidSmartsheetUrlValue(
   return config.fieldMappings.some(mapping => {
     if (!isRecord(mapping) || mapping.fieldType !== "url" || !isRecord(mapping.value)) return false;
     if (mapping.value.kind === "literal") {
-      return typeof mapping.value.value === "string" && !isValidSmartsheetUrl(mapping.value.value);
+      return typeof mapping.value.value === "string"
+        && mapping.value.value.trim() !== ""
+        && !isValidSmartsheetUrl(mapping.value.value);
     }
     if (mapping.value.kind !== "variable" || !Array.isArray(mapping.value.selector)) return false;
     const resolved = resolveWorkflowVariableSelector(mapping.value.selector, context);
     return resolved.available
       && typeof resolved.value === "string"
+      && resolved.value.trim() !== ""
       && !isValidSmartsheetUrl(resolved.value);
   });
 }

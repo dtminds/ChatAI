@@ -4,7 +4,7 @@ import { createWorkflowSmartsheetWriteCommand, executeWorkflowCapability, resolv
 const webhookUrl = "https://qyapi.weixin.qq.com/cgi-bin/wedoc/smartsheet/webhook?key=test";
 const context = {
   customFields: {}, currentNodeLifecycle: {}, identities: {}, nodeLifecycle: {},
-  outputs: { source: { zero: 0, unchecked: false, empty: "", nil: null, choice: "unknown", badNumber: "42", date: "2026-09-07T00:00:00.000Z" } },
+  outputs: { source: { zero: 0, unchecked: false, empty: "", blank: "   ", nil: null, choice: "unknown", badNumber: "42", date: "2026-09-07T00:00:00.000Z" } },
   subjectId: "1", trigger: {}, workflow: {},
 };
 function variable(fieldId: string, fieldType: string, key: string, kind: string) {
@@ -52,6 +52,9 @@ describe("smartsheet command projection", () => {
       [variable("x", "number", "badNumber", "number")],
       [variable("x", "text", "missing", "string")],
       [variable("x", "text", "empty", "string")],
+      [variable("x", "url", "empty", "string")],
+      [variable("x", "url", "blank", "string")],
+      [{ fieldId: "x", fieldType: "url", value: { kind: "literal", value: "   " } }],
       [variable("x", "single_select", "choice", "string")],
       [{ fieldId: "text", fieldType: "text", value: { kind: "literal", value: "valid" } }, variable("x", "number", "badNumber", "number")],
     ]) {

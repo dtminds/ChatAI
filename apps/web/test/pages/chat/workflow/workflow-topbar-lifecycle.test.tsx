@@ -156,6 +156,68 @@ describe("WorkflowTopBar review lifecycle", () => {
     await user.click(screen.getByRole("button", { name: "返回最新" }));
     expect(onExitPreview).toHaveBeenCalledOnce();
   });
+
+  it("updates workflow metadata from the header editor", async () => {
+    const user = userEvent.setup();
+    const onUpdateMetadata = vi.fn(async () => true);
+    renderTopBar({
+      canRename: true,
+      description: "引导新客完成注册",
+      onUpdateMetadata,
+      workflowName: "新人转化旅程",
+    });
+
+    await user.click(screen.getByRole("button", { name: "编辑" }));
+    const [nameInput, descriptionInput] = within(screen.getByRole("dialog")).getAllByRole("textbox");
+    if (!nameInput || !descriptionInput) throw new Error("Workflow metadata inputs were not rendered");
+    await user.clear(nameInput);
+    await user.type(nameInput, "新客首购旅程");
+    await user.clear(descriptionInput);
+    await user.type(descriptionInput, "引导新客完成首购");
+    await user.click(screen.getByRole("button", { name: "保存" }));
+
+    expect(onUpdateMetadata).toHaveBeenCalledWith({
+      description: "引导新客完成首购",
+      name: "新客首购旅程",
+    });
+  });
+
+  it("opens version history as a header popover outside the canvas", async () => {
+    const user = userEvent.setup();
+    const onOpenVersionHistory = vi.fn();
+    const { rerender } = render(
+      <>
+        <section aria-label="工作流" role="application">
+          <button type="button">观察期</button>
+        </section>
+        {createTopBar({
+          onOpenVersionHistory,
+          versionHistoryContent: <div>历史版本列表</div>,
+        })}
+      </>,
+    );
+
+    await user.click(screen.getByRole("button", { name: "版本历史" }));
+    expect(onOpenVersionHistory).toHaveBeenCalledOnce();
+
+    rerender(
+      <>
+        <section aria-label="工作流" role="application">
+          <button type="button">观察期</button>
+        </section>
+        {createTopBar({
+          onOpenVersionHistory,
+          versionHistoryContent: <div>历史版本列表</div>,
+          versionHistoryOpen: true,
+        })}
+      </>,
+    );
+
+    const canvas = screen.getByRole("application");
+    const history = screen.getByRole("dialog", { name: "版本历史面板" });
+    expect(history).toBeInTheDocument();
+    expect(canvas).not.toContainElement(history);
+  });
 });
 
 function renderTopBar(overrides: Partial<React.ComponentProps<typeof WorkflowTopBar>> = {}) {

@@ -47,6 +47,11 @@ describe("useWorkflowTransientState", () => {
     expect(result.current.activeEdgeInsertMenuId).toBe("edge-1");
 
     act(() => {
+      result.current.toggleEdgeInsertMenu("edge-2");
+    });
+    expect(result.current.activeEdgeInsertMenuId).toBe("edge-2");
+
+    act(() => {
       result.current.closeCanvasMenus();
     });
 

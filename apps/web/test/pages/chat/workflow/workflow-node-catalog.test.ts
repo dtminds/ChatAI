@@ -34,6 +34,7 @@ import {
 } from "@/pages/chat/workflow/node-catalog";
 import {
   getNodeDefinition,
+  hasNodeSettings,
   nodeDefinitions,
   orderedNodeDefinitions,
 } from "@/pages/chat/workflow/node-definitions";
@@ -277,6 +278,9 @@ describe("workflow node catalog", () => {
 
     expect(workflowNodeUiRegistry.end.settings).toEqual({ kind: "none" });
     expect(workflowNodeUiBindings.end.settings).toBeNull();
+    expect(hasNodeSettings("end")).toBe(false);
+    expect(hasNodeSettings("message")).toBe(true);
+    expect(hasNodeSettings("wait")).toBe(true);
 
     expect(workflowNodeCatalog.branch.cardClassName).toBeUndefined();
     expect(workflowNodeCatalog.message.cardClassName).toBeUndefined();

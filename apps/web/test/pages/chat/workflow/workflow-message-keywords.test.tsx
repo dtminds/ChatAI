@@ -10,6 +10,29 @@ function KeywordEditor({ initial = [] }: { initial?: string[] }) {
 }
 
 describe("message keyword editor", () => {
+  it("clears stale errors on reopen and disables adding at the limit until a keyword is removed", async () => {
+    const user = userEvent.setup();
+    render(<KeywordEditor initial={Array.from({ length: 9 }, (_, index) => `关键词${index}`)} />);
+    await user.click(screen.getByRole("button", { name: "添加消息关键词" }));
+    await user.type(screen.getByRole("textbox"), "新增一，新增二");
+    await user.click(screen.getByRole("button", { name: "添加" }));
+    expect(screen.getByRole("alert")).toHaveTextContent("最多添加 10 个关键词");
+    await user.keyboard("{Escape}");
+    await user.click(screen.getByRole("button", { name: "移除关键词 关键词0" }));
+    await user.click(screen.getByRole("button", { name: "添加消息关键词" }));
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    expect(screen.getByRole("textbox")).toHaveValue("新增一，新增二");
+    await user.click(screen.getByRole("button", { name: "添加" }));
+    expect(screen.getByText("10 / 10")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "添加消息关键词" })).toBeDisabled();
+    await user.click(screen.getByRole("button", { name: "添加消息关键词" }));
+    expect(screen.queryByRole("textbox")).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "移除关键词 新增一" }));
+    expect(screen.getByRole("button", { name: "添加消息关键词" })).toBeEnabled();
+    await user.click(screen.getByRole("button", { name: "添加消息关键词" }));
+    expect(screen.getByRole("textbox")).toHaveValue("");
+  });
+
   it("adds pasted keywords as individual removable items and hides the input after adding", async () => {
     const user = userEvent.setup();
     render(<KeywordEditor initial={["价格"]} />);

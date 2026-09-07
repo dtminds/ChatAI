@@ -1,7 +1,7 @@
-import { act, fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import { getWorkflowCapabilityProfile } from "@chatai/contracts";
 import type { ComponentProps, ReactNode } from "react";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   createInitialNodes,
 } from "@/pages/chat/workflow/graph";
@@ -14,9 +14,13 @@ import { useAppearanceStore } from "@/store/appearance-store";
 
 const reactFlowProps = vi.hoisted(() => ({
   latest: undefined as Record<string, unknown> | undefined,
+  fitView: vi.fn(),
   getNodesBounds: vi.fn(),
   screenToFlowPosition: vi.fn(({ x, y }: { x: number; y: number }) => ({ x: x - 10, y: y - 20 })),
   setViewport: vi.fn(),
+  zoomIn: vi.fn(),
+  zoomOut: vi.fn(),
+  zoomTo: vi.fn(),
 }));
 
 vi.mock("@xyflow/react", async () => {
@@ -32,13 +36,13 @@ vi.mock("@xyflow/react", async () => {
     },
     useNodesInitialized: () => false,
     useReactFlow: () => ({
-      fitView: vi.fn(),
+      fitView: reactFlowProps.fitView,
       getNodesBounds: reactFlowProps.getNodesBounds,
       screenToFlowPosition: reactFlowProps.screenToFlowPosition,
       setViewport: reactFlowProps.setViewport,
-      zoomIn: vi.fn(),
-      zoomOut: vi.fn(),
-      zoomTo: vi.fn(),
+      zoomIn: reactFlowProps.zoomIn,
+      zoomOut: reactFlowProps.zoomOut,
+      zoomTo: reactFlowProps.zoomTo,
     }),
     useViewport: () => ({ x: 0, y: 0, zoom: 1 }),
   };
@@ -78,6 +82,13 @@ function renderWorkflowCanvas(overrides: Partial<ComponentProps<typeof WorkflowC
 }
 
 describe("WorkflowCanvas", () => {
+  beforeEach(() => {
+    reactFlowProps.fitView.mockClear();
+    reactFlowProps.zoomIn.mockClear();
+    reactFlowProps.zoomOut.mockClear();
+    reactFlowProps.zoomTo.mockClear();
+  });
+
   it("keeps React Flow color mode synchronized with appearance preferences", () => {
     renderWorkflowCanvas();
     expect(reactFlowProps.latest?.colorMode).toBe("light");
@@ -116,6 +127,49 @@ describe("WorkflowCanvas", () => {
     expect(reactFlowProps.latest?.paneClickDistance).toBe(8);
     expect(reactFlowProps.latest?.zoomOnScroll).toBe(true);
     expect(reactFlowProps.latest?.selectionOnDrag).toBe(false);
+    expect(reactFlowProps.latest?.deleteKeyCode).toBeNull();
+    expect(reactFlowProps.latest?.multiSelectionKeyCode).toBeNull();
+  });
+
+  it("groups canvas actions in a single bottom toolbar", () => {
+    renderWorkflowCanvas();
+    const toolbar = screen.getByLabelText("画布工具");
+
+    expect(within(toolbar).getByRole("button", { name: "缩小" })).toBeInTheDocument();
+    expect(within(toolbar).getByRole("button", { name: "放大" })).toBeInTheDocument();
+    expect(within(toolbar).getByRole("button", { name: "撤销" })).toBeInTheDocument();
+    expect(within(toolbar).getByRole("button", { name: "重做" })).toBeInTheDocument();
+    expect(within(toolbar).getByRole("button", { name: "自动整理画布" })).toBeInTheDocument();
+    expect(within(toolbar).getByRole("button", { name: "显示小地图" })).toBeInTheDocument();
+    expect(within(toolbar).getByRole("button", { name: "打开节点库" })).toBeInTheDocument();
+    expect(within(toolbar).queryByRole("button", { name: "打开变量面板" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "选择模式" })).not.toBeInTheDocument();
+  });
+
+  it("keeps zoom, fit, and minimap controls interactive", async () => {
+    renderWorkflowCanvas();
+    const toolbar = screen.getByLabelText("画布工具");
+
+    fireEvent.click(within(toolbar).getByRole("button", { name: "缩小" }));
+    fireEvent.click(within(toolbar).getByRole("button", { name: "放大" }));
+    fireEvent.click(within(toolbar).getByRole("button", { name: "当前缩放 100%，打开缩放菜单" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "200%" }));
+    fireEvent.click(within(toolbar).getByRole("button", { name: "当前缩放 100%，打开缩放菜单" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "25%" }));
+    fireEvent.click(within(toolbar).getByRole("button", { name: "当前缩放 100%，打开缩放菜单" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "适配画布" }));
+
+    expect(screen.queryByTestId("workflow-minimap")).not.toBeInTheDocument();
+    fireEvent.click(within(toolbar).getByRole("button", { name: "显示小地图" }));
+    expect(screen.getByTestId("workflow-minimap")).toBeInTheDocument();
+    fireEvent.click(within(toolbar).getByRole("button", { name: "显示小地图" }));
+    expect(screen.queryByTestId("workflow-minimap")).not.toBeInTheDocument();
+
+    expect(reactFlowProps.zoomOut).toHaveBeenCalledTimes(1);
+    expect(reactFlowProps.zoomIn).toHaveBeenCalledTimes(1);
+    expect(reactFlowProps.zoomTo).toHaveBeenNthCalledWith(1, 2);
+    expect(reactFlowProps.zoomTo).toHaveBeenNthCalledWith(2, 0.25);
+    expect(reactFlowProps.fitView).toHaveBeenCalledTimes(1);
   });
 
   it("uses the shared interactive zoom range while preview initialization remains custom", () => {
@@ -274,5 +328,14 @@ describe("WorkflowCanvas", () => {
     finally {
       vi.unstubAllEnvs();
     }
+  });
+
+  it("shows all insertable nodes without a search control", () => {
+    renderWorkflowCanvas({ paletteOpen: true });
+    const palette = screen.getByRole("region", { name: "节点库" });
+
+    expect(within(palette).getByRole("button", { name: "添加 转人工节点" })).toBeInTheDocument();
+    expect(within(palette).getByRole("button", { name: "添加 发券节点" })).toBeInTheDocument();
+    expect(within(palette).queryByRole("textbox")).not.toBeInTheDocument();
   });
 });

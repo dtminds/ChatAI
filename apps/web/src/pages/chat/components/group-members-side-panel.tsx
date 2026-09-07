@@ -76,10 +76,9 @@ export function GroupMembersSidePanel({
     () => groupMembers.map((member) => member.id),
     [groupMembers],
   );
-  const canRemoveGroupMembers = canCurrentSeatRemoveGroupMembers(
-    groupMembers,
-    currentSeatThirdUserId,
-  );
+  const canRemoveGroupMembers =
+    canAddMembers &&
+    canCurrentSeatRemoveGroupMembers(groupMembers, currentSeatThirdUserId);
   const normalizedSearchKeyword = searchKeyword.trim().toLocaleLowerCase();
   const filteredGroupMembers = useMemo(
     () =>

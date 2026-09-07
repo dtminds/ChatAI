@@ -3,6 +3,7 @@ import {
   MATERIAL_COLLECTION_BIZ_TYPE,
   QUICK_REPLY_SCOPE_TYPE,
   WORKBENCH_ENTERPRISE_MEMBER_MAX_ITEMS,
+  WORKBENCH_PULL_GROUP_MEMBERS_MAX_ITEMS,
   type WorkbenchMaterialCollectionItemDto,
 } from "@chatai/contracts";
 import {
@@ -2163,6 +2164,24 @@ describe("MysqlWorkbenchService", () => {
       subUserId: 101,
       uid: 9001,
     });
+  });
+
+  it("rejects pulling more friends than the invite limit", async () => {
+    const javaClient = createJavaClient();
+    const service = createWorkbenchService({} as unknown as WorkbenchRepository, javaClient);
+
+    await expect(
+      service.pullGroupMembers("101", "88", {
+        contactThirdUserIds: Array.from(
+          { length: WORKBENCH_PULL_GROUP_MEMBERS_MAX_ITEMS + 1 },
+          (_, index) => `external-${index + 1}`,
+        ),
+      }),
+    ).rejects.toMatchObject({
+      code: "CONTACT_LIMIT",
+      statusCode: 400,
+    });
+    expect(javaClient.pullFriendsInGroup).not.toHaveBeenCalled();
   });
 
   it("lists only ChatAI seats of the current enterprise as add-group employees", async () => {

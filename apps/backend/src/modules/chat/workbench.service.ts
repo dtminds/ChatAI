@@ -125,6 +125,7 @@ import {
   QUICK_REPLY_TOP_CATEGORY_ITEM_LIMIT,
   QUICK_REPLY_TOP_CATEGORY_LIMIT,
   WORKBENCH_ENTERPRISE_MEMBER_MAX_ITEMS,
+  WORKBENCH_PULL_GROUP_MEMBERS_MAX_ITEMS,
   buildMaterialFileContentJson,
   buildMaterialH5ContentJson,
   buildMaterialImageContentJson,
@@ -1232,6 +1233,13 @@ export class MysqlWorkbenchService implements WorkbenchService {
 
     if (contactThirdUserids.length === 0) {
       throw new BadRequestError("CONTACT_REQUIRED", "请选择要邀请的客户");
+    }
+
+    if (contactThirdUserids.length > WORKBENCH_PULL_GROUP_MEMBERS_MAX_ITEMS) {
+      throw new BadRequestError(
+        "CONTACT_LIMIT",
+        `一次最多邀请 ${WORKBENCH_PULL_GROUP_MEMBERS_MAX_ITEMS} 人`,
+      );
     }
 
     const subUserNumericId = parseMySqlId(subUserId);

@@ -873,9 +873,19 @@ export type WorkbenchGroupMembersResponse = {
   items: WorkbenchGroupMemberDto[];
 };
 
-export type WorkbenchPullGroupMembersRequest = {
-  contactThirdUserIds: string[];
-};
+/** 企微客户群单次邀请好友上限，拉人请求与弹窗勾选共用。 */
+export const WORKBENCH_PULL_GROUP_MEMBERS_MAX_ITEMS = 40;
+
+export const WorkbenchPullGroupMembersRequestSchema = Type.Object({
+  contactThirdUserIds: Type.Array(Type.String({ minLength: 1 }), {
+    maxItems: WORKBENCH_PULL_GROUP_MEMBERS_MAX_ITEMS,
+    minItems: 1,
+  }),
+});
+
+export type WorkbenchPullGroupMembersRequest = Static<
+  typeof WorkbenchPullGroupMembersRequestSchema
+>;
 
 export type WorkbenchPullGroupMembersResponse = {
   conversationId: string;

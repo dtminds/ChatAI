@@ -1,3 +1,4 @@
+import { WORKBENCH_PULL_GROUP_MEMBERS_MAX_ITEMS } from "@chatai/contracts";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { solveChallenge, type Challenge } from "altcha-lib";
 import { deriveKey } from "altcha-lib/algorithms/scrypt";
@@ -2673,6 +2674,28 @@ describe("backend app", () => {
     expect(pullGroupMembers).toHaveBeenCalledWith("101", "conv-004", {
       contactThirdUserIds: ["external-a", "external-b"],
     });
+
+    await app.close();
+  });
+
+  it("rejects pulling more group members than the invite limit", async () => {
+    const { app, authorization } = await createAuthenticatedApp();
+    const pullGroupMembers = vi.spyOn(app.workbenchService, "pullGroupMembers");
+
+    const response = await app.inject({
+      headers: { authorization },
+      method: "POST",
+      payload: {
+        contactThirdUserIds: Array.from(
+          { length: WORKBENCH_PULL_GROUP_MEMBERS_MAX_ITEMS + 1 },
+          (_, index) => `external-${index + 1}`,
+        ),
+      },
+      url: "/api/server/conversations/conv-004/group-members",
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(pullGroupMembers).not.toHaveBeenCalled();
 
     await app.close();
   });

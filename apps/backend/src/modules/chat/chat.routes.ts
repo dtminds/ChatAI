@@ -44,6 +44,7 @@ import type {
 import {
   QUICK_REPLY_CATEGORY_CONTENT_ITEM_LIMIT,
   QUICK_REPLY_CHILD_CATEGORY_LIMIT,
+  WorkbenchPullGroupMembersRequestSchema,
 } from "@chatai/contracts";
 import { Type, type Static } from "@sinclair/typebox";
 import type { FastifyInstance, FastifyRequest } from "fastify";
@@ -67,11 +68,7 @@ const ConversationParamsSchema = Type.Object({
   conversationId: Type.String(),
 });
 
-const PullGroupMembersBodySchema = Type.Object({
-  contactThirdUserIds: Type.Array(Type.String({ minLength: 1 }), { minItems: 1 }),
-});
-
-type PullGroupMembersBody = Static<typeof PullGroupMembersBodySchema>;
+type PullGroupMembersBody = WorkbenchPullGroupMembersRequest;
 
 const KickGroupMemberBodySchema = Type.Object({
   kickOutThirdUserId: Type.String({ minLength: 1 }),
@@ -1190,7 +1187,7 @@ export async function registerChatRoutes(app: FastifyInstance) {
     {
       preHandler: app.authenticate,
       schema: {
-        body: PullGroupMembersBodySchema,
+        body: WorkbenchPullGroupMembersRequestSchema,
         params: ConversationParamsSchema,
       },
     },

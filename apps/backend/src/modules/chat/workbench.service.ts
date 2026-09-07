@@ -8,6 +8,7 @@ import type {
   WorkbenchConversationReadResponse,
   WorkbenchConversationUnpinResponse,
   WorkbenchConversationUnreadResponse,
+  WorkbenchGroupMemberDto,
   WorkbenchGroupMembersResponse,
   WorkbenchKickGroupMemberRequest,
   WorkbenchKickGroupMemberResponse,
@@ -117,6 +118,7 @@ import type {
 import {
   CUSTOMER_SEAT_RELATION_PREVIEW_LIMIT,
   CHAT_TYPE,
+  GROUP_MEMBER_TYPE,
   MATERIAL_COLLECTION_BIZ_TYPE,
   MATERIAL_COLLECTION_GROUP_MAX_COUNT,
   MATERIAL_COLLECTION_TITLE_MAX_LENGTH,
@@ -1312,6 +1314,27 @@ export class MysqlWorkbenchService implements WorkbenchService {
 
     if (groupSeatId == null) {
       throw new BadRequestError("INVALID_GROUP_SEAT", "群席位无效");
+    }
+
+    const currentMember = findCurrentGroupMember(
+      groupMembers.items,
+      conversation.thirdUserId,
+    );
+
+    if (!canCurrentSeatKickGroupMembers(currentMember)) {
+      throw new ForbiddenError("GROUP_KICK_FORBIDDEN", "无权移出群成员");
+    }
+
+    const targetMember = groupMembers.items.find(
+      (member) => member.thirdUserId.trim() === kickOutThirdUserid,
+    );
+
+    if (!targetMember) {
+      throw new NotFoundError("GROUP_MEMBER_NOT_FOUND", "群成员不存在");
+    }
+
+    if (!canKickGroupMember(targetMember)) {
+      throw new ForbiddenError("GROUP_MEMBER_NOT_REMOVABLE", "无法移出该成员");
     }
 
     await this.javaClient.kickOutOfGroup({
@@ -5610,4 +5633,34 @@ function uniqueNonEmptyStrings(values: readonly string[]) {
   return Array.from(
     new Set(values.map((value) => value.trim()).filter(Boolean)),
   );
+}
+
+function findCurrentGroupMember(
+  items: WorkbenchGroupMemberDto[],
+  currentSeatThirdUserId?: string,
+) {
+  const normalizedSeatThirdUserId = currentSeatThirdUserId?.trim();
+
+  if (normalizedSeatThirdUserId) {
+    const matched = items.find(
+      (member) => member.thirdUserId.trim() === normalizedSeatThirdUserId,
+    );
+
+    if (matched) {
+      return matched;
+    }
+  }
+
+  return items.find((member) => member.isReceptionAccount);
+}
+
+function canCurrentSeatKickGroupMembers(member: WorkbenchGroupMemberDto | undefined) {
+  return (
+    member?.type === GROUP_MEMBER_TYPE.OWNER ||
+    member?.type === GROUP_MEMBER_TYPE.ADMIN
+  );
+}
+
+function canKickGroupMember(member: WorkbenchGroupMemberDto) {
+  return member.type === GROUP_MEMBER_TYPE.NORMAL && !member.isOpeningAccount;
 }

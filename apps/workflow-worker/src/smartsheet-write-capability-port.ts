@@ -22,7 +22,7 @@ export class HttpWorkflowSmartsheetWriteCapabilityPort implements WorkflowCapabi
       || definition.kind !== "action" || !request.idempotencyKey
       || !Value.Check(WorkflowSmartsheetWriteCommandSchema, request.command)
       || !isValidSmartsheetWebhookUrl(request.command.webhookUrl)
-      || request.deadlineAt.getTime() <= Date.now()) return { success: false };
+      || request.deadlineAt.getTime() <= Date.now()) return { success: false, errorCode: "INVALID_REQUEST" };
     const command = request.command as WorkflowSmartsheetWriteCommand;
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), Math.max(0, request.deadlineAt.getTime() - Date.now()));
@@ -33,29 +33,29 @@ export class HttpWorkflowSmartsheetWriteCapabilityPort implements WorkflowCapabi
       const images = new Map<string, { title: string; image_base64: string }>();
       let totalBytes = 0;
       for (const field of command.fields) {
-        if (Object.hasOwn(values, field.fieldId)) return { success: false };
+        if (Object.hasOwn(values, field.fieldId)) return { success: false, errorCode: "DUPLICATE_FIELD" };
         if (field.fieldType === "image") {
-          if (typeof field.value !== "string") return { success: false };
+          if (typeof field.value !== "string") return { success: false, errorCode: "INVALID_IMAGE_VALUE" };
           let image = images.get(field.value);
           if (!image) {
             const bytes = await this.downloadImage(field.value, signal);
             totalBytes += bytes.length;
-            if (totalBytes > SMARTSHEET_IMAGES_TOTAL_MAX_BYTES) return { success: false };
+            if (totalBytes > SMARTSHEET_IMAGES_TOTAL_MAX_BYTES) return { success: false, errorCode: "IMAGE_TOTAL_TOO_LARGE" };
             const extension = imageExtension(bytes);
-            if (!extension) return { success: false };
+            if (!extension) return { success: false, errorCode: "IMAGE_FORMAT_UNSUPPORTED" };
             image = { title: `image.${extension}`, image_base64: bytes.toString("base64") };
             images.set(field.value, image);
           } else {
             totalBytes += Buffer.byteLength(image.image_base64, "base64");
-            if (totalBytes > SMARTSHEET_IMAGES_TOTAL_MAX_BYTES) return { success: false };
+            if (totalBytes > SMARTSHEET_IMAGES_TOTAL_MAX_BYTES) return { success: false, errorCode: "IMAGE_TOTAL_TOO_LARGE" };
           }
           values[field.fieldId] = [image];
         } else if (field.fieldType === "single_select") {
-          if (typeof field.value !== "string") return { success: false };
+          if (typeof field.value !== "string") return { success: false, errorCode: "INVALID_SINGLE_SELECT_VALUE" };
           values[field.fieldId] = [{ text: field.value }];
         } else {
           const expectedType = field.fieldType === "number" ? "number" : field.fieldType === "checkbox" ? "boolean" : "string";
-          if (typeof field.value !== expectedType) return { success: false };
+          if (typeof field.value !== expectedType) return { success: false, errorCode: "INVALID_FIELD_VALUE" };
           values[field.fieldId] = field.value;
         }
       }
@@ -69,11 +69,11 @@ export class HttpWorkflowSmartsheetWriteCapabilityPort implements WorkflowCapabi
         signal,
       });
       const result: unknown = JSON.parse(body.toString("utf8"));
-      return { success: typeof result === "object" && result !== null
-        && "errcode" in result && result.errcode === 0 };
+      if (typeof result !== "object" || result === null || !("errcode" in result)) return { success: false, errorCode: "INVALID_WEBHOOK_RESPONSE" };
+      return result.errcode === 0 ? { success: true } : { success: false, errorCode: `WECOM_ERR_${String(result.errcode).slice(0, 32)}` };
     } catch {
       // Remote errors may contain the webhook key or image URL. Do not forward them to logs/output.
-      return { success: false };
+      return { success: false, errorCode: "WEBHOOK_REQUEST_FAILED" };
     } finally {
       clearTimeout(timer);
     }

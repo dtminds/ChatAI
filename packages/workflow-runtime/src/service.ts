@@ -633,7 +633,7 @@ export class WorkflowRuntimeService {
           execute: async (definition, request) => {
             // WeCom cannot deduplicate this action. Fence retries before entering the adapter,
             // including lease recovery after a successful write whose result was not committed.
-            if (nodeExecutionInput.smartsheetAttemptStarted === true) return { success: false };
+            if (nodeExecutionInput.smartsheetAttemptStarted === true) return { success: false, errorCode: "UNKNOWN_OUTCOME_RECOVERED" };
             nodeExecutionInput = { ...nodeExecutionInput, smartsheetAttemptStarted: true };
             const marked = await this.runtimeRepository.updateCapabilityExecutionInput({
               expectedRunLockVersion: run.lockVersion,
@@ -687,7 +687,7 @@ export class WorkflowRuntimeService {
         }
       }
       executionResult = recoveredSmartsheetAttempt
-        ? { output: { success: false }, sourceOutletId: "default", type: "advance" as const }
+        ? { output: { success: false, errorCode: "UNKNOWN_OUTCOME_RECOVERED" }, sourceOutletId: "default", type: "advance" as const }
         : node.kind === "wait" && claimed.task.taskType === "wait"
         ? {
             output: { dueAt: claimed.task.dueAt.toISOString() },
@@ -790,7 +790,7 @@ export class WorkflowRuntimeService {
       const capabilityError = requiresPreparedExecution ? toCapabilityExecutionError(error) : null;
       if (!capabilityError) throw error;
       if (node.kind === "smartsheet-write" && error instanceof WorkflowCapabilityExecutionError) {
-        executionResult = { output: { success: false }, sourceOutletId: "default", type: "advance" };
+        executionResult = { output: { success: false, errorCode: "EXECUTION_FAILED" }, sourceOutletId: "default", type: "advance" };
         nextContext = appendNodeOutput(run.context, node.id, executionResult.output, {
           enteredAt: claimed.task.createdAt,
           exitedAt: this.clock(),

@@ -13,7 +13,7 @@ import { resolveWorkflowVariableSelector } from "./variable-content.js";
 
 export const WORKFLOW_SMARTSHEET_WRITE_CAPABILITY_BINDING = {
   completeWithoutExecution: (input) => createWorkflowSmartsheetWriteCommand(input) === null
-    ? { success: false } : undefined,
+    ? { success: false, errorCode: "INVALID_FIELD_VALUE" } : undefined,
   createCommand: createWorkflowSmartsheetWriteCommand,
   definition: {
     capabilityKey: "smartsheet.write",

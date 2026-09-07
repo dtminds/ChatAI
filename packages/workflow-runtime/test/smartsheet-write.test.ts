@@ -60,7 +60,7 @@ describe("smartsheet command projection", () => {
         execution: { nodeId: "sheet", revision: 1, runId: "1", sequence: 2, workflowId: "1" },
         executionKey: "9:1:sheet:2", port: { execute }, signal: new AbortController().signal,
         subjectId: "1", subjectType: "wecom_contact", uid: 9,
-      })).resolves.toEqual({ success: false });
+      })).resolves.toMatchObject({ success: false, errorCode: expect.any(String) });
       expect(execute).not.toHaveBeenCalled();
     }
   });

@@ -127,6 +127,7 @@ export const WorkflowSmartsheetWriteCommandSchema = Type.Object({
 export type WorkflowSmartsheetWriteCommand = Static<typeof WorkflowSmartsheetWriteCommandSchema>;
 export const WorkflowSmartsheetWriteResultSchema = Type.Object({
   success: Type.Boolean(),
+  errorCode: Type.Optional(Type.String({ maxLength: 128 })),
 }, { additionalProperties: false });
 
 export function isValidSmartsheetWebhookUrl(url: string): boolean {

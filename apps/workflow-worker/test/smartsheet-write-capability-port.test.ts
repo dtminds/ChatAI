@@ -40,25 +40,25 @@ describe("WeCom smartsheet adapter", () => {
       if (downloads++ === 0) throw new Error("temporary download error");
       return png;
     });
-    await expect(new HttpWorkflowSmartsheetWriteCapabilityPort(http).execute(definition, request())).resolves.toEqual({ success: false });
+    await expect(new HttpWorkflowSmartsheetWriteCapabilityPort(http).execute(definition, request())).resolves.toMatchObject({ success: false, errorCode: expect.any(String) });
     expect(http.mock.calls.map(([input]) => input.method)).toEqual(["GET", "GET", "POST"]);
   });
 
   it("does not post when image download fails, content is not an image, or request is cancelled", async () => {
     for (const content of [null, Buffer.from("<html>not an image</html>")]) {
       const http = vi.fn(async () => { if (content === null) throw new Error("unavailable"); return content; });
-      await expect(new HttpWorkflowSmartsheetWriteCapabilityPort(http).execute(definition, request())).resolves.toEqual({ success: false });
+      await expect(new HttpWorkflowSmartsheetWriteCapabilityPort(http).execute(definition, request())).resolves.toMatchObject({ success: false, errorCode: expect.any(String) });
       expect(http).toHaveBeenCalledTimes(content === null ? 2 : 1);
     }
     const http = vi.fn();
-    await expect(new HttpWorkflowSmartsheetWriteCapabilityPort(http).execute(definition, { ...request(), signal: AbortSignal.abort() })).resolves.toEqual({ success: false });
+    await expect(new HttpWorkflowSmartsheetWriteCapabilityPort(http).execute(definition, { ...request(), signal: AbortSignal.abort() })).resolves.toMatchObject({ success: false, errorCode: expect.any(String) });
     expect(http).not.toHaveBeenCalled();
   });
 
   it("treats rejected and malformed responses as failures without retry", async () => {
     for (const body of ['{"errcode":40001}', '{"errcode":"0"}', '{}', 'not json']) {
       const http = vi.fn(async (input: SmartsheetHttpRequest) => input.method === "GET" ? png : Buffer.from(body));
-      await expect(new HttpWorkflowSmartsheetWriteCapabilityPort(http).execute(definition, request())).resolves.toEqual({ success: false });
+      await expect(new HttpWorkflowSmartsheetWriteCapabilityPort(http).execute(definition, request())).resolves.toMatchObject({ success: false, errorCode: expect.any(String) });
       expect(http.mock.calls.filter(([input]) => input.method === "POST")).toHaveLength(1);
     }
   });

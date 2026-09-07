@@ -31,7 +31,7 @@ const fieldTypeLabels: Record<WorkflowSmartsheetFieldType, string> = {
   date_time: "日期时间",
   single_select: "单选",
   checkbox: "复选框",
-  image: "图片",
+  url: "链接",
 };
 
 export function SmartsheetSourceDialog({
@@ -109,20 +109,21 @@ export function SmartsheetSourceDialog({
             {!tableUrlValid ? <p className="text-xs text-destructive">请输入有效的 http 或 https 地址</p> : null}
           </div>
 
-              <div className="space-y-2">
-                <Label htmlFor="smartsheet-webhook-url">Webhook 地址</Label>
-                <Input
-                  id="smartsheet-webhook-url"
-                  aria-invalid={Boolean(webhookUrl.trim()) && !webhookValid || undefined}
-                  maxLength={WORKFLOW_SMARTSHEET_WRITE_WEBHOOK_URL_MAX_LENGTH}
-                  value={webhookUrl}
-                  onChange={event => setWebhookUrl(event.target.value)}
-                  placeholder="https://qyapi.weixin.qq.com/cgi-bin/wedoc/smartsheet/webhook?key=..."
-                />
-                {webhookUrl.trim() && !webhookValid ? (
-                  <p className="text-xs text-destructive">Webhook 地址格式不正确</p>
-                ) : null}
-              </div>
+          <div className="space-y-2">
+            <Label htmlFor="smartsheet-webhook-url">Webhook 地址</Label>
+            <Input
+              id="smartsheet-webhook-url"
+              aria-invalid={Boolean(webhookUrl.trim()) && !webhookValid || undefined}
+              maxLength={WORKFLOW_SMARTSHEET_WRITE_WEBHOOK_URL_MAX_LENGTH}
+              value={webhookUrl}
+              onChange={event => setWebhookUrl(event.target.value)}
+              placeholder="https://qyapi.weixin.qq.com/cgi-bin/wedoc/smartsheet/webhook?key=..."
+            />
+            {webhookUrl.trim() && !webhookValid ? (
+              <p className="text-xs text-destructive">Webhook 地址格式不正确</p>
+            ) : null}
+          </div>
+
           <div className="space-y-3">
             <div className="flex items-center justify-between gap-2">
               <span className="text-sm font-medium">字段选择</span>
@@ -130,62 +131,62 @@ export function SmartsheetSourceDialog({
                 <Button type="button" variant="ghost" size="sm" onClick={() => setEditingSchema(true)}>同步schema</Button>
               ) : null}
             </div>
-          {editingSchema ? (
-            <div className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="smartsheet-schema">Schema JSON</Label>
-                <Textarea
-                  id="smartsheet-schema"
-                  aria-invalid={Boolean(schemaError) || undefined}
-                  maxLength={WORKFLOW_SMARTSHEET_WRITE_SCHEMA_MAX_LENGTH}
-                  value={schema}
-                  onChange={event => {
-                    setSchemaError(null);
-                    setSchema(event.target.value);
-                  }}
-                  placeholder='{"schema": {"f04Gwj": {"title": "姓名", "type": "text"}}}'
-                  rows={6}
-                  className="font-mono text-xs"
-                />
-                {schemaError ? <p className="text-xs text-destructive">{schemaError}</p> : null}
+            {editingSchema ? (
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <Label htmlFor="smartsheet-schema">Schema JSON</Label>
+                  <Textarea
+                    id="smartsheet-schema"
+                    aria-invalid={Boolean(schemaError) || undefined}
+                    maxLength={WORKFLOW_SMARTSHEET_WRITE_SCHEMA_MAX_LENGTH}
+                    value={schema}
+                    onChange={event => {
+                      setSchemaError(null);
+                      setSchema(event.target.value);
+                    }}
+                    placeholder='{"schema": {"f04Gwj": {"title": "姓名", "type": "text"}}}'
+                    rows={6}
+                    className="font-mono text-xs"
+                  />
+                  {schemaError ? <p className="text-xs text-destructive">{schemaError}</p> : null}
+                </div>
+                <Button type="button" disabled={!schema.trim()} onClick={parseSchema}>解析</Button>
               </div>
-              <Button type="button" disabled={!schema.trim()} onClick={parseSchema}>解析</Button>
-            </div>
-          ) : (
-            <div className="space-y-3">
-              {removedFields.length > 0 ? (
-                <p role="status" className="break-words text-xs text-muted-foreground">
-                  已移除失效字段：{removedFields.map(field => field.fieldTitle).join("、")}
-                </p>
-              ) : null}
-              {changedFields.length > 0 ? (
-                <p role="status" className="break-words text-xs text-muted-foreground">
-                  字段类型已变化，确认后需重新配置：{changedFields.map(field => field.fieldTitle).join("、")}
-                </p>
-              ) : null}
-              <div className="max-h-72 min-h-32 overflow-y-auto divide-y divide-border">
-                {(options ?? []).map(option => {
-                  const checked = Boolean(option.mapping) && selectedIds.includes(option.fieldId);
-                  const disabled = !option.mapping || !checked && selectedOptions.length >= WORKFLOW_SMARTSHEET_WRITE_FIELD_MAX_COUNT;
-                  return (
-                    <label key={option.fieldId} className="flex items-center gap-3 py-3 text-sm">
-                      <Checkbox
-                        aria-label={option.title}
-                        checked={checked}
-                        disabled={disabled}
-                        onCheckedChange={checked => toggleField(option.fieldId, checked === true)}
-                      />
-                      <span className="min-w-0 flex-1 break-words">{option.title}</span>
-                      <span className="shrink-0 text-xs text-muted-foreground">
-                        {option.mapping ? fieldTypeLabels[option.mapping.fieldType] : "暂不支持"}
-                      </span>
-                    </label>
-                  );
-                })}
-                {options?.length === 0 ? <p className="py-8 text-center text-sm text-muted-foreground">暂无数据</p> : null}
+            ) : (
+              <div className="space-y-3">
+                {removedFields.length > 0 ? (
+                  <p role="status" className="break-words text-xs text-muted-foreground">
+                    已移除失效字段：{removedFields.map(field => field.fieldTitle).join("、")}
+                  </p>
+                ) : null}
+                {changedFields.length > 0 ? (
+                  <p role="status" className="break-words text-xs text-muted-foreground">
+                    字段类型已变化，确认后需重新配置：{changedFields.map(field => field.fieldTitle).join("、")}
+                  </p>
+                ) : null}
+                <div className="max-h-72 min-h-32 overflow-y-auto divide-y divide-border">
+                  {(options ?? []).map(option => {
+                    const checked = Boolean(option.mapping) && selectedIds.includes(option.fieldId);
+                    const disabled = !option.mapping || !checked && selectedOptions.length >= WORKFLOW_SMARTSHEET_WRITE_FIELD_MAX_COUNT;
+                    return (
+                      <label key={option.fieldId} className="flex items-center gap-3 py-3 text-sm">
+                        <Checkbox
+                          aria-label={option.title}
+                          checked={checked}
+                          disabled={disabled}
+                          onCheckedChange={checked => toggleField(option.fieldId, checked === true)}
+                        />
+                        <span className="min-w-0 flex-1 break-words">{option.title}</span>
+                        <span className="shrink-0 text-xs text-muted-foreground">
+                          {option.mapping ? fieldTypeLabels[option.mapping.fieldType] : "暂不支持"}
+                        </span>
+                      </label>
+                    );
+                  })}
+                  {options?.length === 0 ? <p className="py-8 text-center text-sm text-muted-foreground">暂无数据</p> : null}
+                </div>
               </div>
-            </div>
-          )}
+            )}
           </div>
         </div>
         <DialogFooter className="shrink-0 flex-row flex-wrap items-center justify-between gap-3 border-t px-6 py-4 sm:justify-between">

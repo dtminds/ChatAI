@@ -796,10 +796,10 @@ describe("workflow node contracts", () => {
       webhookUrl: "https://qyapi.weixin.qq.com/cgi-bin/wedoc/smartsheet/webhook?key=test",
       fieldMappings: [{
         fieldId: "f1",
-        fieldType: "image",
+        fieldType: "url",
         value: { kind: "literal", value: "https://cdn.example.com/order.png" },
       }],
-    })).toBe(false);
+    })).toBe(true);
     expect(isWorkflowNodeExecutionConfig("smartsheet-write", {
       webhookUrl: "https://qyapi.weixin.qq.com/cgi-bin/wedoc/smartsheet/webhook?key=test",
       fieldMappings: [{

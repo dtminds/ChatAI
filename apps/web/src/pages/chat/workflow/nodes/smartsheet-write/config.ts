@@ -88,6 +88,25 @@ export function normalizeSmartsheetWebhookUrl(value: unknown): string {
     : "";
 }
 
+export function maskSmartsheetWebhookUrl(webhookUrl: string): string {
+  return webhookUrl.replace(/([?&]key=)([^&#]*)/i, (_match, prefix: string, rawKey: string) =>
+    `${prefix}${maskSmartsheetWebhookKey(decodeQueryComponent(rawKey))}`);
+}
+
+function decodeQueryComponent(value: string): string {
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return value;
+  }
+}
+
+function maskSmartsheetWebhookKey(key: string): string {
+  const chars = Array.from(key);
+  if (chars.length <= 6) return "**";
+  return `${chars.slice(0, 2).join("")}**${chars.slice(-4).join("")}`;
+}
+
 export function normalizeSmartsheetSchema(value: unknown): string {
   return typeof value === "string"
     ? value.slice(0, WORKFLOW_SMARTSHEET_WRITE_SCHEMA_MAX_LENGTH)
@@ -221,7 +240,7 @@ function isSmartsheetFieldType(value: unknown): value is WorkflowSmartsheetField
     || value === "date_time"
     || value === "single_select"
     || value === "checkbox"
-    || value === "image";
+    || value === "url";
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

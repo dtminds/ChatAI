@@ -30,6 +30,7 @@ import {
   normalizeSmartsheetWebhookUrl,
   normalizeSmartsheetTableUrl,
   isValidSmartsheetTableUrl,
+  maskSmartsheetWebhookUrl,
   type SmartsheetSourceConfig,
 } from "./config";
 import { SmartsheetSourceDialog } from "./source-dialog";
@@ -102,7 +103,9 @@ export function SmartsheetWriteConfig({
               </div>
               <div className="flex gap-2">
                 <dt className="shrink-0 text-muted-foreground">Webhook 地址</dt>
-                <dd className="min-w-0 break-all">{webhookUrl || "未填写"}</dd>
+                <dd className="min-w-0 break-all">
+                  {webhookUrl ? maskSmartsheetWebhookUrl(webhookUrl) : "未填写"}
+                </dd>
               </div>
             </dl>
           </div>
@@ -157,8 +160,7 @@ function SmartsheetFieldRow({
   const variables = getCompatibleSmartsheetVariables(mapping.fieldType, availableVariables);
   const inputValue = toInputValue(mapping);
   const selectOptions = getSelectOptions(mapping);
-  const pickerOnly = mapping.fieldType === "image"
-    || mapping.fieldType === "date_time"
+  const pickerOnly = mapping.fieldType === "date_time"
     || selectOptions.length > 0;
 
   return (
@@ -282,7 +284,6 @@ function getSelectOptions(mapping: WorkflowSmartsheetFieldMapping) {
 
 function getLiteralDisplayValue(mapping: WorkflowSmartsheetFieldMapping) {
   if (mapping.value.kind !== "literal") return undefined;
-  if (mapping.fieldType === "image") return "";
   if (mapping.fieldType === "date_time") return formatDateTimeDisplay(mapping.value.value);
   return undefined;
 }
@@ -300,6 +301,6 @@ function getFieldPlaceholder(fieldType: WorkflowSmartsheetFieldMapping["fieldTyp
   if (fieldType === "number") return "输入数字或引用变量";
   if (fieldType === "date_time") return "选择日期或引用变量";
   if (fieldType === "single_select" || fieldType === "checkbox") return "选择选项或引用变量";
-  if (fieldType === "image") return "引用变量";
+  if (fieldType === "url") return "输入链接或引用变量";
   return "输入或引用变量";
 }

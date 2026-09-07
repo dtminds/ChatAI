@@ -2,7 +2,11 @@ import { describe, expect, it } from "vitest";
 import { extractWorkflowNodeDraftConfig, isWorkflowNodeDraftConfig } from "@chatai/contracts";
 import { createDefaultNodeData } from "@/pages/chat/workflow/node-definitions";
 import { hydrateWorkflowDraft, sanitizeDraft } from "@/pages/chat/workflow/workflow-draft-normalizer";
-import { getSmartsheetFieldOptions, getSmartsheetWriteNodePatch } from "@/pages/chat/workflow/nodes/smartsheet-write/config";
+import {
+  getSmartsheetFieldOptions,
+  getSmartsheetWriteNodePatch,
+  maskSmartsheetWebhookUrl,
+} from "@/pages/chat/workflow/nodes/smartsheet-write/config";
 
 const webhookUrl = "https://qyapi.weixin.qq.com/cgi-bin/wedoc/smartsheet/webhook?key=test";
 
@@ -18,6 +22,16 @@ describe("Smartsheet Write configuration", () => {
     const reloaded = hydrateWorkflowDraft(JSON.parse(JSON.stringify(sanitizeDraft(draft))));
     expect(reloaded.nodes[0].data).toMatchObject({ tableUrl: data.tableUrl, schema, fieldMappings });
     expect(getSmartsheetFieldOptions(schema)).toHaveLength(2);
+  });
+
+  it("masks the webhook key for settings display", () => {
+    expect(maskSmartsheetWebhookUrl(
+      "https://qyapi.weixin.qq.com/cgi-bin/wedoc/smartsheet/webhook?key=4pABCDEFGHdmr1",
+    )).toBe("https://qyapi.weixin.qq.com/cgi-bin/wedoc/smartsheet/webhook?key=4p**dmr1");
+    expect(maskSmartsheetWebhookUrl(webhookUrl)).toBe(
+      "https://qyapi.weixin.qq.com/cgi-bin/wedoc/smartsheet/webhook?key=**",
+    );
+    expect(maskSmartsheetWebhookUrl("")).toBe("");
   });
 
   it("does not consider field mappings from another schema ready", () => {

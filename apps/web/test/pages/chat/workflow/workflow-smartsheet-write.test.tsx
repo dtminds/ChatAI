@@ -16,7 +16,8 @@ import type {
   WorkflowVariableDefinition,
 } from "@/pages/chat/workflow/types";
 
-const COMPLETE_WEBHOOK_URL = "https://qyapi.weixin.qq.com/cgi-bin/wedoc/smartsheet/webhook?key=test";
+const COMPLETE_WEBHOOK_URL = "https://qyapi.weixin.qq.com/cgi-bin/wedoc/smartsheet/webhook?key=4pABCDEFGHdmr1";
+const MASKED_WEBHOOK_URL = "https://qyapi.weixin.qq.com/cgi-bin/wedoc/smartsheet/webhook?key=4p**dmr1";
 const COMPLETE_SCHEMA = '{"f1":{"title":"姓名","type":"text"},"f2":{"title":"金额","type":"number"}}';
 
 describe("workflow Smartsheet Write node", () => {
@@ -90,7 +91,8 @@ describe("workflow Smartsheet Write node", () => {
       .toHaveAttribute("href", "https://doc.weixin.qq.com/sheet/example");
     expect(screen.getByLabelText("姓名的值")).toHaveValue("");
     expect(screen.queryByLabelText("金额的值")).not.toBeInTheDocument();
-    expect(screen.getByText(COMPLETE_WEBHOOK_URL)).toBeInTheDocument();
+    expect(screen.getByText(MASKED_WEBHOOK_URL)).toBeInTheDocument();
+    expect(screen.queryByText(COMPLETE_WEBHOOK_URL)).not.toBeInTheDocument();
     expect(screen.queryByText(/已选.*个字段/)).not.toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "编辑" }));
     expect(screen.getByRole("checkbox", { name: "姓名" })).toBeChecked();
@@ -234,7 +236,8 @@ describe("workflow Smartsheet Write node", () => {
     expect(patch.tableUrl).toBe("");
     expect(screen.queryByRole("link", { name: "点此查看" })).not.toBeInTheDocument();
     expect(screen.getByText("未填写")).toBeInTheDocument();
-    expect(screen.getByText(COMPLETE_WEBHOOK_URL)).toBeInTheDocument();
+    expect(screen.getByText(MASKED_WEBHOOK_URL)).toBeInTheDocument();
+    expect(screen.queryByText(COMPLETE_WEBHOOK_URL)).not.toBeInTheDocument();
   });
 
   it("blocks unparsed changes and reconciles removed, renamed and type-changed selections", async () => {
@@ -304,7 +307,7 @@ describe("workflow Smartsheet Write node", () => {
     expect(onNodeChange).toHaveBeenLastCalledWith(expect.objectContaining({ tableUrl: "" }));
   });
 
-  it("only accepts variables for images and picker actions for dates and selects", async () => {
+  it("supports URL values and picker actions for dates and selects", async () => {
     const user = userEvent.setup();
     const onNodeChange = vi.fn();
     render(
@@ -314,9 +317,9 @@ describe("workflow Smartsheet Write node", () => {
           schema: COMPLETE_SCHEMA,
           fieldMappings: [
             {
-              fieldId: "img",
+              fieldId: "url",
               fieldTitle: "订单截图",
-              fieldType: "image",
+              fieldType: "url",
               value: { kind: "literal", value: "https://cdn.example.com/order.png" },
             },
             {
@@ -338,11 +341,14 @@ describe("workflow Smartsheet Write node", () => {
       />,
     );
 
-    expect(screen.getByRole("textbox", { name: "订单截图的值" })).toHaveValue("");
-    await user.click(screen.getByRole("button", { name: "订单截图的值" }));
-    expect(await screen.findByRole("menu")).toBeInTheDocument();
-    expect(onNodeChange).not.toHaveBeenCalled();
-    await user.keyboard("{Escape}");
+    expect(screen.getByRole("textbox", { name: "订单截图的值" })).toHaveValue("https://cdn.example.com/order.png");
+    await user.clear(screen.getByRole("textbox", { name: "订单截图的值" }));
+    await user.type(screen.getByRole("textbox", { name: "订单截图的值" }), "https://example.com/new.png");
+    expect(onNodeChange).toHaveBeenCalledWith(expect.objectContaining({
+      fieldMappings: expect.arrayContaining([
+        expect.objectContaining({ fieldId: "url", value: { kind: "literal", value: "https://example.com/new.png" } }),
+      ]),
+    }));
 
     expect(screen.getByLabelText("下单时间的值")).toHaveValue("2026-07-15 09:30");
     await user.click(screen.getByRole("button", { name: "选择下单时间日期" }));

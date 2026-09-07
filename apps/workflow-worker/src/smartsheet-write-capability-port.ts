@@ -1,14 +1,12 @@
 import {
   isValidSmartsheetWebhookUrl,
+  isValidSmartsheetUrl,
   WorkflowSmartsheetWriteCommandSchema,
   type WorkflowSmartsheetWriteCommand,
 } from "@chatai/contracts";
 import { Value } from "@sinclair/typebox/value";
 import type { Static, TSchema } from "@sinclair/typebox";
 import type { WorkflowCapabilityDefinition, WorkflowCapabilityKind, WorkflowCapabilityPort, WorkflowCapabilityRequest } from "@chatai/workflow-runtime";
-
-export const SMARTSHEET_IMAGE_MAX_BYTES = 5 * 1024 * 1024;
-export const SMARTSHEET_IMAGES_TOTAL_MAX_BYTES = 20 * 1024 * 1024;
 
 export class HttpWorkflowSmartsheetWriteCapabilityPort implements WorkflowCapabilityPort {
   constructor(private readonly fetchImpl: typeof fetch = fetch) {}
@@ -24,31 +22,20 @@ export class HttpWorkflowSmartsheetWriteCapabilityPort implements WorkflowCapabi
       || request.deadlineAt.getTime() <= Date.now()) return { success: false, errorCode: "INVALID_REQUEST" };
     const command = request.command as WorkflowSmartsheetWriteCommand;
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), Math.max(0, request.deadlineAt.getTime() - Date.now()));
+    let timedOut = false;
+    const timer = setTimeout(() => {
+      timedOut = true;
+      controller.abort();
+    }, Math.max(0, request.deadlineAt.getTime() - Date.now()));
     const signal = AbortSignal.any([request.signal, controller.signal]);
     try {
       signal.throwIfAborted();
       const values: Record<string, unknown> = Object.create(null);
-      const images = new Map<string, { title: string; image_base64: string }>();
-      let totalBytes = 0;
       for (const field of command.fields) {
         if (Object.hasOwn(values, field.fieldId)) return { success: false, errorCode: "DUPLICATE_FIELD" };
-        if (field.fieldType === "image") {
-          if (typeof field.value !== "string") return { success: false, errorCode: "INVALID_IMAGE_VALUE" };
-          let image = images.get(field.value);
-          if (!image) {
-            const bytes = await this.downloadImage(field.value, signal);
-            totalBytes += bytes.length;
-            if (totalBytes > SMARTSHEET_IMAGES_TOTAL_MAX_BYTES) return { success: false, errorCode: "IMAGE_TOTAL_TOO_LARGE" };
-            const extension = imageExtension(bytes);
-            if (!extension) return { success: false, errorCode: "IMAGE_FORMAT_UNSUPPORTED" };
-            image = { title: `image.${extension}`, image_base64: bytes.toString("base64") };
-            images.set(field.value, image);
-          } else {
-            totalBytes += Buffer.byteLength(image.image_base64, "base64");
-            if (totalBytes > SMARTSHEET_IMAGES_TOTAL_MAX_BYTES) return { success: false, errorCode: "IMAGE_TOTAL_TOO_LARGE" };
-          }
-          values[field.fieldId] = [image];
+        if (field.fieldType === "url") {
+          if (typeof field.value !== "string" || !isValidSmartsheetUrl(field.value)) return { success: false, errorCode: "INVALID_URL_VALUE" };
+          values[field.fieldId] = [{ link: field.value, text: field.value }];
         } else if (field.fieldType === "single_select") {
           if (typeof field.value !== "string") return { success: false, errorCode: "INVALID_SINGLE_SELECT_VALUE" };
           values[field.fieldId] = [{ text: field.value }];
@@ -70,41 +57,13 @@ export class HttpWorkflowSmartsheetWriteCapabilityPort implements WorkflowCapabi
       const result: unknown = await response.json();
       if (typeof result !== "object" || result === null || !("errcode" in result)) return { success: false, errorCode: "INVALID_WEBHOOK_RESPONSE" };
       return result.errcode === 0 ? { success: true } : { success: false, errorCode: `WECOM_ERR_${String(result.errcode).slice(0, 32)}` };
-    } catch {
-      // Remote errors may contain the webhook key or image URL. Do not forward them to logs/output.
+    } catch (error) {
+      if (timedOut) return { success: false, errorCode: "WEBHOOK_TIMEOUT" };
+      if (request.signal.aborted) return { success: false, errorCode: "WEBHOOK_ABORTED" };
+      if (error instanceof SyntaxError) return { success: false, errorCode: "INVALID_WEBHOOK_RESPONSE" };
       return { success: false, errorCode: "WEBHOOK_REQUEST_FAILED" };
     } finally {
       clearTimeout(timer);
     }
   }
-
-  private async downloadImage(url: string, signal: AbortSignal): Promise<Buffer> {
-    for (let attempt = 0; ; attempt++) {
-      signal.throwIfAborted();
-      const controller = new AbortController();
-      const timer = setTimeout(() => controller.abort(), 10_000);
-      try {
-        const response = await this.fetchImpl(url, {
-          method: "GET",
-          signal: AbortSignal.any([signal, controller.signal]),
-        });
-        if (!response.ok) throw new Error("IMAGE_DOWNLOAD_FAILED");
-        const bytes = Buffer.from(await response.arrayBuffer());
-        if (bytes.length > SMARTSHEET_IMAGE_MAX_BYTES) throw new Error("IMAGE_TOO_LARGE");
-        return bytes;
-      } catch (error) {
-        if (attempt >= 1 || signal.aborted) throw error;
-      } finally {
-        clearTimeout(timer);
-      }
-    }
-  }
-}
-
-function imageExtension(bytes: Buffer) {
-  if (bytes.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]))) return "png";
-  if (bytes[0] === 255 && bytes[1] === 216 && bytes[2] === 255) return "jpg";
-  if (["GIF87a", "GIF89a"].includes(bytes.subarray(0, 6).toString("ascii"))) return "gif";
-  if (bytes.subarray(0, 4).toString("ascii") === "RIFF" && bytes.subarray(8, 12).toString("ascii") === "WEBP") return "webp";
-  return undefined;
 }

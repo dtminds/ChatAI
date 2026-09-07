@@ -13,8 +13,8 @@ function request() {
       { fieldId: "n", fieldType: "number" as const, value: 0 },
       { fieldId: "b", fieldType: "checkbox" as const, value: false },
       { fieldId: "s", fieldType: "single_select" as const, value: "known" },
-      { fieldId: "i", fieldType: "image" as const, value: imageUrl },
-      { fieldId: "i2", fieldType: "image" as const, value: imageUrl },
+      { fieldId: "i", fieldType: "url" as const, value: imageUrl },
+      { fieldId: "i2", fieldType: "url" as const, value: imageUrl },
     ] },
     deadlineAt: new Date(Date.now() + 60_000), execution: { nodeId: "sheet", revision: 1, runId: "1", sequence: 2, workflowId: "1" },
     identities: {}, idempotencyKey: "9:1:sheet:2", signal: new AbortController().signal,
@@ -27,47 +27,40 @@ function fetchMock(handler: (url: string, init?: RequestInit) => Response | Prom
 }
 
 describe("WeCom smartsheet adapter", () => {
-  it("downloads unique images once and posts one typed record with Base64 images", async () => {
+  it("writes URL values without downloading them", async () => {
     const http = fetchMock(async (url, init) => {
       if ((init?.method ?? "GET") === "POST") {
         expect(url).toBe(webhookUrl);
         return new Response('{"errcode":0,"add_records":[]}', { status: 200 });
       }
-      expect(url).toBe(imageUrl);
-      return new Response(png);
+      throw new Error(`unexpected GET ${url}`);
     });
     await expect(new HttpWorkflowSmartsheetWriteCapabilityPort(http).execute(definition, request()))
       .resolves.toEqual({ success: true });
-    expect(http).toHaveBeenCalledTimes(2);
-    expect(JSON.parse(String(http.mock.calls[1]![1]?.body))).toEqual({ add_records: [{ values: {
+    expect(http).toHaveBeenCalledTimes(1);
+    expect(JSON.parse(String(http.mock.calls[0]![1]?.body))).toEqual({ add_records: [{ values: {
       n: 0, b: false, s: [{ text: "known" }],
-      i: [{ title: "image.png", image_base64: png.toString("base64") }],
-      i2: [{ title: "image.png", image_base64: png.toString("base64") }],
+      i: [{ link: imageUrl, text: imageUrl }],
+      i2: [{ link: imageUrl, text: imageUrl }],
     } }] });
   });
 
-  it("retries a failed download once but never retries an unknown POST outcome", async () => {
-    let downloads = 0;
+  it("never downloads URL values and never retries an unknown POST outcome", async () => {
     const http = fetchMock(async (_url, init) => {
-      if ((init?.method ?? "GET") === "POST") throw new Error("connection reset after write");
-      if (downloads++ === 0) throw new Error("temporary download error");
-      return new Response(png);
+      throw new Error("connection reset after write");
     });
     await expect(new HttpWorkflowSmartsheetWriteCapabilityPort(http).execute(definition, request()))
       .resolves.toMatchObject({ success: false, errorCode: expect.any(String) });
-    expect(http.mock.calls.map(([, init]) => init?.method ?? "GET")).toEqual(["GET", "GET", "POST"]);
+    expect(http.mock.calls.map(([, init]) => init?.method ?? "GET")).toEqual(["POST"]);
   });
 
-  it("does not post when image download fails, content is not an image, or request is cancelled", async () => {
-    for (const content of [null, Buffer.from("<html>not an image</html>")]) {
-      const http = fetchMock(async () => {
-        if (content === null) throw new Error("unavailable");
-        return new Response(content);
-      });
-      await expect(new HttpWorkflowSmartsheetWriteCapabilityPort(http).execute(definition, request()))
-        .resolves.toMatchObject({ success: false, errorCode: expect.any(String) });
-      expect(http).toHaveBeenCalledTimes(content === null ? 2 : 1);
-    }
+  it("does not post invalid URL values or cancelled requests", async () => {
+    const cancelledHttp = fetchMock(async () => new Response(png));
+    await expect(new HttpWorkflowSmartsheetWriteCapabilityPort(cancelledHttp).execute(definition, {
+      ...request(), command: { ...request().command, fields: request().command.fields.map(field =>
+        field.fieldType === "url" ? { ...field, value: "not a url" } : field) },
+    })).resolves.toMatchObject({ success: false, errorCode: "INVALID_URL_VALUE" });
+    expect(cancelledHttp).not.toHaveBeenCalled();
     const http = fetchMock(async () => new Response(png));
     await expect(new HttpWorkflowSmartsheetWriteCapabilityPort(http).execute(definition, {
       ...request(),

@@ -14,7 +14,7 @@ export const WorkflowSmartsheetFieldTypeSchema = Type.Union([
   Type.Literal("date_time"),
   Type.Literal("single_select"),
   Type.Literal("checkbox"),
-  Type.Literal("image"),
+  Type.Literal("url"),
 ]);
 
 export type WorkflowSmartsheetFieldType = Static<typeof WorkflowSmartsheetFieldTypeSchema>;
@@ -221,8 +221,6 @@ export function isSmartsheetFieldMappingComplete(
     return isWorkflowSmartsheetFieldValueTypeCompatible(mapping.fieldType, mapping.value.valueType);
   }
 
-  if (mapping.fieldType === "image") return false;
-
   const literal = mapping.value.value.trim();
   if (!literal) return false;
   if (mapping.fieldType === "number") {
@@ -230,6 +228,9 @@ export function isSmartsheetFieldMappingComplete(
   }
   if (mapping.fieldType === "date_time") {
     return isValidSmartsheetDateTimeLiteral(literal);
+  }
+  if (mapping.fieldType === "url") {
+    return isValidSmartsheetUrl(literal);
   }
   if (mapping.fieldType === "checkbox") {
     return literal === "true" || literal === "false";
@@ -244,6 +245,15 @@ export function isValidSmartsheetDateTimeLiteral(value: string): boolean {
   return isValidWorkflowLocalDateTime(value)
     || isValidWorkflowLocalDate(value)
     || (value.trim() !== "" && Number.isFinite(Number(value)));
+}
+
+export function isValidSmartsheetUrl(value: string): boolean {
+  try {
+    const url = new URL(value.trim());
+    return url.protocol === "http:" || url.protocol === "https:";
+  } catch {
+    return false;
+  }
 }
 
 export function isWorkflowSmartsheetWriteExecutionConfigComplete(

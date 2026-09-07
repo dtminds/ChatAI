@@ -2,6 +2,7 @@ import {
   isWorkflowSmartsheetWriteExecutionConfigComplete,
   isValidWorkflowLocalDate,
   isValidWorkflowLocalDateTime,
+  isValidSmartsheetUrl,
   WorkflowSmartsheetWriteCommandSchema,
   WorkflowSmartsheetWriteResultSchema,
   WORKFLOW_SMARTSHEET_WRITE_VALUE_MAX_LENGTH,
@@ -62,6 +63,7 @@ function convertValue(field: WorkflowSmartsheetExecutionFieldMapping, value: unk
   }
   if (field.fieldType === "date_time") return normalizeSmartsheetDateTime(value);
   if (typeof value !== "string" || value.length > WORKFLOW_SMARTSHEET_WRITE_VALUE_MAX_LENGTH) return undefined;
+  if (field.fieldType === "url") return isValidSmartsheetUrl(value) ? value : undefined;
   if (field.fieldType === "single_select") return field.enumOptions?.includes(value) ? value : null;
   return value;
 }

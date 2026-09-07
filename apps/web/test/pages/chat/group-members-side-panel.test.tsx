@@ -141,6 +141,31 @@ describe("GroupMembersSidePanel", () => {
     ).toBeInTheDocument();
   });
 
+  it("hides the add-members action when the current account is not taken over", () => {
+    render(
+      <GroupMembersSidePanel
+        conversationId="conv-004"
+        groupMembers={[
+          {
+            avatarUrl: "",
+            displayName: "普通成员",
+            id: "member-001",
+            type: GROUP_MEMBER_TYPE.NORMAL,
+          },
+        ]}
+        isLoading={false}
+        onRefresh={vi.fn()}
+        seatId="seat-001"
+      />,
+    );
+
+    expect(
+      screen.queryByRole("button", { name: "添加群成员" }),
+    ).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "搜索群成员" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "刷新群成员" })).toBeInTheDocument();
+  });
+
   it("filters members while search is open and restores the full list when closed", async () => {
     const user = userEvent.setup();
     const onRefresh = vi.fn();
@@ -573,6 +598,7 @@ describe("GroupMembersSidePanel", () => {
 
     render(
       <GroupMembersSidePanel
+        canAddMembers
         conversationId="conv-004"
         groupMembers={[
           {
@@ -643,6 +669,7 @@ describe("GroupMembersSidePanel", () => {
 
     render(
       <GroupMembersSidePanel
+        canAddMembers
         conversationId="conv-004"
         groupMembers={[]}
         isLoading={false}
@@ -691,6 +718,7 @@ describe("GroupMembersSidePanel", () => {
 
     render(
       <GroupMembersSidePanel
+        canAddMembers
         groupMembers={[]}
         isLoading={false}
         onRefresh={vi.fn()}
@@ -947,6 +975,7 @@ describe("GroupMembersSidePanel", () => {
 
     render(
       <GroupMembersSidePanel
+        canAddMembers
         conversationId="conv-004"
         currentSeatThirdUserId="seat-user-current"
         groupMembers={[

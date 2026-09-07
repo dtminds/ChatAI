@@ -47,6 +47,7 @@ const groupMemberNameCollator = new Intl.Collator("zh-Hans-CN");
 
 export function GroupMembersSidePanel({
   accounts = [],
+  canAddMembers = false,
   currentEmployeeId,
   currentSeatThirdUserId,
   conversationId,
@@ -57,6 +58,7 @@ export function GroupMembersSidePanel({
   seatId,
 }: {
   accounts?: Account[];
+  canAddMembers?: boolean;
   currentEmployeeId?: string;
   currentSeatThirdUserId?: string;
   conversationId?: string;
@@ -140,17 +142,19 @@ export function GroupMembersSidePanel({
             )}
           </div>
           <div className="flex h-6 shrink-0 items-center gap-1">
-            <Button
-              aria-label="添加群成员"
-              className="size-6 shrink-0 rounded-[6px] text-muted-foreground"
-              onClick={() => setIsAddOpen(true)}
-              size="icon"
-              title="添加群成员"
-              type="button"
-              variant="ghost"
-            >
-              <HugeiconsIcon icon={UserAdd01Icon} size={13} strokeWidth={2} />
-            </Button>
+            {canAddMembers ? (
+              <Button
+                aria-label="添加群成员"
+                className="size-6 shrink-0 rounded-[6px] text-muted-foreground"
+                onClick={() => setIsAddOpen(true)}
+                size="icon"
+                title="添加群成员"
+                type="button"
+                variant="ghost"
+              >
+                <HugeiconsIcon icon={UserAdd01Icon} size={13} strokeWidth={2} />
+              </Button>
+            ) : null}
             <Button
               aria-label={isSearchOpen ? "关闭搜索" : "搜索群成员"}
               className="size-6 shrink-0 rounded-[6px] text-muted-foreground"
@@ -226,15 +230,17 @@ export function GroupMembersSidePanel({
         )}
       </div>
       </ScrollArea>
-      <AddGroupMembersDialog
-        conversationId={conversationId}
-        currentSeatThirdUserId={currentSeatThirdUserId}
-        excludeMemberIds={existingMemberIds}
-        onAdded={onRefresh}
-        onOpenChange={setIsAddOpen}
-        open={isAddOpen}
-        seatId={seatId}
-      />
+      {canAddMembers ? (
+        <AddGroupMembersDialog
+          conversationId={conversationId}
+          currentSeatThirdUserId={currentSeatThirdUserId}
+          excludeMemberIds={existingMemberIds}
+          onAdded={onRefresh}
+          onOpenChange={setIsAddOpen}
+          open={isAddOpen}
+          seatId={seatId}
+        />
+      ) : null}
       <RemoveGroupMemberDialog
         conversationId={conversationId}
         member={memberToRemove}

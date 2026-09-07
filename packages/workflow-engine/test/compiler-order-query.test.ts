@@ -89,6 +89,27 @@ describe("Order Query compiler validation", () => {
       nodeId: "order-query",
     });
   });
+
+  it("rejects out-of-range amounts and reversed relative time before publication", () => {
+    for (const config of [
+      {
+        ...customerConditions(),
+        conditions: { ...customerConditions().conditions, amount: { min: 100000.01 } },
+      },
+      customerConditions({
+        end: { amount: 1, time: "00:00", unit: "day" },
+        mode: "relative",
+        start: { amount: 0, time: "23:59", unit: "day" },
+      }),
+    ]) {
+      expect(() => compileWorkflowDraft({
+        draft: createOrderQueryDraft(config),
+        revision: 1,
+        workflowId: "42",
+        workflowType: "chatai_sop",
+      })).toThrow(WorkflowCompilationError);
+    }
+  });
 });
 
 function expectCustomerTimeCompilationIssue(

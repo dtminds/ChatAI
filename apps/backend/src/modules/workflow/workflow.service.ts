@@ -2,6 +2,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { isDeepStrictEqual } from "node:util";
 import {
   getWorkflowCustomFieldVariableIds,
+  isMessageQueryFixedRangeWithinBounds,
   normalizeWorkflowUtcInstant,
   WORKFLOW_DESCRIPTION_MAX_LENGTH,
   WORKFLOW_NAME_MAX_LENGTH,
@@ -13,6 +14,7 @@ import type {
   WorkflowDefinitionListItem,
   WorkflowDefinitionListPage,
   WorkflowDefinitionListStatus,
+  WorkflowExecutionSpec,
   WorkflowDirectEntryEndpointResponse,
   WorkflowDraft,
   WorkflowMetadataUpdateRequest,
@@ -1034,7 +1036,8 @@ export class WorkflowService {
       scope.uid,
       normalizedDefinition.draft,
     );
-    const executionSpec = this.compile(normalizedDefinition, nextRevision, customFields);
+    const checkedAt = this.clock();
+    const executionSpec = this.compile(normalizedDefinition, nextRevision, customFields, checkedAt);
     this.assertProductionAvailability(executionSpec, entitlement, subjectType);
     const triggerBindings = await this.createTriggerBindings(
       scope.uid,
@@ -1051,7 +1054,7 @@ export class WorkflowService {
       basePublishedRevision: definition.publishedRevision,
       candidateHash,
       changeSummary: await this.createChangeSummary(definition, normalizedDefinition.draft),
-      checkedAt: this.clock(),
+      checkedAt,
       draft: normalizedDefinition.draft,
       draftSemanticHash: hashDraftSemantics(normalizedDefinition.draft),
       executionSpec,
@@ -1203,6 +1206,7 @@ export class WorkflowService {
         { ...definition, draft: review.draft },
         review.executionSpec.revision,
         customFields,
+        this.clock(),
       );
     } catch (error) {
       if (error instanceof AppError && error.code === "WORKFLOW_VALIDATION_FAILED") {
@@ -1344,15 +1348,20 @@ export class WorkflowService {
     definition: WorkflowDefinitionRecord,
     revision: number,
     customFields: readonly CustomFieldItem[] = [],
+    publicationCheckedAt?: Date,
   ) {
     try {
-      return compileWorkflowDraft({
+      const executionSpec = compileWorkflowDraft({
         customFields,
         draft: definition.draft,
         revision,
         workflowId: definition.id,
         workflowType: definition.workflowType,
       });
+      if (publicationCheckedAt) {
+        assertWorkflowPublicationConstraints(executionSpec, publicationCheckedAt);
+      }
+      return executionSpec;
     } catch (error) {
       if (error instanceof WorkflowCompilationError) {
         throw new BadRequestError("WORKFLOW_VALIDATION_FAILED", "校验未通过", { issues: error.issues });
@@ -1578,6 +1587,33 @@ export class WorkflowService {
       : await this.repository.findRevision(definition.uid, definition.id, definition.publishedRevision);
     return summarizeWorkflowChanges(previous?.draft ?? null, draft);
   }
+}
+
+function assertWorkflowPublicationConstraints(
+  executionSpec: WorkflowExecutionSpec,
+  checkedAt: Date,
+) {
+  const issues = executionSpec.nodes.flatMap((node) => {
+    if (node.kind !== "message-query") return [];
+    const timeRange = node.config.timeRange;
+    if (!isRecord(timeRange)
+      || timeRange.mode !== "fixed"
+      || typeof timeRange.startAt !== "string"
+      || typeof timeRange.endAt !== "string"
+      || isMessageQueryFixedRangeWithinBounds(
+        checkedAt.getTime(),
+        timeRange.startAt,
+        timeRange.endAt,
+      )) {
+      return [];
+    }
+    return [{
+      code: "invalid-node-config" as const,
+      message: "Message Query node fixed time exceeds the 90-day publication limit",
+      nodeId: node.id,
+    }];
+  });
+  if (issues.length > 0) throw new WorkflowCompilationError(issues);
 }
 
 function getVisibleWorkflowTypes(scope: WorkflowOperatorScope) {

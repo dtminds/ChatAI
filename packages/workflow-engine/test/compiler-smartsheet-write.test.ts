@@ -81,6 +81,20 @@ describe("Smartsheet Write compiler validation", () => {
       })).toThrow(WorkflowCompilationError);
     }
   });
+
+  it("rejects field mappings that no longer match the saved schema", () => {
+    for (const fieldMappings of [
+      [{ ...COMPLETE_FIELD, fieldId: "missing" }],
+      [{ ...COMPLETE_FIELD, fieldType: "number", value: { kind: "literal", value: "1" } }],
+    ]) {
+      expect(() => compileWorkflowDraft({
+        draft: createDraft({ fieldMappings, schema: COMPLETE_SCHEMA, webhookUrl: COMPLETE_WEBHOOK_URL }),
+        revision: 1,
+        workflowId: "42",
+        workflowType: "chatai_sop",
+      })).toThrow(WorkflowCompilationError);
+    }
+  });
 });
 
 function createDraft(config: Record<string, unknown>): WorkflowDraft {

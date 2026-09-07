@@ -3,6 +3,7 @@ import {
   getWorkflowCustomFieldVariableId,
   getWorkflowCustomFieldVariableValueType,
   getWorkflowContextVariableValueType,
+  extractWorkflowNodeDraftConfig,
   getWorkflowNodeOutputContracts,
   isWorkflowAiCollectExecutionConfigComplete,
   isWorkflowAiIntentExecutionConfigComplete,
@@ -15,6 +16,7 @@ import {
   isWorkflowOrderQueryExecutionConfigComplete,
   isWorkflowOutputValueTypeEqual,
   isWorkflowSmartsheetWriteExecutionConfigComplete,
+  isWorkflowSmartsheetWriteDraftConfigComplete,
   normalizeWorkflowEntryPolicy,
   type WorkflowDraft,
   type CustomFieldItem,
@@ -69,6 +71,16 @@ export function compileWorkflowDraft({
 
   const nodes = validation.topologicalNodeIds.map((nodeId) => {
     const node = normalizedDraft.nodes.find((item) => item.id === nodeId)!;
+    if (node.data.kind === "smartsheet-write"
+      && !isWorkflowSmartsheetWriteDraftConfigComplete(
+        extractWorkflowNodeDraftConfig(node.data.kind, node.data),
+      )) {
+      throw new WorkflowCompilationError([{
+        code: "invalid-node-config",
+        message: "Smartsheet Write node schema and field mappings do not match",
+        nodeId: node.id,
+      }]);
+    }
     const config = projectWorkflowNodeExecutionConfig({
       data: node.data,
       kind: node.data.kind,

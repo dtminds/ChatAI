@@ -1400,6 +1400,43 @@ describe("WorkflowService", () => {
     expect((await service.listRevisions(operator, created.id)).items).toHaveLength(1);
   });
 
+  it("checks Message Query fixed-time lookback at review submission and publication", async () => {
+    let now = new Date("2026-09-07T04:00:00.000Z");
+    const service = createService(new InMemoryWorkflowRepository(), {
+      clock: () => now,
+    });
+    const created = await createConfigured(service);
+    const expired = await service.saveDraft(operator, created.id, {
+      draft: withMessageQueryNode(created.draft, {
+        endAt: "2026-06-07T11:59",
+        mode: "fixed",
+        startAt: "2026-06-07T10:00",
+      }),
+      expectedDraftVersion: created.draftVersion,
+    });
+
+    await expect(service.submitReview(operator, expired.id, {
+      expectedDraftVersion: expired.draftVersion,
+    })).rejects.toMatchObject({ code: "WORKFLOW_VALIDATION_FAILED", statusCode: 400 });
+
+    const fresh = await service.saveDraft(operator, expired.id, {
+      draft: withMessageQueryNode(expired.draft, {
+        endAt: "2026-09-07T11:59",
+        mode: "fixed",
+        startAt: "2026-06-09T00:00",
+      }),
+      expectedDraftVersion: expired.draftVersion,
+    });
+    const review = await service.submitReview(operator, fresh.id, {
+      expectedDraftVersion: fresh.draftVersion,
+    });
+    await service.approveReview(operator, fresh.id, review.id, {});
+
+    now = new Date("2026-09-08T04:00:00.000Z");
+    await expect(service.publish(operator, fresh.id, { reviewId: review.id }))
+      .rejects.toMatchObject({ code: "WORKFLOW_REVIEW_RESOURCES_CHANGED", statusCode: 409 });
+  });
+
   it("validates active customer custom fields at review submission and publication", async () => {
     let activeFields = [{
       id: 42,
@@ -2971,6 +3008,40 @@ function withOrderQueryNode(
     nodes: [
       ...draft.nodes.filter(node => node.id !== "end"),
       orderQueryNode,
+      draft.nodes.find(node => node.id === "end")!,
+    ],
+  };
+}
+
+function withMessageQueryNode(
+  draft: Awaited<ReturnType<WorkflowService["create"]>>["draft"],
+  timeRange: Record<string, unknown>,
+) {
+  const messageQueryNode = {
+    data: {
+      kind: "message-query" as const,
+      label: "消息查询",
+      limit: 10,
+      metric: "最新 10 条消息",
+      schemaVersion: 1,
+      status: "ready" as const,
+      take: "latest" as const,
+      timeRange,
+      title: "消息查询",
+    },
+    id: "message-query-1",
+    position: { x: 340, y: 240 },
+    type: "workflowNode",
+  };
+  return {
+    ...draft,
+    edges: [
+      { id: "edge-start-message-query", source: "start", target: "message-query-1", type: "workflowEdge" },
+      { id: "edge-message-query-end", source: "message-query-1", target: "end", type: "workflowEdge" },
+    ],
+    nodes: [
+      ...draft.nodes.filter(node => node.id !== "end" && node.id !== "message-query-1"),
+      messageQueryNode,
       draft.nodes.find(node => node.id === "end")!,
     ],
   };

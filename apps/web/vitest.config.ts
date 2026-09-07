@@ -31,6 +31,7 @@ export function createWebTestViteConfig({
       clearMocks: true,
       css: false,
       maxWorkers: isCi ? 4 : undefined,
+      passWithNoTests: testGroup === "integration",
       projects,
       setupFiles: ["./test/setup.ts"],
       testTimeout,

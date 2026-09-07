@@ -52,6 +52,8 @@ export const COMPOSER_FILE_ACCEPT = [
 
 export const MAX_COMPOSER_FILE_SIZE_BYTES = 10 * 1024 * 1024;
 
+export const FILE_UPLOAD_SWITCH_BLOCKED_MESSAGE = "文件上传中，暂不能切换会话";
+
 export function isSupportedComposerFile(file: File) {
   const contentType = file.type.trim().toLowerCase();
 

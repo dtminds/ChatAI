@@ -219,12 +219,25 @@ describe("ChatComposer", () => {
     ["收录的文件", MATERIAL_COLLECTION_BIZ_TYPE.FILE],
     ["收录的小程序", MATERIAL_COLLECTION_BIZ_TYPE.MINI_PROGRAM],
     ["收录的H5", MATERIAL_COLLECTION_BIZ_TYPE.H5],
+    ["收录的视频", MATERIAL_COLLECTION_BIZ_TYPE.VIDEO],
   ])("opens the %s material library through its callback", async (label, bizType) => {
     const onOpenMaterialLibrary = vi.fn();
     renderComposer({ onOpenMaterialLibrary });
 
     await userEvent.click(screen.getByRole("button", { name: label }));
     expect(onOpenMaterialLibrary).toHaveBeenCalledWith(bizType);
+  });
+
+  it("opens the video material library from the mobile collected-send menu", async () => {
+    const onOpenMaterialLibrary = vi.fn();
+    renderComposer({ isMobileLayout: true, onOpenMaterialLibrary });
+
+    await userEvent.click(screen.getByRole("button", { name: "从收录发送" }));
+    await userEvent.click(await screen.findByRole("menuitem", { name: "视频" }));
+
+    expect(onOpenMaterialLibrary).toHaveBeenCalledWith(
+      MATERIAL_COLLECTION_BIZ_TYPE.VIDEO,
+    );
   });
 
   it("does not render the video channel material library entry by default", () => {
@@ -564,7 +577,34 @@ describe("ChatComposer", () => {
     expect(onSendDraft).not.toHaveBeenCalled();
   });
 
+  it("accepts image drops from the composer toolbar and appends them after existing text", async () => {
+    const image = new File(["image-bytes"], "dropped.png", { type: "image/png" });
+    const dataTransfer = createFileDragData([
+      image,
+      new File(["document-bytes"], "ignored.pdf", { type: "application/pdf" }),
+    ]);
+
+    renderComposer();
+    const composer = screen.getByRole("textbox", { name: "请输入消息……" });
+    await userEvent.click(composer);
+    await userEvent.paste("已有内容");
+
+    const toolbarButton = screen.getByRole("button", { name: "历史记录" });
+    fireEvent.dragEnter(toolbarButton, { dataTransfer });
+    expect(screen.getByTestId("chat-composer-image-drop-overlay")).toBeInTheDocument();
+    fireEvent.drop(toolbarButton, { dataTransfer });
+
+    expect(
+      screen.queryByTestId("chat-composer-image-drop-overlay"),
+    ).not.toBeInTheDocument();
+    expect(await screen.findByRole("img", { name: "dropped.png" })).toBeInTheDocument();
+  });
+
   it("locks the editor while a send request is pending", () => {
+    const dataTransfer = createFileDragData([
+      new File(["image-bytes"], "while-sending.png", { type: "image/png" }),
+    ]);
+
     renderComposer({ isSending: true });
 
     expect(screen.getByRole("textbox", { name: "请输入消息……" })).toHaveAttribute(
@@ -576,5 +616,15 @@ describe("ChatComposer", () => {
       "aria-busy",
       "true",
     );
+
+    const composer = screen.getByRole("textbox", { name: "请输入消息……" });
+    fireEvent.dragEnter(composer, { dataTransfer });
+    fireEvent.drop(composer, { dataTransfer });
+    expect(
+      screen.queryByTestId("chat-composer-image-drop-overlay"),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("img", { name: "while-sending.png" }),
+    ).not.toBeInTheDocument();
   });
 });

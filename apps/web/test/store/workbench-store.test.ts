@@ -11480,6 +11480,45 @@ describe("useWorkbenchStore", () => {
     expect(state.messagesByConversationId["conv-002"]?.length).toBeGreaterThan(0);
   });
 
+  it("saves and clears composer drafts, and drops them when the conversation is deleted", async () => {
+    await useWorkbenchStore.getState().initializeWorkbench();
+
+    useWorkbenchStore.getState().saveComposerDraft("conv-001", {
+      draft: "未发送内容",
+      quotedMessage: {
+        contentType: "text",
+        senderName: "客户",
+        text: "原消息",
+      },
+      segments: [{ text: "未发送内容", type: "text" }],
+    });
+
+    expect(
+      useWorkbenchStore.getState().composerDraftsByConversationId["conv-001"],
+    ).toMatchObject({
+      draft: "未发送内容",
+      quotedMessage: {
+        text: "原消息",
+      },
+    });
+
+    useWorkbenchStore.getState().clearComposerDraft("conv-001");
+    expect(
+      useWorkbenchStore.getState().composerDraftsByConversationId["conv-001"],
+    ).toBeUndefined();
+
+    useWorkbenchStore.getState().saveComposerDraft("conv-001", {
+      draft: "删除后不应保留",
+      quotedMessage: null,
+      segments: [{ text: "删除后不应保留", type: "text" }],
+    });
+    await useWorkbenchStore.getState().deleteConversation("conv-001");
+
+    expect(
+      useWorkbenchStore.getState().composerDraftsByConversationId["conv-001"],
+    ).toBeUndefined();
+  });
+
   it("refreshes an unverified next conversation after deleting the active conversation", async () => {
     const baseService = createMockWorkbenchService();
 

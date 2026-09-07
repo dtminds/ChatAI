@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type RefObject } from "react";
 import {
   WORKBENCH_PULL_GROUP_MEMBERS_MAX_ITEMS,
   type WorkbenchCustomerSummaryDto,
@@ -37,8 +37,9 @@ const CANDIDATE_GROUPS = [
   { kind: "employee", defaultOpen: false, label: "成员" },
   { kind: "member", defaultOpen: true, label: "客户" },
 ] as const;
-/** 与客户页相同的一页条数；继续加载由用户点击触发。 */
+/** 与客户页相同的一页条数；触底再加载，最多 40 页以免无界灌入内存。 */
 const CUSTOMER_PAGE_SIZE = 50;
+const CUSTOMER_MAX_LOADED_PAGES = 40;
 const CUSTOMER_SEARCH_DEBOUNCE_MS = 300;
 
 const nameSegmenter =
@@ -81,11 +82,13 @@ export function AddGroupMembersDialog({
   const [customerHasMore, setCustomerHasMore] = useState(false);
   const [customerNextCursor, setCustomerNextCursor] = useState<string | undefined>();
   const [isLoadingMoreCustomers, setIsLoadingMoreCustomers] = useState(false);
+  const [customerLoadedPageCount, setCustomerLoadedPageCount] = useState(0);
   const [selectedById, setSelectedById] = useState<Map<string, AddGroupMemberCandidate>>(
     () => new Map(),
   );
   const [isSubmitting, setIsSubmitting] = useState(false);
   const customerRequestIdRef = useRef(0);
+  const isLoadingMoreCustomersRef = useRef(false);
   const normalizedKeyword = keyword.trim();
   const excludedIds = useMemo(() => new Set(excludeMemberIds), [excludeMemberIds]);
   const selectedMembers = useMemo(() => [...selectedById.values()], [selectedById]);
@@ -146,6 +149,8 @@ export function AddGroupMembersDialog({
       setCustomerHasMore(false);
       setCustomerNextCursor(undefined);
       setIsLoadingMoreCustomers(false);
+      isLoadingMoreCustomersRef.current = false;
+      setCustomerLoadedPageCount(0);
       setSelectedById(new Map());
       setIsSubmitting(false);
       customerRequestIdRef.current += 1;
@@ -184,6 +189,8 @@ export function AddGroupMembersDialog({
       setCustomerHasMore(false);
       setCustomerNextCursor(undefined);
       setIsLoadingMoreCustomers(false);
+      isLoadingMoreCustomersRef.current = false;
+      setCustomerLoadedPageCount(0);
       setCustomerLoadState("loaded");
       return;
     }
@@ -194,6 +201,8 @@ export function AddGroupMembersDialog({
     setCustomerHasMore(false);
     setCustomerNextCursor(undefined);
     setIsLoadingMoreCustomers(false);
+    isLoadingMoreCustomersRef.current = false;
+    setCustomerLoadedPageCount(0);
     setCustomerLoadState("loading");
 
     void fetchCustomerPage({
@@ -215,6 +224,7 @@ export function AddGroupMembersDialog({
       setCustomers(page.items);
       setCustomerHasMore(page.hasMore);
       setCustomerNextCursor(page.nextCursor);
+      setCustomerLoadedPageCount(1);
       setCustomerLoadState("loaded");
     });
   }, [debouncedKeyword, open, seatId]);
@@ -259,6 +269,7 @@ export function AddGroupMembersDialog({
       setCustomers([]);
       setCustomerHasMore(false);
       setCustomerNextCursor(undefined);
+      setCustomerLoadedPageCount(0);
       setCustomerLoadState("loaded");
       return;
     }
@@ -269,6 +280,8 @@ export function AddGroupMembersDialog({
     setCustomerHasMore(false);
     setCustomerNextCursor(undefined);
     setIsLoadingMoreCustomers(false);
+    isLoadingMoreCustomersRef.current = false;
+    setCustomerLoadedPageCount(0);
     setCustomerLoadState("loading");
 
     void fetchCustomerPage({
@@ -290,16 +303,23 @@ export function AddGroupMembersDialog({
       setCustomers(page.items);
       setCustomerHasMore(page.hasMore);
       setCustomerNextCursor(page.nextCursor);
+      setCustomerLoadedPageCount(1);
       setCustomerLoadState("loaded");
     });
   }
 
   async function handleLoadMoreCustomers() {
-    if (!seatId || !customerNextCursor || isLoadingMoreCustomers) {
+    if (
+      !seatId ||
+      !customerNextCursor ||
+      isLoadingMoreCustomersRef.current ||
+      customerLoadedPageCount >= CUSTOMER_MAX_LOADED_PAGES
+    ) {
       return;
     }
 
     const requestId = customerRequestIdRef.current;
+    isLoadingMoreCustomersRef.current = true;
     setIsLoadingMoreCustomers(true);
 
     const page = await fetchCustomerPage({
@@ -314,6 +334,7 @@ export function AddGroupMembersDialog({
 
     if (!page) {
       toast.error("操作失败，请稍后重试");
+      isLoadingMoreCustomersRef.current = false;
       setIsLoadingMoreCustomers(false);
       return;
     }
@@ -321,6 +342,8 @@ export function AddGroupMembersDialog({
     setCustomers((current) => mergeCustomerCandidates(current, page.items));
     setCustomerHasMore(page.hasMore);
     setCustomerNextCursor(page.nextCursor);
+    setCustomerLoadedPageCount((count) => count + 1);
+    isLoadingMoreCustomersRef.current = false;
     setIsLoadingMoreCustomers(false);
   }
 
@@ -377,7 +400,9 @@ export function AddGroupMembersDialog({
 
             <CandidateList
               candidates={visibleCandidates}
-              customerHasMore={customerHasMore}
+              customerHasMore={
+                customerHasMore && customerLoadedPageCount < CUSTOMER_MAX_LOADED_PAGES
+              }
               customerLoadState={customerLoadState}
               employeeLoadState={employeeLoadState}
               isLoadingMoreCustomers={isLoadingMoreCustomers}
@@ -490,6 +515,7 @@ function CandidateList({
   onToggle: (candidate: AddGroupMemberCandidate) => void;
   selectedIds: Map<string, AddGroupMemberCandidate>;
 }) {
+  const viewportRef = useRef<HTMLDivElement>(null);
   const [openByKind, setOpenByKind] = useState<Partial<Record<"employee" | "member", boolean>>>(
     {},
   );
@@ -551,7 +577,12 @@ function CandidateList({
   }));
 
   return (
-    <ScrollArea aria-label="可选成员" className="min-h-0 flex-1" role="region">
+    <ScrollArea
+      aria-label="可选成员"
+      className="min-h-0 flex-1"
+      role="region"
+      viewportRef={viewportRef}
+    >
       <div className="space-y-0.5 px-2 py-2">
         {groupedCandidates.map((group) => (
           <CandidateGroup
@@ -573,6 +604,7 @@ function CandidateList({
             onToggle={onToggle}
             open={openByKind[group.kind] ?? group.defaultOpen}
             selectedIds={selectedIds}
+            viewportRef={viewportRef}
           />
         ))}
       </div>
@@ -588,6 +620,7 @@ function CandidateGroup({
   onToggle,
   open,
   selectedIds,
+  viewportRef,
 }: {
   group: {
     items: AddGroupMemberCandidate[];
@@ -605,9 +638,47 @@ function CandidateGroup({
   onToggle: (candidate: AddGroupMemberCandidate) => void;
   open: boolean;
   selectedIds: Map<string, AddGroupMemberCandidate>;
+  viewportRef?: RefObject<HTMLDivElement | null>;
 }) {
   const contentId = `add-group-member-${group.kind}`;
+  const sentinelRef = useRef<HTMLDivElement>(null);
+  const onLoadMoreRef = useRef(loadMore?.onLoadMore);
   const showEmpty = group.items.length === 0 && !loadMore?.hasMore;
+  const canLoadMore = Boolean(loadMore?.hasMore && open && group.loadState === "loaded");
+
+  onLoadMoreRef.current = loadMore?.onLoadMore;
+
+  useEffect(() => {
+    if (!canLoadMore || typeof IntersectionObserver === "undefined") {
+      return;
+    }
+
+    const root = viewportRef?.current;
+    const sentinel = sentinelRef.current;
+
+    if (!root || !sentinel) {
+      return;
+    }
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((entry) => entry.isIntersecting)) {
+          onLoadMoreRef.current?.();
+        }
+      },
+      {
+        root,
+        rootMargin: "80px 0px",
+        threshold: 0,
+      },
+    );
+
+    observer.observe(sentinel);
+
+    return () => {
+      observer.disconnect();
+    };
+  }, [canLoadMore, group.items.length, viewportRef]);
 
   return (
     <Collapsible onOpenChange={onOpenChange} open={open}>
@@ -678,19 +749,17 @@ function CandidateGroup({
               </ul>
             ) : null}
             {loadMore?.hasMore ? (
-              <div className="flex justify-center py-2">
-                <Button
-                  disabled={loadMore.isLoading}
-                  onClick={loadMore.onLoadMore}
-                  size="sm"
-                  type="button"
-                  variant="outline"
-                >
-                  {loadMore.isLoading ? (
+              <div
+                className="flex items-center justify-center gap-2 py-2 text-sm text-muted-foreground"
+                ref={sentinelRef}
+                role={loadMore.isLoading ? "status" : undefined}
+              >
+                {loadMore.isLoading ? (
+                  <>
                     <Spinner className="text-current" size={14} variant="classic" />
-                  ) : null}
-                  加载更多
-                </Button>
+                    <span>正在加载</span>
+                  </>
+                ) : null}
               </div>
             ) : null}
           </>

@@ -23,7 +23,64 @@ afterEach(() => {
   vi.mocked(toast.error).mockReset();
   vi.mocked(toast.success).mockReset();
   vi.useRealTimers();
+  Reflect.deleteProperty(window, "IntersectionObserver");
+  Reflect.deleteProperty(globalThis, "IntersectionObserver");
 });
+
+type IntersectionObserverEntryInit = {
+  isIntersecting: boolean;
+  target: Element;
+};
+
+type IntersectionObserverInstance = {
+  callback: IntersectionObserverCallback;
+  disconnect: ReturnType<typeof vi.fn>;
+  observe: ReturnType<typeof vi.fn>;
+  options?: IntersectionObserverInit;
+  unobserve: ReturnType<typeof vi.fn>;
+};
+
+function installIntersectionObserverMock() {
+  const instances: IntersectionObserverInstance[] = [];
+
+  class IntersectionObserverMock {
+    readonly callback: IntersectionObserverCallback;
+    readonly disconnect = vi.fn();
+    readonly observe = vi.fn();
+    readonly options: IntersectionObserverInit | undefined;
+    readonly unobserve = vi.fn();
+
+    constructor(
+      callback: IntersectionObserverCallback,
+      options?: IntersectionObserverInit,
+    ) {
+      this.callback = callback;
+      this.options = options;
+      instances.push(this);
+    }
+  }
+
+  Object.defineProperty(window, "IntersectionObserver", {
+    configurable: true,
+    value: IntersectionObserverMock,
+  });
+  Object.defineProperty(globalThis, "IntersectionObserver", {
+    configurable: true,
+    value: IntersectionObserverMock,
+  });
+
+  return {
+    emit(entries: IntersectionObserverEntryInit[]) {
+      for (const instance of instances) {
+        instance.callback(
+          entries as IntersectionObserverEntry[],
+          instance as unknown as IntersectionObserver,
+        );
+      }
+    },
+    instances,
+  };
+}
 
 describe("GroupMembersSidePanel", () => {
   it("shows a loading indicator instead of an empty member list", () => {
@@ -777,6 +834,7 @@ describe("GroupMembersSidePanel", () => {
 
   it("loads more add-member customers with the returned cursor", async () => {
     const user = userEvent.setup();
+    const intersectionObserver = installIntersectionObserverMock();
     const getCustomers = vi
       .fn()
       .mockResolvedValueOnce(
@@ -806,8 +864,22 @@ describe("GroupMembersSidePanel", () => {
     await user.click(screen.getByRole("button", { name: "添加群成员" }));
     expect(await screen.findByRole("checkbox", { name: "选择 小明" })).toBeInTheDocument();
     expect(screen.queryByRole("checkbox", { name: "选择 王二" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "加载更多" })).not.toBeInTheDocument();
 
-    await user.click(screen.getByRole("button", { name: "加载更多" }));
+    await waitFor(() => {
+      expect(intersectionObserver.instances.at(-1)?.observe).toHaveBeenCalled();
+    });
+
+    act(() => {
+      const observedTarget = intersectionObserver.instances.at(-1)?.observe.mock
+        .calls.at(-1)?.[0] as Element;
+      intersectionObserver.emit([
+        {
+          isIntersecting: true,
+          target: observedTarget,
+        },
+      ]);
+    });
 
     expect(await screen.findByRole("checkbox", { name: "选择 王二" })).toBeInTheDocument();
     expect(screen.getByRole("checkbox", { name: "选择 小明" })).toBeInTheDocument();

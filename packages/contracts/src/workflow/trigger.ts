@@ -54,6 +54,8 @@ export const WorkflowMessageSendingWindowSchema = Type.Object({
 }, { additionalProperties: false });
 
 export const WORKFLOW_FRIEND_SOURCE_MAX_SELECTED = 5;
+export const WORKFLOW_MESSAGE_MAX_KEYWORDS = 10;
+export const WORKFLOW_MESSAGE_MAX_KEYWORD_LENGTH = 10;
 
 export const WorkflowFriendAddWayMatchModeSchema = Type.Union([
   Type.Literal("all"),
@@ -61,10 +63,14 @@ export const WorkflowFriendAddWayMatchModeSchema = Type.Union([
 ]);
 
 const WorkflowTriggerStringSchema = Type.String({ maxLength: 128, minLength: 1 });
+const WorkflowMessageKeywordSchema = Type.String({
+  maxLength: WORKFLOW_MESSAGE_MAX_KEYWORD_LENGTH,
+  minLength: 1,
+});
 
 const WorkflowTriggerStringListSchema = Type.Array(
-  WorkflowTriggerStringSchema,
-  { maxItems: 100, uniqueItems: true },
+  WorkflowMessageKeywordSchema,
+  { maxItems: WORKFLOW_MESSAGE_MAX_KEYWORDS, uniqueItems: true },
 );
 
 const WorkflowFriendSourceIdListSchema = Type.Array(
@@ -82,8 +88,8 @@ const WorkflowRequiredFriendSourceIdListSchema = Type.Array(
 );
 
 const WorkflowRequiredTriggerStringListSchema = Type.Array(
-  WorkflowTriggerStringSchema,
-  { maxItems: 100, minItems: 1, uniqueItems: true },
+  WorkflowMessageKeywordSchema,
+  { maxItems: WORKFLOW_MESSAGE_MAX_KEYWORDS, minItems: 1, uniqueItems: true },
 );
 
 const WorkflowContactFriendAddedDraftTriggerSchema = Type.Object({

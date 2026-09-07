@@ -479,7 +479,7 @@ describe("workflow start configuration", () => {
     }));
   });
 
-  it("normalizes comma-separated keywords on blur", async () => {
+  it("adds message keywords through the popover", async () => {
     const user = userEvent.setup();
     const onNodeChange = vi.fn();
     render(
@@ -494,9 +494,10 @@ describe("workflow start configuration", () => {
         onNodeChange={onNodeChange}
       />,
     );
+    expect(screen.queryByRole("textbox", { name: "消息关键词" })).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "添加消息关键词" }));
     const keywordInput = screen.getByRole("textbox", { name: "消息关键词" });
-    await user.type(keywordInput, " 价格,优惠,价格 ");
-    await user.tab();
+    await user.type(keywordInput, " 价格，优惠、价格 {Enter}");
     expect(onNodeChange).toHaveBeenLastCalledWith(expect.objectContaining({
       triggers: [{ keywords: ["价格", "优惠"], type: "message.received" }],
     }));

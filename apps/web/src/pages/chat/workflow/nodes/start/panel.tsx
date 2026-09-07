@@ -45,6 +45,7 @@ import {
   type FriendAddWaySelectionValue,
 } from "./friend-add-way-selection";
 import { ManagedAccountSelection } from "./managed-account-selection";
+import { MessageKeywords } from "./message-keywords";
 import { WecomMemberSelection } from "./wecom-member-selection";
 import { getWorkflowDirectEntryEndpoint } from "./direct-entry-api";
 import { WecomTagSelector } from "../../../components/wecom-tag-selector";
@@ -220,16 +221,12 @@ export function StartConfig({
               </TriggerParameter>
             ) : null}
             {hasTrigger(triggers, "message.received") ? (
-              <TriggerParameter label="消息关键词">
-                <CommaSeparatedTriggerInput
-                  ariaLabel="消息关键词"
-                  onCommit={(keywords) => updateStartConfig({
-                    triggers: [{ keywords, type: "message.received" }],
-                  })}
-                  placeholder="输入关键词，多个用英文逗号分隔"
-                  values={getMessageKeywords(triggers)}
-                />
-              </TriggerParameter>
+              <MessageKeywords
+                onChange={(keywords) => updateStartConfig({
+                  triggers: [{ keywords, type: "message.received" }],
+                })}
+                values={getMessageKeywords(triggers)}
+              />
             ) : null}
             </div>
           </section>
@@ -418,31 +415,6 @@ function TriggerParameter({ children, label }: {
   );
 }
 
-function CommaSeparatedTriggerInput({ ariaLabel, onCommit, placeholder, values }: {
-  ariaLabel: string;
-  onCommit(values: string[]): void;
-  placeholder: string;
-  values: string[];
-}) {
-  const serializedValues = values.join(",");
-  const [text, setText] = useState(serializedValues);
-  useEffect(() => setText(serializedValues), [serializedValues]);
-  return (
-    <Input
-      aria-label={ariaLabel}
-      className="h-9 px-3 text-[13px]"
-      onBlur={() => {
-        const normalized = normalizeCommaSeparatedValues(text);
-        setText(normalized.join(","));
-        onCommit(normalized);
-      }}
-      onChange={event => setText(event.target.value)}
-      placeholder={placeholder}
-      value={text}
-    />
-  );
-}
-
 function RadioRow({ children, inline = false, label, value }: {
   children?: ReactNode;
   inline?: boolean;
@@ -615,8 +587,4 @@ function getTagIds(triggers: WorkflowStartTrigger[]) {
 
 function getMessageKeywords(triggers: WorkflowStartTrigger[]) {
   return triggers.find(trigger => trigger.type === "message.received")?.keywords ?? [];
-}
-
-function normalizeCommaSeparatedValues(value: string) {
-  return [...new Set(value.split(",").map(item => item.trim()).filter(Boolean))];
 }

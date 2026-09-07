@@ -48,7 +48,7 @@ export function CouponConfig({ node, onNodeChange }: NodeSettingsProps<"coupon">
     status: next ? "ready" : "warning",
   });
   return <>
-    <WorkflowSettingsSection title="优惠券" contentClassName="text-[13px]">
+    <WorkflowSettingsSection title="选择优惠券" contentClassName="text-[13px]">
       {displayCoupon ? <div className="min-w-0 rounded-lg border p-3 pt-1.5">
         <div className="flex items-center justify-between gap-2">
           <span className="flex min-w-0 items-center gap-2 text-[13px] font-medium"><HugeiconsIcon icon={CouponPercentIcon} size={16} aria-hidden="true" />优惠券</span>

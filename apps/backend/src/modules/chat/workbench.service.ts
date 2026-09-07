@@ -8,6 +8,7 @@ import type {
   WorkbenchConversationReadResponse,
   WorkbenchConversationUnpinResponse,
   WorkbenchConversationUnreadResponse,
+  WorkbenchGroupMemberDto,
   WorkbenchGroupMembersResponse,
   WorkbenchKickGroupMemberRequest,
   WorkbenchKickGroupMemberResponse,
@@ -15,7 +16,6 @@ import type {
   WorkbenchPullGroupMembersResponse,
   WorkbenchEnterpriseMemberListResponse,
   WorkbenchEnterpriseMemberDto,
-  WorkbenchSeatFriendListResponse,
   WorkbenchHistoryMessagePageDto,
   WorkbenchHistoryMessageQuery,
   WorkbenchChatRecordDetailResponse,
@@ -117,6 +117,7 @@ import type {
 import {
   CUSTOMER_SEAT_RELATION_PREVIEW_LIMIT,
   CHAT_TYPE,
+  GROUP_MEMBER_TYPE,
   MATERIAL_COLLECTION_BIZ_TYPE,
   MATERIAL_COLLECTION_GROUP_MAX_COUNT,
   MATERIAL_COLLECTION_TITLE_MAX_LENGTH,
@@ -125,6 +126,7 @@ import {
   QUICK_REPLY_TOP_CATEGORY_ITEM_LIMIT,
   QUICK_REPLY_TOP_CATEGORY_LIMIT,
   WORKBENCH_ENTERPRISE_MEMBER_MAX_ITEMS,
+  WORKBENCH_PULL_GROUP_MEMBERS_MAX_ITEMS,
   buildMaterialFileContentJson,
   buildMaterialH5ContentJson,
   buildMaterialImageContentJson,
@@ -461,10 +463,6 @@ export type WorkbenchService = {
   getEnterpriseMembers(
     subUserId: string,
   ): Promise<WorkbenchEnterpriseMemberListResponse> | WorkbenchEnterpriseMemberListResponse;
-  getSeatFriends(
-    subUserId: string,
-    seatId: string,
-  ): Promise<WorkbenchSeatFriendListResponse> | WorkbenchSeatFriendListResponse;
   getCustomers(
     subUserId: string,
     options: {
@@ -885,20 +883,6 @@ export class MysqlWorkbenchService implements WorkbenchService {
     };
   }
 
-  async getSeatFriends(
-    subUserId: string,
-    seatId: string,
-  ): Promise<WorkbenchSeatFriendListResponse> {
-    const scope = await this.getAuthenticatedWorkbenchScope(subUserId);
-
-    return this.repository.listSeatFriends({
-      platform: scope.platform,
-      seatId,
-      subUserId,
-      uid: scope.uid,
-    });
-  }
-
   async getCustomers(
     subUserId: string,
     options: {
@@ -1234,6 +1218,13 @@ export class MysqlWorkbenchService implements WorkbenchService {
       throw new BadRequestError("CONTACT_REQUIRED", "请选择要邀请的客户");
     }
 
+    if (contactThirdUserids.length > WORKBENCH_PULL_GROUP_MEMBERS_MAX_ITEMS) {
+      throw new BadRequestError(
+        "CONTACT_LIMIT",
+        `一次最多邀请 ${WORKBENCH_PULL_GROUP_MEMBERS_MAX_ITEMS} 人`,
+      );
+    }
+
     const subUserNumericId = parseMySqlId(subUserId);
 
     if (subUserNumericId == null) {
@@ -1304,6 +1295,27 @@ export class MysqlWorkbenchService implements WorkbenchService {
 
     if (groupSeatId == null) {
       throw new BadRequestError("INVALID_GROUP_SEAT", "群席位无效");
+    }
+
+    const currentMember = findCurrentGroupMember(
+      groupMembers.items,
+      conversation.thirdUserId,
+    );
+
+    if (!canCurrentSeatKickGroupMembers(currentMember)) {
+      throw new ForbiddenError("GROUP_KICK_FORBIDDEN", "无权移出群成员");
+    }
+
+    const targetMember = groupMembers.items.find(
+      (member) => member.thirdUserId.trim() === kickOutThirdUserid,
+    );
+
+    if (!targetMember) {
+      throw new NotFoundError("GROUP_MEMBER_NOT_FOUND", "群成员不存在");
+    }
+
+    if (!canKickGroupMember(targetMember)) {
+      throw new ForbiddenError("GROUP_MEMBER_NOT_REMOVABLE", "无法移出该成员");
     }
 
     await this.javaClient.kickOutOfGroup({
@@ -5602,4 +5614,34 @@ function uniqueNonEmptyStrings(values: readonly string[]) {
   return Array.from(
     new Set(values.map((value) => value.trim()).filter(Boolean)),
   );
+}
+
+function findCurrentGroupMember(
+  items: WorkbenchGroupMemberDto[],
+  currentSeatThirdUserId?: string,
+) {
+  const normalizedSeatThirdUserId = currentSeatThirdUserId?.trim();
+
+  if (normalizedSeatThirdUserId) {
+    const matched = items.find(
+      (member) => member.thirdUserId.trim() === normalizedSeatThirdUserId,
+    );
+
+    if (matched) {
+      return matched;
+    }
+  }
+
+  return items.find((member) => member.isReceptionAccount);
+}
+
+function canCurrentSeatKickGroupMembers(member: WorkbenchGroupMemberDto | undefined) {
+  return (
+    member?.type === GROUP_MEMBER_TYPE.OWNER ||
+    member?.type === GROUP_MEMBER_TYPE.ADMIN
+  );
+}
+
+function canKickGroupMember(member: WorkbenchGroupMemberDto) {
+  return member.type === GROUP_MEMBER_TYPE.NORMAL && !member.isOpeningAccount;
 }

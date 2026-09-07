@@ -1,7 +1,8 @@
-import { useEffect, useMemo, useState } from "react";
-import type {
-  WorkbenchEnterpriseMemberDto,
-  WorkbenchSeatFriendDto,
+import { useEffect, useMemo, useRef, useState } from "react";
+import {
+  WORKBENCH_PULL_GROUP_MEMBERS_MAX_ITEMS,
+  type WorkbenchCustomerSummaryDto,
+  type WorkbenchEnterpriseMemberDto,
 } from "@chatai/contracts";
 import {
   ArrowDown01Icon,
@@ -36,6 +37,9 @@ const CANDIDATE_GROUPS = [
   { kind: "employee", defaultOpen: false, label: "成员" },
   { kind: "member", defaultOpen: true, label: "客户" },
 ] as const;
+/** 加群弹窗客户一页 200 人，减少「加载更多」出现次数。客户页仍是 50。 */
+const CUSTOMER_PAGE_SIZE = 200;
+const CUSTOMER_SEARCH_DEBOUNCE_MS = 300;
 
 const nameSegmenter =
   typeof Intl !== "undefined" && "Segmenter" in Intl
@@ -69,14 +73,20 @@ export function AddGroupMembersDialog({
   seatId?: string;
 }) {
   const [keyword, setKeyword] = useState("");
+  const [debouncedKeyword, setDebouncedKeyword] = useState("");
   const [employees, setEmployees] = useState<AddGroupMemberCandidate[]>([]);
   const [customers, setCustomers] = useState<AddGroupMemberCandidate[]>([]);
   const [employeeLoadState, setEmployeeLoadState] = useState<CandidateLoadState>("idle");
   const [customerLoadState, setCustomerLoadState] = useState<CandidateLoadState>("idle");
+  const [customerHasMore, setCustomerHasMore] = useState(false);
+  const [customerNextCursor, setCustomerNextCursor] = useState<string | undefined>();
+  const [isLoadingMoreCustomers, setIsLoadingMoreCustomers] = useState(false);
   const [selectedById, setSelectedById] = useState<Map<string, AddGroupMemberCandidate>>(
     () => new Map(),
   );
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const customerRequestIdRef = useRef(0);
+  const isLoadingMoreCustomersRef = useRef(false);
   const normalizedKeyword = keyword.trim();
   const excludedIds = useMemo(() => new Set(excludeMemberIds), [excludeMemberIds]);
   const selectedMembers = useMemo(() => [...selectedById.values()], [selectedById]);
@@ -99,22 +109,8 @@ export function AddGroupMembersDialog({
     [currentSeatThirdUserId, employees, excludedIds, normalizedKeyword],
   );
   const customerCandidates = useMemo(
-    () =>
-      customers.filter((candidate) => {
-        if (excludedIds.has(candidate.id)) {
-          return false;
-        }
-        if (
-          normalizedKeyword &&
-          !candidate.displayName.toLocaleLowerCase().includes(
-            normalizedKeyword.toLocaleLowerCase(),
-          )
-        ) {
-          return false;
-        }
-        return true;
-      }),
-    [customers, excludedIds, normalizedKeyword],
+    () => customers.filter((candidate) => !excludedIds.has(candidate.id)),
+    [customers, excludedIds],
   );
   const visibleCandidates = useMemo(
     () => [...employeeCandidates, ...customerCandidates],
@@ -123,13 +119,38 @@ export function AddGroupMembersDialog({
 
   useEffect(() => {
     if (!open) {
+      setDebouncedKeyword("");
+      return;
+    }
+
+    if (!normalizedKeyword) {
+      setDebouncedKeyword("");
+      return;
+    }
+
+    const timer = window.setTimeout(() => {
+      setDebouncedKeyword(normalizedKeyword);
+    }, CUSTOMER_SEARCH_DEBOUNCE_MS);
+
+    return () => {
+      window.clearTimeout(timer);
+    };
+  }, [normalizedKeyword, open]);
+
+  useEffect(() => {
+    if (!open) {
       setKeyword("");
       setEmployees([]);
       setCustomers([]);
       setEmployeeLoadState("idle");
       setCustomerLoadState("idle");
+      setCustomerHasMore(false);
+      setCustomerNextCursor(undefined);
+      setIsLoadingMoreCustomers(false);
+      isLoadingMoreCustomersRef.current = false;
       setSelectedById(new Map());
       setIsSubmitting(false);
+      customerRequestIdRef.current += 1;
       return;
     }
 
@@ -160,33 +181,57 @@ export function AddGroupMembersDialog({
     }
 
     if (!seatId) {
+      customerRequestIdRef.current += 1;
       setCustomers([]);
+      setCustomerHasMore(false);
+      setCustomerNextCursor(undefined);
+      setIsLoadingMoreCustomers(false);
+      isLoadingMoreCustomersRef.current = false;
       setCustomerLoadState("loaded");
       return;
     }
 
-    let cancelled = false;
+    const requestId = customerRequestIdRef.current + 1;
+    customerRequestIdRef.current = requestId;
+    setCustomers([]);
+    setCustomerHasMore(false);
+    setCustomerNextCursor(undefined);
+    setIsLoadingMoreCustomers(false);
+    isLoadingMoreCustomersRef.current = false;
     setCustomerLoadState("loading");
 
-    void getWorkbenchService()
-      .getSeatFriends(seatId)
-      .then((response) => {
-        if (cancelled) return;
-        setCustomers(response.items.map(toCustomerCandidate));
-        setCustomerLoadState("loaded");
-      })
-      .catch(() => {
-        if (cancelled) return;
-        setCustomers([]);
-        setCustomerLoadState("error");
-      });
+    void fetchCustomerPage({
+      keyword: debouncedKeyword,
+      seatId,
+    }).then((page) => {
+      if (customerRequestIdRef.current !== requestId) {
+        return;
+      }
 
-    return () => {
-      cancelled = true;
-    };
-  }, [open, seatId]);
+      if (!page) {
+        setCustomers([]);
+        setCustomerHasMore(false);
+        setCustomerNextCursor(undefined);
+        setCustomerLoadState("error");
+        return;
+      }
+
+      setCustomers(page.items);
+      setCustomerHasMore(page.hasMore);
+      setCustomerNextCursor(page.nextCursor);
+      setCustomerLoadState("loaded");
+    });
+  }, [debouncedKeyword, open, seatId]);
 
   function toggleCandidate(candidate: AddGroupMemberCandidate) {
+    if (
+      !selectedById.has(candidate.id) &&
+      selectedById.size >= WORKBENCH_PULL_GROUP_MEMBERS_MAX_ITEMS
+    ) {
+      toast.error(`最多选择 ${WORKBENCH_PULL_GROUP_MEMBERS_MAX_ITEMS} 人`);
+      return;
+    }
+
     setSelectedById((current) => {
       const next = new Map(current);
       if (next.has(candidate.id)) {
@@ -211,6 +256,80 @@ export function AddGroupMembersDialog({
       return;
     }
     onOpenChange(nextOpen);
+  }
+
+  function handleRetryCustomers() {
+    if (!seatId) {
+      setCustomers([]);
+      setCustomerHasMore(false);
+      setCustomerNextCursor(undefined);
+      setCustomerLoadState("loaded");
+      return;
+    }
+
+    const requestId = customerRequestIdRef.current + 1;
+    customerRequestIdRef.current = requestId;
+    setCustomers([]);
+    setCustomerHasMore(false);
+    setCustomerNextCursor(undefined);
+    setIsLoadingMoreCustomers(false);
+    isLoadingMoreCustomersRef.current = false;
+    setCustomerLoadState("loading");
+
+    void fetchCustomerPage({
+      keyword: debouncedKeyword,
+      seatId,
+    }).then((page) => {
+      if (customerRequestIdRef.current !== requestId) {
+        return;
+      }
+
+      if (!page) {
+        setCustomers([]);
+        setCustomerHasMore(false);
+        setCustomerNextCursor(undefined);
+        setCustomerLoadState("error");
+        return;
+      }
+
+      setCustomers(page.items);
+      setCustomerHasMore(page.hasMore);
+      setCustomerNextCursor(page.nextCursor);
+      setCustomerLoadState("loaded");
+    });
+  }
+
+  async function handleLoadMoreCustomers() {
+    if (!seatId || !customerNextCursor || isLoadingMoreCustomersRef.current) {
+      return;
+    }
+
+    const requestId = customerRequestIdRef.current;
+    isLoadingMoreCustomersRef.current = true;
+    setIsLoadingMoreCustomers(true);
+
+    const page = await fetchCustomerPage({
+      cursor: customerNextCursor,
+      keyword: debouncedKeyword,
+      seatId,
+    });
+
+    if (customerRequestIdRef.current !== requestId) {
+      return;
+    }
+
+    if (!page) {
+      toast.error("操作失败，请稍后重试");
+      isLoadingMoreCustomersRef.current = false;
+      setIsLoadingMoreCustomers(false);
+      return;
+    }
+
+    setCustomers((current) => mergeCustomerCandidates(current, page.items));
+    setCustomerHasMore(page.hasMore);
+    setCustomerNextCursor(page.nextCursor);
+    isLoadingMoreCustomersRef.current = false;
+    setIsLoadingMoreCustomers(false);
   }
 
   async function handleConfirm() {
@@ -266,27 +385,15 @@ export function AddGroupMembersDialog({
 
             <CandidateList
               candidates={visibleCandidates}
+              customerHasMore={customerHasMore}
               customerLoadState={customerLoadState}
               employeeLoadState={employeeLoadState}
+              isLoadingMoreCustomers={isLoadingMoreCustomers}
               keyword={normalizedKeyword}
-              onRetryCustomers={() => {
-                if (!seatId) {
-                  setCustomers([]);
-                  setCustomerLoadState("loaded");
-                  return;
-                }
-                setCustomerLoadState("loading");
-                void getWorkbenchService()
-                  .getSeatFriends(seatId)
-                  .then((response) => {
-                    setCustomers(response.items.map(toCustomerCandidate));
-                    setCustomerLoadState("loaded");
-                  })
-                  .catch(() => {
-                    setCustomers([]);
-                    setCustomerLoadState("error");
-                  });
+              onLoadMoreCustomers={() => {
+                void handleLoadMoreCustomers();
               }}
+              onRetryCustomers={handleRetryCustomers}
               onRetryEmployees={() => {
                 setEmployeeLoadState("loading");
                 void getWorkbenchService()
@@ -368,18 +475,24 @@ export function AddGroupMembersDialog({
 
 function CandidateList({
   candidates,
+  customerHasMore,
   customerLoadState,
   employeeLoadState,
+  isLoadingMoreCustomers,
   keyword,
+  onLoadMoreCustomers,
   onRetryCustomers,
   onRetryEmployees,
   onToggle,
   selectedIds,
 }: {
   candidates: AddGroupMemberCandidate[];
+  customerHasMore: boolean;
   customerLoadState: CandidateLoadState;
   employeeLoadState: CandidateLoadState;
+  isLoadingMoreCustomers: boolean;
   keyword: string;
+  onLoadMoreCustomers: () => void;
   onRetryCustomers: () => void;
   onRetryEmployees: () => void;
   onToggle: (candidate: AddGroupMemberCandidate) => void;
@@ -403,10 +516,10 @@ function CandidateList({
     if (keyword) {
       setOpenByKind({
         employee: candidates.some((candidate) => candidate.kind === "employee"),
-        member: candidates.some((candidate) => candidate.kind === "member"),
+        member: candidates.some((candidate) => candidate.kind === "member") || customerHasMore,
       });
     }
-  }, [candidates, isInitialLoading, keyword]);
+  }, [candidates, customerHasMore, isInitialLoading, keyword]);
 
   if (isInitialLoading) {
     return (
@@ -452,6 +565,15 @@ function CandidateList({
           <CandidateGroup
             group={group}
             key={group.kind}
+            loadMore={
+              group.kind === "member"
+                ? {
+                    hasMore: customerHasMore,
+                    isLoading: isLoadingMoreCustomers,
+                    onLoadMore: onLoadMoreCustomers,
+                  }
+                : undefined
+            }
             onOpenChange={(open) => {
               setOpenByKind((current) => ({ ...current, [group.kind]: open }));
             }}
@@ -468,6 +590,7 @@ function CandidateList({
 
 function CandidateGroup({
   group,
+  loadMore,
   onOpenChange,
   onRetry,
   onToggle,
@@ -480,6 +603,11 @@ function CandidateGroup({
     label: string;
     loadState: CandidateLoadState;
   };
+  loadMore?: {
+    hasMore: boolean;
+    isLoading: boolean;
+    onLoadMore: () => void;
+  };
   onOpenChange: (open: boolean) => void;
   onRetry: () => void;
   onToggle: (candidate: AddGroupMemberCandidate) => void;
@@ -487,6 +615,7 @@ function CandidateGroup({
   selectedIds: Map<string, AddGroupMemberCandidate>;
 }) {
   const contentId = `add-group-member-${group.kind}`;
+  const showEmpty = group.items.length === 0 && !loadMore?.hasMore;
 
   return (
     <Collapsible onOpenChange={onOpenChange} open={open}>
@@ -525,34 +654,54 @@ function CandidateGroup({
               重试
             </Button>
           </div>
-        ) : group.items.length === 0 ? (
-          <div className="px-2 py-2 text-sm text-muted-foreground">暂无数据</div>
         ) : (
-          <ul className="space-y-0.5">
-            {group.items.map((candidate) => {
-              const checked = selectedIds.has(candidate.id);
-              return (
-                <li key={candidate.id}>
-                  <label
-                    className={cn(
-                      "flex min-w-0 cursor-pointer items-center gap-2 rounded-[6px] px-2 py-1.5 hover:bg-accent",
-                      checked && "bg-accent",
-                    )}
-                  >
-                    <Checkbox
-                      aria-label={`选择 ${candidate.displayName}`}
-                      checked={checked}
-                      onCheckedChange={() => onToggle(candidate)}
-                    />
-                    <CandidateAvatar member={candidate} />
-                    <span className="min-w-0 flex-1 truncate text-sm text-foreground">
-                      {candidate.displayName}
-                    </span>
-                  </label>
-                </li>
-              );
-            })}
-          </ul>
+          <>
+            {showEmpty ? (
+              <div className="px-2 py-2 text-sm text-muted-foreground">暂无数据</div>
+            ) : group.items.length > 0 ? (
+              <ul className="space-y-0.5">
+                {group.items.map((candidate) => {
+                  const checked = selectedIds.has(candidate.id);
+                  return (
+                    <li key={candidate.id}>
+                      <label
+                        className={cn(
+                          "flex min-w-0 cursor-pointer items-center gap-2 rounded-[6px] px-2 py-1.5 hover:bg-accent",
+                          checked && "bg-accent",
+                        )}
+                      >
+                        <Checkbox
+                          aria-label={`选择 ${candidate.displayName}`}
+                          checked={checked}
+                          onCheckedChange={() => onToggle(candidate)}
+                        />
+                        <CandidateAvatar member={candidate} />
+                        <span className="min-w-0 flex-1 truncate text-sm text-foreground">
+                          {candidate.displayName}
+                        </span>
+                      </label>
+                    </li>
+                  );
+                })}
+              </ul>
+            ) : null}
+            {loadMore?.hasMore ? (
+              <div className="flex justify-center py-2">
+                <Button
+                  disabled={loadMore.isLoading}
+                  onClick={loadMore.onLoadMore}
+                  size="sm"
+                  type="button"
+                  variant="outline"
+                >
+                  {loadMore.isLoading ? (
+                    <Spinner className="text-current" size={14} variant="classic" />
+                  ) : null}
+                  加载更多
+                </Button>
+              </div>
+            ) : null}
+          </>
         )}
       </CollapsibleContent>
     </Collapsible>
@@ -570,10 +719,53 @@ function CandidateAvatar({ member }: { member: AddGroupMemberCandidate }) {
   );
 }
 
-function toCustomerCandidate(item: WorkbenchSeatFriendDto): AddGroupMemberCandidate {
+async function fetchCustomerPage(input: {
+  cursor?: string;
+  keyword: string;
+  seatId: string;
+}) {
+  try {
+    const response = await getWorkbenchService().getCustomers({
+      ...(input.cursor ? { cursor: input.cursor } : {}),
+      ...(input.keyword ? { keyword: input.keyword } : {}),
+      limit: CUSTOMER_PAGE_SIZE,
+      scope: "mine",
+      seatIds: [input.seatId],
+    });
+
+    return {
+      hasMore: response.hasMore,
+      items: response.items.map(toCustomerCandidate),
+      nextCursor: response.nextCursor,
+    };
+  } catch {
+    return undefined;
+  }
+}
+
+function mergeCustomerCandidates(
+  current: AddGroupMemberCandidate[],
+  incoming: AddGroupMemberCandidate[],
+) {
+  const merged = [...current];
+  const seenIds = new Set(current.map((candidate) => candidate.id));
+
+  for (const candidate of incoming) {
+    if (seenIds.has(candidate.id)) {
+      continue;
+    }
+
+    seenIds.add(candidate.id);
+    merged.push(candidate);
+  }
+
+  return merged;
+}
+
+function toCustomerCandidate(item: WorkbenchCustomerSummaryDto): AddGroupMemberCandidate {
   return {
-    avatarUrl: item.avatarUrl,
-    displayName: item.displayName.trim() || item.thirdExternalUserId,
+    avatarUrl: item.avatar,
+    displayName: item.name.trim() || item.realName.trim() || item.thirdExternalUserId,
     id: item.thirdExternalUserId,
     kind: "member",
   };

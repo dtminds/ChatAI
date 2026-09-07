@@ -31,7 +31,6 @@ import {
   type WorkbenchChatRecordDetailResponse,
   type WorkbenchGroupMembersResponse,
   type WorkbenchEnterpriseMemberListResponse,
-  type WorkbenchSeatFriendListResponse,
   type WorkbenchKickGroupMemberRequest,
   type WorkbenchKickGroupMemberResponse,
   type WorkbenchPullGroupMembersRequest,
@@ -173,7 +172,6 @@ export type WorkbenchService = {
   deleteConversation: (conversationId: string) => Promise<WorkbenchConversationDeleteResponse>;
   getSeats: () => Promise<WorkbenchSeatDto[]>;
   getEnterpriseMembers: () => Promise<WorkbenchEnterpriseMemberListResponse>;
-  getSeatFriends: (seatId: string) => Promise<WorkbenchSeatFriendListResponse>;
   getConversations: (
     seatId: string,
     options?: WorkbenchConversationListOptions,
@@ -527,9 +525,6 @@ export function createMockWorkbenchService(): WorkbenchService {
           ];
         }),
       };
-    },
-    async getSeatFriends() {
-      return { items: [] };
     },
     async deleteConversation(conversationId) {
       return removeConversation(state, conversationId);
@@ -2120,11 +2115,6 @@ export function createHttpWorkbenchService(): WorkbenchService {
     },
     getEnterpriseMembers() {
       return http.get<WorkbenchEnterpriseMemberListResponse>("/server/employees");
-    },
-    getSeatFriends(seatId) {
-      return http.get<WorkbenchSeatFriendListResponse>(
-        `/server/seats/${encodeURIComponent(seatId)}/friends`,
-      );
     },
     deleteConversation(conversationId) {
       return http.post<WorkbenchConversationDeleteResponse>(

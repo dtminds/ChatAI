@@ -1,8 +1,10 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+  GROUP_MEMBER_TYPE,
   MATERIAL_COLLECTION_BIZ_TYPE,
   QUICK_REPLY_SCOPE_TYPE,
   WORKBENCH_ENTERPRISE_MEMBER_MAX_ITEMS,
+  WORKBENCH_PULL_GROUP_MEMBERS_MAX_ITEMS,
   type WorkbenchMaterialCollectionItemDto,
 } from "@chatai/contracts";
 import {
@@ -2165,6 +2167,24 @@ describe("MysqlWorkbenchService", () => {
     });
   });
 
+  it("rejects pulling more friends than the invite limit", async () => {
+    const javaClient = createJavaClient();
+    const service = createWorkbenchService({} as unknown as WorkbenchRepository, javaClient);
+
+    await expect(
+      service.pullGroupMembers("101", "88", {
+        contactThirdUserIds: Array.from(
+          { length: WORKBENCH_PULL_GROUP_MEMBERS_MAX_ITEMS + 1 },
+          (_, index) => `external-${index + 1}`,
+        ),
+      }),
+    ).rejects.toMatchObject({
+      code: "CONTACT_LIMIT",
+      statusCode: 400,
+    });
+    expect(javaClient.pullFriendsInGroup).not.toHaveBeenCalled();
+  });
+
   it("lists only ChatAI seats of the current enterprise as add-group employees", async () => {
     const javaClient = createJavaClient();
     const listTenantSeatIdentities = vi.fn().mockResolvedValue([
@@ -2237,39 +2257,6 @@ describe("MysqlWorkbenchService", () => {
     expect(listTenantSeatIdentities).toHaveBeenCalledOnce();
   });
 
-  it("lists seat friends for the add-group dialog from the current takeover seat", async () => {
-    const javaClient = createJavaClient();
-    const listSeatFriends = vi.fn().mockResolvedValue({
-      items: [
-        {
-          avatarUrl: "",
-          displayName: "水门溪风",
-          thirdExternalUserId: "external-shuimen",
-        },
-      ],
-    });
-    const service = createWorkbenchService(
-      { listSeatFriends } as unknown as WorkbenchRepository,
-      javaClient,
-    );
-
-    await expect(service.getSeatFriends("101", "12")).resolves.toEqual({
-      items: [
-        {
-          avatarUrl: "",
-          displayName: "水门溪风",
-          thirdExternalUserId: "external-shuimen",
-        },
-      ],
-    });
-    expect(listSeatFriends).toHaveBeenCalledWith({
-      platform: 5,
-      seatId: "12",
-      subUserId: "101",
-      uid: 9001,
-    });
-  });
-
   it("rejects kicking a group member when the conversation seat is not taken over", async () => {
     const javaClient = createJavaClient();
     const service = createWorkbenchService(
@@ -2313,42 +2300,158 @@ describe("MysqlWorkbenchService", () => {
     expect(javaClient.kickOutOfGroup).not.toHaveBeenCalled();
   });
 
-  it("kicks a group member from a taken-over group through Java", async () => {
+  it.each([
+    { role: "owner", type: GROUP_MEMBER_TYPE.OWNER },
+    { role: "admin", type: GROUP_MEMBER_TYPE.ADMIN },
+  ] as const)(
+    "kicks a group member when the current seat is a group $role",
+    async ({ type }) => {
+      const javaClient = createJavaClient();
+      const service = createWorkbenchService(
+        createKickGroupMembersRepository({
+          items: [
+            {
+              isReceptionAccount: true,
+              thirdUserId: "seat-owner",
+              type,
+            },
+            {
+              thirdUserId: "member-xiaoming",
+              type: GROUP_MEMBER_TYPE.NORMAL,
+            },
+          ],
+        }),
+        javaClient,
+      );
+
+      await expect(
+        service.kickGroupMember("101", "88", {
+          kickOutThirdUserId: " member-xiaoming ",
+        }),
+      ).resolves.toEqual({
+        conversationId: "88",
+      });
+      expect(javaClient.kickOutOfGroup).toHaveBeenCalledWith({
+        groupSeatId: 501,
+        kickOutThirdUserid: "member-xiaoming",
+        platform: 5,
+        subUserId: 101,
+        uid: 9001,
+      });
+    },
+  );
+
+  it("rejects kicking a group member when the current seat is a regular member", async () => {
     const javaClient = createJavaClient();
     const service = createWorkbenchService(
-      {
-        canAccessSeat: vi.fn().mockResolvedValue(true),
-        getConversationLookup: vi.fn().mockResolvedValue({
-          id: "88",
-          platform: 5,
-          seatId: "12",
-          seatHostSubUserId: "101",
-          uid: 9001,
-        }),
-        listGroupMembers: vi.fn().mockResolvedValue({
-          conversationId: "88",
-          groupSeatId: "501",
-          items: [],
-          thirdGroupId: "group-1",
-        }),
-      } as unknown as WorkbenchRepository,
+      createKickGroupMembersRepository({
+        currentSeatThirdUserId: "seat-member",
+        items: [
+          {
+            isReceptionAccount: true,
+            thirdUserId: "seat-member",
+            type: GROUP_MEMBER_TYPE.NORMAL,
+          },
+          {
+            thirdUserId: "member-xiaoming",
+            type: GROUP_MEMBER_TYPE.NORMAL,
+          },
+        ],
+      }),
       javaClient,
     );
 
     await expect(
       service.kickGroupMember("101", "88", {
-        kickOutThirdUserId: " member-xiaoming ",
+        kickOutThirdUserId: "member-xiaoming",
       }),
-    ).resolves.toEqual({
-      conversationId: "88",
+    ).rejects.toMatchObject({
+      code: "GROUP_KICK_FORBIDDEN",
+      statusCode: 403,
     });
-    expect(javaClient.kickOutOfGroup).toHaveBeenCalledWith({
-      groupSeatId: 501,
-      kickOutThirdUserid: "member-xiaoming",
-      platform: 5,
-      subUserId: 101,
-      uid: 9001,
+    expect(javaClient.kickOutOfGroup).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    {
+      kickOutThirdUserId: "member-owner",
+      label: "owner",
+      target: {
+        thirdUserId: "member-owner",
+        type: GROUP_MEMBER_TYPE.OWNER,
+      },
+    },
+    {
+      kickOutThirdUserId: "member-admin",
+      label: "admin",
+      target: {
+        thirdUserId: "member-admin",
+        type: GROUP_MEMBER_TYPE.ADMIN,
+      },
+    },
+    {
+      kickOutThirdUserId: "member-opening",
+      label: "opening account",
+      target: {
+        isOpeningAccount: true,
+        thirdUserId: "member-opening",
+        type: GROUP_MEMBER_TYPE.NORMAL,
+      },
+    },
+  ] as const)(
+    "rejects kicking a group $label",
+    async ({ kickOutThirdUserId, target }) => {
+      const javaClient = createJavaClient();
+      const service = createWorkbenchService(
+        createKickGroupMembersRepository({
+          items: [
+            {
+              isReceptionAccount: true,
+              thirdUserId: "seat-owner",
+              type: GROUP_MEMBER_TYPE.OWNER,
+            },
+            target,
+          ],
+        }),
+        javaClient,
+      );
+
+      await expect(
+        service.kickGroupMember("101", "88", {
+          kickOutThirdUserId,
+        }),
+      ).rejects.toMatchObject({
+        code: "GROUP_MEMBER_NOT_REMOVABLE",
+        statusCode: 403,
+      });
+      expect(javaClient.kickOutOfGroup).not.toHaveBeenCalled();
+    },
+  );
+
+  it("rejects kicking a group member that is not in the group", async () => {
+    const javaClient = createJavaClient();
+    const service = createWorkbenchService(
+      createKickGroupMembersRepository({
+        items: [
+          {
+            isReceptionAccount: true,
+            thirdUserId: "seat-owner",
+            type: GROUP_MEMBER_TYPE.OWNER,
+          },
+        ],
+      }),
+      javaClient,
+    );
+
+    await expect(
+      service.kickGroupMember("101", "88", {
+        kickOutThirdUserId: "member-xiaoming",
+      }),
+    ).rejects.toMatchObject({
+      code: "GROUP_MEMBER_NOT_FOUND",
+      statusCode: 404,
     });
+    expect(javaClient.kickOutOfGroup).not.toHaveBeenCalled();
   });
 
   it("unpins a taken-over conversation through Java", async () => {
@@ -8878,6 +8981,43 @@ describe("MysqlWorkbenchService", () => {
     },
   );
 });
+
+function createKickGroupMembersRepository(input: {
+  currentSeatThirdUserId?: string;
+  items: Array<{
+    isOpeningAccount?: boolean;
+    isReceptionAccount?: boolean;
+    thirdUserId: string;
+    type: number;
+  }>;
+}) {
+  const currentSeatThirdUserId = input.currentSeatThirdUserId ?? "seat-owner";
+
+  return {
+    canAccessSeat: vi.fn().mockResolvedValue(true),
+    getConversationLookup: vi.fn().mockResolvedValue({
+      id: "88",
+      platform: 5,
+      seatId: "12",
+      seatHostSubUserId: "101",
+      thirdUserId: currentSeatThirdUserId,
+      uid: 9001,
+    }),
+    listGroupMembers: vi.fn().mockResolvedValue({
+      conversationId: "88",
+      groupSeatId: "501",
+      items: input.items.map((item) => ({
+        avatarUrl: "",
+        displayName: item.thirdUserId,
+        thirdUserId: item.thirdUserId,
+        type: item.type,
+        ...(item.isOpeningAccount ? { isOpeningAccount: true } : {}),
+        ...(item.isReceptionAccount ? { isReceptionAccount: true } : {}),
+      })),
+      thirdGroupId: "group-1",
+    }),
+  } as unknown as WorkbenchRepository;
+}
 
 function createWorkbenchService(
   repository: WorkbenchRepository,

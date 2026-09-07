@@ -249,6 +249,15 @@ describe("request", () => {
   });
 
   it("shares one refresh request across concurrent unauthorized responses", async () => {
+    let releaseRefresh!: () => void;
+    const refreshGate = new Promise<void>((resolve) => {
+      releaseRefresh = resolve;
+    });
+    const unauthorizedResponse = vi.fn();
+    const interceptor = requestInstance.interceptors.response.use(undefined, (error) => {
+      if (error.response?.status === 401) unauthorizedResponse();
+      return Promise.reject(error);
+    });
     mock.onGet("/server/me").replyOnce(401, {
       error: {
         code: "UNAUTHORIZED",
@@ -264,7 +273,7 @@ describe("request", () => {
       success: false,
     });
     mock.onPost("/auth/refresh").reply(async () => {
-      await new Promise((resolve) => window.setTimeout(resolve, 5));
+      await refreshGate;
 
       return [
         200,
@@ -280,15 +289,24 @@ describe("request", () => {
     mock.onGet("/server/me").reply(200, { ok: "me" });
     mock.onGet("/server/seats").reply(200, { ok: "seats" });
 
-    const [me, seats] = await Promise.all([
-      http.get<{ ok: string }>("/server/me"),
-      http.get<{ ok: string }>("/server/seats"),
-    ]);
+    const requests = [http.get<{ ok: string }>("/server/me")];
+    try {
+      await vi.waitFor(() => expect(mock.history.post).toHaveLength(1));
+      requests.push(http.get<{ ok: string }>("/server/seats"));
+      await vi.waitFor(() => expect(unauthorizedResponse).toHaveBeenCalledTimes(2));
+      expect(mock.history.post).toHaveLength(1);
 
-    expect(me).toEqual({ ok: "me" });
-    expect(seats).toEqual({ ok: "seats" });
-    expect(mock.history.post).toHaveLength(1);
-    expect(mock.history.post[0]?.data).toBeUndefined();
+      releaseRefresh();
+      const [me, seats] = await Promise.all(requests);
+      expect(me).toEqual({ ok: "me" });
+      expect(seats).toEqual({ ok: "seats" });
+      expect(mock.history.post).toHaveLength(1);
+      expect(mock.history.post[0]?.data).toBeUndefined();
+    } finally {
+      releaseRefresh();
+      await Promise.allSettled(requests);
+      requestInstance.interceptors.response.eject(interceptor);
+    }
   });
 
   it("notifies the app when refresh fails", async () => {

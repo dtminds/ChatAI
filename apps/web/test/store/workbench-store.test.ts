@@ -51,19 +51,7 @@ function createDeferred<T = void>() {
 }
 
 async function waitForStoreAssertion(assertion: () => void) {
-  let lastError: unknown;
-
-  for (let index = 0; index < 20; index += 1) {
-    try {
-      assertion();
-      return;
-    } catch (error) {
-      lastError = error;
-      await new Promise((resolve) => globalThis.setTimeout(resolve, 0));
-    }
-  }
-
-  throw lastError;
+  await vi.waitFor(assertion);
 }
 
 function getSeedMessageIdAt(conversationId: string, index: number) {

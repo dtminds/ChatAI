@@ -1,6 +1,6 @@
 import MockAdapter from "axios-mock-adapter";
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { RouterProvider, createMemoryRouter } from "react-router-dom";
 import { toast } from "sonner";
@@ -1667,15 +1667,22 @@ describe("Chat settings pages", () => {
       "https://example.com/drc.png",
     );
 
-    await user.unhover(
-      screen.getByRole("button", { name: "查看 客服一号 的全部关联托管账号" }),
-    );
-
-    await waitFor(() => {
+    vi.useFakeTimers();
+    try {
+      fireEvent.mouseLeave(
+        screen.getByRole("button", { name: "查看 客服一号 的全部关联托管账号" }),
+      );
+      await act(() => vi.advanceTimersByTimeAsync(120));
       expect(screen.queryByText("关联托管账号 · 4")).not.toBeInTheDocument();
-    });
-    await new Promise((resolve) => window.setTimeout(resolve, 180));
-    expect(screen.queryByText("关联托管账号 · 4")).not.toBeInTheDocument();
+
+      // Closing must not refocus the trigger and reopen the popover.
+      await act(() => vi.advanceTimersByTimeAsync(180));
+      expect(screen.queryByText("关联托管账号 · 4")).not.toBeInTheDocument();
+    } finally {
+      cleanup();
+      vi.clearAllTimers();
+      vi.useRealTimers();
+    }
   });
 
   it("shows a single related WeCom seat as one avatar without a total count", async () => {

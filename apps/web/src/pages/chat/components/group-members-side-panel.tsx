@@ -5,8 +5,10 @@ import {
 } from "@chatai/contracts";
 import {
   Cancel01Icon,
+  LogoutSquare01Icon,
   ReloadIcon,
   Search01Icon,
+  UserAdd01Icon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -19,7 +21,9 @@ import { Separator } from "@/components/ui/separator";
 import { Spinner } from "@/components/ui/spinner";
 import { cn } from "@/lib/utils";
 import { getWorkbenchService } from "@/pages/chat/api/workbench-service";
+import { AddGroupMembersDialog } from "@/pages/chat/components/add-group-members-dialog";
 import { CustomerSeatRelationList } from "@/pages/chat/components/customer-seat-relation-list";
+import { RemoveGroupMemberDialog } from "@/pages/chat/components/remove-group-member-dialog";
 import { DelayedHoverPopover } from "@/pages/chat/components/delayed-hover-popover";
 import type {
   Account,
@@ -44,20 +48,36 @@ const groupMemberNameCollator = new Intl.Collator("zh-Hans-CN");
 export function GroupMembersSidePanel({
   accounts = [],
   currentEmployeeId,
+  currentSeatThirdUserId,
+  conversationId,
   groupMembers,
   isLoading,
   onRefresh,
   onStartChat,
+  seatId,
 }: {
   accounts?: Account[];
   currentEmployeeId?: string;
+  currentSeatThirdUserId?: string;
+  conversationId?: string;
   groupMembers: GroupMember[];
   isLoading: boolean;
   onRefresh: () => void;
   onStartChat?: (input: CustomerChatStartInput) => void | Promise<void>;
+  seatId?: string;
 }) {
+  const [isAddOpen, setIsAddOpen] = useState(false);
   const [isSearchOpen, setIsSearchOpen] = useState(false);
+  const [memberToRemove, setMemberToRemove] = useState<GroupMember | null>(null);
   const [searchKeyword, setSearchKeyword] = useState("");
+  const existingMemberIds = useMemo(
+    () => groupMembers.map((member) => member.id),
+    [groupMembers],
+  );
+  const canRemoveGroupMembers = canCurrentSeatRemoveGroupMembers(
+    groupMembers,
+    currentSeatThirdUserId,
+  );
   const normalizedSearchKeyword = searchKeyword.trim().toLocaleLowerCase();
   const filteredGroupMembers = useMemo(
     () =>
@@ -99,7 +119,8 @@ export function GroupMembersSidePanel({
   );
 
   return (
-    <ScrollArea className="h-full min-h-0">
+    <>
+      <ScrollArea className="h-full min-h-0">
       <div className="space-y-4 px-4 py-4">
         <div className="flex h-6 items-center justify-between gap-2">
           <div className="flex h-6 min-w-0 flex-1 items-center">
@@ -119,6 +140,17 @@ export function GroupMembersSidePanel({
             )}
           </div>
           <div className="flex h-6 shrink-0 items-center gap-1">
+            <Button
+              aria-label="添加群成员"
+              className="size-6 shrink-0 rounded-[6px] text-muted-foreground"
+              onClick={() => setIsAddOpen(true)}
+              size="icon"
+              title="添加群成员"
+              type="button"
+              variant="ghost"
+            >
+              <HugeiconsIcon icon={UserAdd01Icon} size={13} strokeWidth={2} />
+            </Button>
             <Button
               aria-label={isSearchOpen ? "关闭搜索" : "搜索群成员"}
               className="size-6 shrink-0 rounded-[6px] text-muted-foreground"
@@ -176,9 +208,11 @@ export function GroupMembersSidePanel({
                 {group.items.map((member) => (
                   <GroupMemberRow
                     accounts={accounts}
+                    canRemove={canRemoveGroupMembers && canBeRemovedFromGroup(member)}
                     currentEmployeeId={currentEmployeeId}
                     key={member.id}
                     member={member}
+                    onRemove={() => setMemberToRemove(member)}
                     onStartChat={onStartChat}
                   />
                 ))}
@@ -191,19 +225,42 @@ export function GroupMembersSidePanel({
           </div>
         )}
       </div>
-    </ScrollArea>
+      </ScrollArea>
+      <AddGroupMembersDialog
+        conversationId={conversationId}
+        currentSeatThirdUserId={currentSeatThirdUserId}
+        excludeMemberIds={existingMemberIds}
+        onAdded={onRefresh}
+        onOpenChange={setIsAddOpen}
+        open={isAddOpen}
+        seatId={seatId}
+      />
+      <RemoveGroupMemberDialog
+        conversationId={conversationId}
+        member={memberToRemove}
+        onOpenChange={(open) => {
+          if (!open) setMemberToRemove(null);
+        }}
+        onRemoved={onRefresh}
+        open={memberToRemove !== null}
+      />
+    </>
   );
 }
 
 function GroupMemberRow({
   accounts,
+  canRemove,
   currentEmployeeId,
   member,
+  onRemove,
   onStartChat,
 }: {
   accounts: Account[];
+  canRemove: boolean;
   currentEmployeeId?: string;
   member: GroupMember;
+  onRemove: () => void;
   onStartChat?: (input: CustomerChatStartInput) => void | Promise<void>;
 }) {
   if (member.isOpeningAccount || member.isReceptionAccount) {
@@ -220,8 +277,10 @@ function GroupMemberRow({
   return (
     <GroupMemberCustomerPopover
       accounts={accounts}
+      canRemove={canRemove}
       currentEmployeeId={currentEmployeeId}
       member={member}
+      onRemove={onRemove}
       onStartChat={onStartChat}
     />
   );
@@ -229,13 +288,17 @@ function GroupMemberRow({
 
 function GroupMemberCustomerPopover({
   accounts,
+  canRemove,
   currentEmployeeId,
   member,
+  onRemove,
   onStartChat,
 }: {
   accounts: Account[];
+  canRemove: boolean;
   currentEmployeeId?: string;
   member: GroupMember;
+  onRemove: () => void;
   onStartChat?: (input: CustomerChatStartInput) => void | Promise<void>;
 }) {
   const requestIdRef = useRef(0);
@@ -365,6 +428,28 @@ function GroupMemberCustomerPopover({
         <div className="min-w-0 flex-1 truncate text-sm font-medium text-foreground">
           {member.displayName}
         </div>
+        {canRemove ? (
+          <Button
+            aria-label={`将 ${member.displayName} 移出群聊`}
+            className="h-7 shrink-0 gap-1 px-2 text-xs text-foreground"
+            onClick={(event) => {
+              event.preventDefault();
+              event.stopPropagation();
+              onRemove();
+            }}
+            size="sm"
+            type="button"
+            variant="ghost"
+          >
+            <HugeiconsIcon
+              className="text-destructive"
+              icon={LogoutSquare01Icon}
+              size={14}
+              strokeWidth={1.8}
+            />
+            移出群聊
+          </Button>
+        ) : null}
       </div>
       <Separator className="my-2.5 bg-divider" />
       {relationState.status === "loading" || relationState.status === "idle" ? (
@@ -458,6 +543,22 @@ function getFirstGroupMemberNameGrapheme(value: string) {
     [...trimmedValue][0] ??
     ""
   );
+}
+
+function canCurrentSeatRemoveGroupMembers(
+  groupMembers: GroupMember[],
+  currentSeatThirdUserId?: string,
+) {
+  const currentMember = currentSeatThirdUserId
+    ? groupMembers.find((member) => member.id === currentSeatThirdUserId)
+    : groupMembers.find((member) => member.isReceptionAccount);
+
+  return currentMember?.type === GROUP_MEMBER_TYPE.OWNER
+    || currentMember?.type === GROUP_MEMBER_TYPE.ADMIN;
+}
+
+function canBeRemovedFromGroup(member: GroupMember) {
+  return member.type === GROUP_MEMBER_TYPE.NORMAL && !member.isOpeningAccount;
 }
 
 function sortGroupMembers(left: GroupMember, right: GroupMember) {

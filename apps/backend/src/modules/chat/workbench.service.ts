@@ -9,6 +9,13 @@ import type {
   WorkbenchConversationUnpinResponse,
   WorkbenchConversationUnreadResponse,
   WorkbenchGroupMembersResponse,
+  WorkbenchKickGroupMemberRequest,
+  WorkbenchKickGroupMemberResponse,
+  WorkbenchPullGroupMembersRequest,
+  WorkbenchPullGroupMembersResponse,
+  WorkbenchEnterpriseMemberListResponse,
+  WorkbenchEnterpriseMemberDto,
+  WorkbenchSeatFriendListResponse,
   WorkbenchHistoryMessagePageDto,
   WorkbenchHistoryMessageQuery,
   WorkbenchChatRecordDetailResponse,
@@ -117,6 +124,7 @@ import {
   QUICK_REPLY_CHILD_CATEGORY_LIMIT,
   QUICK_REPLY_TOP_CATEGORY_ITEM_LIMIT,
   QUICK_REPLY_TOP_CATEGORY_LIMIT,
+  WORKBENCH_ENTERPRISE_MEMBER_MAX_ITEMS,
   buildMaterialFileContentJson,
   buildMaterialH5ContentJson,
   buildMaterialImageContentJson,
@@ -168,6 +176,7 @@ import {
   decodeConversationListCursor,
   type MaterialCollectionScope,
   parseMySqlId,
+  type TenantSeatIdentity,
   type WorkbenchSeatAccessScope,
   type WorkbenchRepository,
 } from "./workbench-repository.js";
@@ -434,11 +443,28 @@ export type WorkbenchService = {
     subUserId: string,
     conversationId: string,
   ): Promise<WorkbenchGroupMembersResponse> | WorkbenchGroupMembersResponse;
+  pullGroupMembers(
+    subUserId: string,
+    conversationId: string,
+    request: WorkbenchPullGroupMembersRequest,
+  ): Promise<WorkbenchPullGroupMembersResponse> | WorkbenchPullGroupMembersResponse;
+  kickGroupMember(
+    subUserId: string,
+    conversationId: string,
+    request: WorkbenchKickGroupMemberRequest,
+  ): Promise<WorkbenchKickGroupMemberResponse> | WorkbenchKickGroupMemberResponse;
   getUploadCredential(
     subUserId: string,
     conversationId: string,
   ): Promise<WorkbenchUploadCredentialResponse> | WorkbenchUploadCredentialResponse;
   getSeats(subUserId: string): Promise<WorkbenchSeatDto[]> | WorkbenchSeatDto[];
+  getEnterpriseMembers(
+    subUserId: string,
+  ): Promise<WorkbenchEnterpriseMemberListResponse> | WorkbenchEnterpriseMemberListResponse;
+  getSeatFriends(
+    subUserId: string,
+    seatId: string,
+  ): Promise<WorkbenchSeatFriendListResponse> | WorkbenchSeatFriendListResponse;
   getCustomers(
     subUserId: string,
     options: {
@@ -850,6 +876,29 @@ export class MysqlWorkbenchService implements WorkbenchService {
     return this.repository.listSeats(toSeatAccessScope(scope, subUserId));
   }
 
+  async getEnterpriseMembers(subUserId: string): Promise<WorkbenchEnterpriseMemberListResponse> {
+    const scope = await this.getAuthenticatedWorkbenchScope(subUserId);
+    const seats = await this.repository.listTenantSeatIdentities(scope);
+
+    return {
+      items: mapTenantSeatsToEnterpriseMembers(seats),
+    };
+  }
+
+  async getSeatFriends(
+    subUserId: string,
+    seatId: string,
+  ): Promise<WorkbenchSeatFriendListResponse> {
+    const scope = await this.getAuthenticatedWorkbenchScope(subUserId);
+
+    return this.repository.listSeatFriends({
+      platform: scope.platform,
+      seatId,
+      subUserId,
+      uid: scope.uid,
+    });
+  }
+
   async getCustomers(
     subUserId: string,
     options: {
@@ -1172,6 +1221,102 @@ export class MysqlWorkbenchService implements WorkbenchService {
     }
 
     return groupMembers;
+  }
+
+  async pullGroupMembers(
+    subUserId: string,
+    conversationId: string,
+    request: WorkbenchPullGroupMembersRequest,
+  ): Promise<WorkbenchPullGroupMembersResponse> {
+    const contactThirdUserids = uniqueNonEmptyStrings(request.contactThirdUserIds);
+
+    if (contactThirdUserids.length === 0) {
+      throw new BadRequestError("CONTACT_REQUIRED", "请选择要邀请的客户");
+    }
+
+    const subUserNumericId = parseMySqlId(subUserId);
+
+    if (subUserNumericId == null) {
+      throw new NotFoundError("SUB_USER_NOT_FOUND", "子账号不存在");
+    }
+
+    const scope = await this.getAuthenticatedWorkbenchScope(subUserId);
+    const conversation = await this.getOperableConversation(
+      subUserId,
+      conversationId,
+      scope,
+    );
+    const groupMembers = await this.repository.listGroupMembers(conversationId);
+
+    if (!groupMembers) {
+      throw new NotFoundError("CONVERSATION_NOT_FOUND", "会话不存在");
+    }
+
+    const groupSeatId = parseMySqlId(groupMembers.groupSeatId);
+
+    if (groupSeatId == null) {
+      throw new BadRequestError("INVALID_GROUP_SEAT", "群席位无效");
+    }
+
+    await this.javaClient.pullFriendsInGroup({
+      contactThirdUserids,
+      groupSeatId,
+      platform: conversation.platform,
+      subUserId: subUserNumericId,
+      uid: conversation.uid,
+    });
+
+    return {
+      conversationId: conversation.id,
+    };
+  }
+
+  async kickGroupMember(
+    subUserId: string,
+    conversationId: string,
+    request: WorkbenchKickGroupMemberRequest,
+  ): Promise<WorkbenchKickGroupMemberResponse> {
+    const kickOutThirdUserid = request.kickOutThirdUserId.trim();
+
+    if (!kickOutThirdUserid) {
+      throw new BadRequestError("MEMBER_REQUIRED", "请选择要移出的成员");
+    }
+
+    const subUserNumericId = parseMySqlId(subUserId);
+
+    if (subUserNumericId == null) {
+      throw new NotFoundError("SUB_USER_NOT_FOUND", "子账号不存在");
+    }
+
+    const scope = await this.getAuthenticatedWorkbenchScope(subUserId);
+    const conversation = await this.getOperableConversation(
+      subUserId,
+      conversationId,
+      scope,
+    );
+    const groupMembers = await this.repository.listGroupMembers(conversationId);
+
+    if (!groupMembers) {
+      throw new NotFoundError("CONVERSATION_NOT_FOUND", "会话不存在");
+    }
+
+    const groupSeatId = parseMySqlId(groupMembers.groupSeatId);
+
+    if (groupSeatId == null) {
+      throw new BadRequestError("INVALID_GROUP_SEAT", "群席位无效");
+    }
+
+    await this.javaClient.kickOutOfGroup({
+      groupSeatId,
+      kickOutThirdUserid,
+      platform: conversation.platform,
+      subUserId: subUserNumericId,
+      uid: conversation.uid,
+    });
+
+    return {
+      conversationId: conversation.id,
+    };
   }
 
   async getUploadCredential(subUserId: string, conversationId: string) {
@@ -5419,4 +5564,42 @@ function getRetryFailMsgId(payload: WorkbenchSendMessagePayload) {
   }
 
   return failMsgId;
+}
+
+const enterpriseMemberNameCollator = new Intl.Collator("zh-Hans-CN");
+
+function mapTenantSeatsToEnterpriseMembers(
+  seats: TenantSeatIdentity[],
+): WorkbenchEnterpriseMemberDto[] {
+  const items: WorkbenchEnterpriseMemberDto[] = [];
+  const usedThirdUserIds = new Set<string>();
+
+  for (const seat of seats) {
+    if (items.length >= WORKBENCH_ENTERPRISE_MEMBER_MAX_ITEMS) {
+      break;
+    }
+
+    const thirdUserId = seat.thirdUserId.trim();
+
+    if (!thirdUserId || usedThirdUserIds.has(thirdUserId)) {
+      continue;
+    }
+
+    usedThirdUserIds.add(thirdUserId);
+    items.push({
+      avatarUrl: seat.avatarUrl,
+      displayName: seat.displayName.trim() || thirdUserId,
+      thirdUserId,
+    });
+  }
+
+  return items.sort((left, right) =>
+    enterpriseMemberNameCollator.compare(left.displayName, right.displayName),
+  );
+}
+
+function uniqueNonEmptyStrings(values: readonly string[]) {
+  return Array.from(
+    new Set(values.map((value) => value.trim()).filter(Boolean)),
+  );
 }

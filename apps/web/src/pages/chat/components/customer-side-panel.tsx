@@ -66,6 +66,8 @@ type CustomerSidePanelProps = {
   className?: string;
   conversationMode?: ChatMode;
   currentEmployeeId?: string;
+  /** 当前席位在群里的三方成员 ID，用于判断踢人权限 */
+  currentSeatThirdUserId?: string;
   /** 当前席位 ID，用于服务端签发侧栏 iframe 参数 */
   sidebarIframeSeatId?: string;
   /** 当前会话 ID，用于服务端按库表解析三方 ID 并签发参数 */
@@ -96,6 +98,7 @@ export function CustomerSidePanel({
   className,
   conversationMode,
   currentEmployeeId,
+  currentSeatThirdUserId,
   customer,
   sidebarIframeConversationId,
   sidebarIframeSeatId,
@@ -388,12 +391,15 @@ export function CustomerSidePanel({
               {isGroupConversation ? (
                 <GroupMembersSidePanel
                   accounts={accounts}
+                  conversationId={sidebarIframeConversationId}
                   currentEmployeeId={currentEmployeeId}
+                  currentSeatThirdUserId={currentSeatThirdUserId}
                   groupMembers={groupMembers}
                   isLoading={isGroupMembersLoading}
                   key={sidebarIframeConversationId}
                   onRefresh={onRefreshGroupMembers}
                   onStartChat={onStartCustomerChat}
+                  seatId={sidebarIframeSeatId}
                 />
               ) : (
                 <CustomerBasicInfoPanel

@@ -2653,6 +2653,54 @@ describe("backend app", () => {
     await app.close();
   });
 
+  it("pulls selected friends into a group conversation", async () => {
+    const { app, authorization } = await createAuthenticatedApp();
+    const pullGroupMembers = vi
+      .spyOn(app.workbenchService, "pullGroupMembers")
+      .mockResolvedValue({ conversationId: "conv-004" });
+
+    const response = await app.inject({
+      headers: { authorization },
+      method: "POST",
+      payload: {
+        contactThirdUserIds: ["external-a", "external-b"],
+      },
+      url: "/api/server/conversations/conv-004/group-members",
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({ conversationId: "conv-004" });
+    expect(pullGroupMembers).toHaveBeenCalledWith("101", "conv-004", {
+      contactThirdUserIds: ["external-a", "external-b"],
+    });
+
+    await app.close();
+  });
+
+  it("kicks a group member from a group conversation", async () => {
+    const { app, authorization } = await createAuthenticatedApp();
+    const kickGroupMember = vi
+      .spyOn(app.workbenchService, "kickGroupMember")
+      .mockResolvedValue({ conversationId: "conv-004" });
+
+    const response = await app.inject({
+      headers: { authorization },
+      method: "POST",
+      payload: {
+        kickOutThirdUserId: "member-xiaoming",
+      },
+      url: "/api/server/conversations/conv-004/group-members/remove",
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({ conversationId: "conv-004" });
+    expect(kickGroupMember).toHaveBeenCalledWith("101", "conv-004", {
+      kickOutThirdUserId: "member-xiaoming",
+    });
+
+    await app.close();
+  });
+
   it("returns visible customer seat relations for the authenticated sub-user", async () => {
     const { app, authorization } = await createAuthenticatedApp();
     const getCustomerSeatRelations = vi

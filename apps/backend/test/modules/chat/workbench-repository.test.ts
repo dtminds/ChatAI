@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { MATERIAL_COLLECTION_BIZ_TYPE } from "@chatai/contracts";
+import { MATERIAL_COLLECTION_BIZ_TYPE, WORKBENCH_ENTERPRISE_MEMBER_MAX_ITEMS, WORKBENCH_SEAT_FRIEND_MAX_ITEMS } from "@chatai/contracts";
 import type { MessageRow } from "../../../src/modules/chat/workbench-mappers.js";
 import {
   decodeConversationListCursor,
@@ -3742,6 +3742,209 @@ describe("WorkbenchRepository", () => {
     ]);
   });
 
+  it("does not merge single-chat contacts into the customer page bind list", async () => {
+    const queries: Array<{ table: string; query: ReturnType<typeof createQueryBuilder> }> = [];
+    const repository = new WorkbenchRepository(
+      {
+        selectFrom(table: string) {
+          if (table === "xy_wap_embed_user_seat as seat") {
+            const query = createQueryBuilder([
+              {
+                id: 12,
+                platform: 5,
+                third_avatar: "",
+                third_user_name: "销售一号",
+                third_userid: "seat-user-12",
+                uid: 9001,
+              },
+            ]);
+            queries.push({ table, query });
+            return query;
+          }
+
+          if (table === "xy_wap_embed_customer_bind_relation as bind") {
+            const query = createQueryBuilder([
+              {
+                add_time: 100,
+                biz_status: 1,
+                bind_type: 1,
+                description: "",
+                id: 301,
+                platform: 5,
+                third_external_userid: "external-a",
+                third_userid: "seat-user-12",
+                uid: 9001,
+              },
+            ]);
+            queries.push({ table, query });
+            return query;
+          }
+
+          if (table === "xy_wap_embed_contact as contact") {
+            const query = createQueryBuilder([
+              {
+                avatar: "",
+                biz_status: 1,
+                gender: 0,
+                name: "客户A",
+                platform: 5,
+                real_name: "",
+                third_external_userid: "external-a",
+                uid: 9001,
+              },
+            ]);
+            queries.push({ table, query });
+            return query;
+          }
+
+          throw new Error(`unexpected table ${table}`);
+        },
+      } as never,
+    );
+
+    const result = await repository.listCustomers({
+      platform: 5,
+      scope: "mine",
+      seatIds: ["12"],
+      subUserId: "101",
+      uid: 9001,
+    });
+
+    expect(result.items).toEqual([
+      expect.objectContaining({
+        name: "客户A",
+        thirdExternalUserId: "external-a",
+      }),
+    ]);
+    expect(queries.some((item) => item.table === "xy_wap_embed_conversation as conversation")).toBe(
+      false,
+    );
+  });
+
+  it("lists the takeover seat customers for the add-group dialog without friend-status filters", async () => {
+    const queries: Array<{ table: string; query: ReturnType<typeof createQueryBuilder> }> = [];
+    const repository = new WorkbenchRepository(
+      {
+        selectFrom(table: string) {
+          if (table === "xy_wap_embed_user_seat as seat") {
+            const query = createQueryBuilder([
+              {
+                id: 12,
+                platform: 5,
+                third_avatar: "",
+                third_user_name: "嘟嘟可",
+                third_userid: "seat-user-12",
+                uid: 9001,
+              },
+            ]);
+            queries.push({ table, query });
+            return query;
+          }
+
+          if (table === "xy_wap_embed_customer_bind_relation as bind") {
+            const query = createQueryBuilder([
+              {
+                avatar: "https://example.com/shuimen.png",
+                name: "水门溪风",
+                real_name: "",
+                third_external_userid: "external-shuimen",
+              },
+              {
+                avatar: "",
+                name: "水门溪风",
+                real_name: "",
+                third_external_userid: "external-shuimen",
+              },
+              {
+                avatar: "",
+                name: "",
+                real_name: "张三",
+                third_external_userid: "external-zhang",
+              },
+              {
+                avatar: "",
+                name: "缪勇飞",
+                real_name: "",
+                third_external_userid: "external-miao",
+              },
+            ]);
+            queries.push({ table, query });
+            return query;
+          }
+
+          throw new Error(`unexpected table ${table}`);
+        },
+      } as never,
+    );
+
+    await expect(
+      repository.listSeatFriends({
+        platform: 5,
+        seatId: "12",
+        subUserId: "101",
+        uid: 9001,
+      }),
+    ).resolves.toEqual({
+      items: [
+        {
+          avatarUrl: "https://example.com/shuimen.png",
+          displayName: "水门溪风",
+          thirdExternalUserId: "external-shuimen",
+        },
+        {
+          avatarUrl: "",
+          displayName: "张三",
+          thirdExternalUserId: "external-zhang",
+        },
+        {
+          avatarUrl: "",
+          displayName: "缪勇飞",
+          thirdExternalUserId: "external-miao",
+        },
+      ],
+    });
+
+    const bindQuery = queries.find(
+      (item) => item.table === "xy_wap_embed_customer_bind_relation as bind",
+    )?.query;
+    expect(bindQuery?.joins).toEqual(["leftJoin"]);
+    expect(bindQuery?.wheres).toContainEqual(["bind.uid", "=", 9001]);
+    expect(bindQuery?.wheres).toContainEqual(["bind.platform", "=", 5]);
+    expect(bindQuery?.wheres).toContainEqual(["bind.third_userid", "=", "seat-user-12"]);
+    expect(bindQuery?.wheres).not.toContainEqual(["bind.biz_status", "=", 1]);
+    expect(bindQuery?.wheres).not.toContainEqual(["bind.bind_type", "=", 1]);
+    expect(bindQuery?.limits).toEqual([WORKBENCH_SEAT_FRIEND_MAX_ITEMS]);
+    expect(queries.some((item) => item.table === "xy_wap_embed_conversation as conversation")).toBe(
+      false,
+    );
+  });
+
+  it("returns no seat friends when the takeover seat is not accessible", async () => {
+    const queries: Array<{ table: string }> = [];
+    const repository = new WorkbenchRepository(
+      {
+        selectFrom(table: string) {
+          if (table === "xy_wap_embed_user_seat as seat") {
+            queries.push({ table });
+            return createQueryBuilder([]);
+          }
+
+          throw new Error(`unexpected table ${table}`);
+        },
+      } as never,
+    );
+
+    await expect(
+      repository.listSeatFriends({
+        platform: 5,
+        seatId: "12",
+        subUserId: "101",
+        uid: 9001,
+      }),
+    ).resolves.toEqual({ items: [] });
+    expect(queries).toEqual([{ table: "xy_wap_embed_user_seat as seat" }]);
+  });
+
   it("limits customer friend relations to the current sub-user's visible seats", async () => {
     let relationQuery: ReturnType<typeof createQueryBuilder> | undefined;
     const repository = new WorkbenchRepository(
@@ -3968,6 +4171,12 @@ describe("WorkbenchRepository", () => {
             return query;
           }
 
+          if (table === "xy_wap_embed_conversation as conversation") {
+            const query = createQueryBuilder([]);
+            queries.push({ table, query });
+            return query;
+          }
+
           throw new Error(`unexpected table ${table}`);
         },
       } as never,
@@ -4036,6 +4245,12 @@ describe("WorkbenchRepository", () => {
                 uid: 9001,
               },
             ]);
+            queries.push({ table, query });
+            return query;
+          }
+
+          if (table === "xy_wap_embed_conversation as conversation") {
+            const query = createQueryBuilder([]);
             queries.push({ table, query });
             return query;
           }
@@ -4147,6 +4362,12 @@ describe("WorkbenchRepository", () => {
             return query;
           }
 
+          if (table === "xy_wap_embed_conversation as conversation") {
+            const query = createQueryBuilder([]);
+            queries.push({ table, query });
+            return query;
+          }
+
           throw new Error(`unexpected table ${table}`);
         },
       } as never,
@@ -4247,6 +4468,12 @@ describe("WorkbenchRepository", () => {
                 uid: 9001,
               },
             ]);
+            queries.push({ table, query });
+            return query;
+          }
+
+          if (table === "xy_wap_embed_conversation as conversation") {
+            const query = createQueryBuilder([]);
             queries.push({ table, query });
             return query;
           }
@@ -6846,6 +7073,61 @@ describe("WorkbenchRepository", () => {
       thirdGroupId: "group-002",
       thirdGroupName: "未知群聊",
     });
+  });
+
+  it("lists tenant seat identities for the enterprise member catalog with one capped query", async () => {
+    const query = createQueryBuilder([
+      {
+        avatar: " https://example.com/hua.png ",
+        third_user_name: " 花花 ",
+        third_userid: " seat-user-hua ",
+        user_id: 201,
+      },
+      {
+        avatar: "",
+        third_user_name: "",
+        third_userid: "seat-user-fan",
+        user_id: null,
+      },
+      {
+        avatar: "",
+        third_user_name: "空席位",
+        third_userid: "  ",
+        user_id: 301,
+      },
+    ]);
+    const repository = new WorkbenchRepository(
+      {
+        selectFrom(table: string) {
+          expect(table).toBe("xy_wap_embed_user_seat as seat");
+          return query;
+        },
+      } as never,
+    );
+
+    await expect(
+      repository.listTenantSeatIdentities({ platform: 5, uid: 9001 }),
+    ).resolves.toEqual([
+      {
+        avatarUrl: "https://example.com/hua.png",
+        displayName: "花花",
+        thirdUserId: "seat-user-hua",
+        userId: 201,
+      },
+      {
+        avatarUrl: "",
+        displayName: "seat-user-fan",
+        thirdUserId: "seat-user-fan",
+        userId: null,
+      },
+    ]);
+    expect(query.joins).toEqual([]);
+    expect(query.limits).toEqual([WORKBENCH_ENTERPRISE_MEMBER_MAX_ITEMS]);
+    expect(query.wheres).toEqual([
+      ["seat.uid", "=", 9001],
+      ["seat.platform", "=", 5],
+      ["seat.biz_status", "=", 1],
+    ]);
   });
 
   it("loads the latest full-auto answer status for a single conversation", async () => {

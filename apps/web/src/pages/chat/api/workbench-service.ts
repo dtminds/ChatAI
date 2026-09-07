@@ -30,6 +30,12 @@ import {
   type WorkbenchHistoryMessageScope,
   type WorkbenchChatRecordDetailResponse,
   type WorkbenchGroupMembersResponse,
+  type WorkbenchEnterpriseMemberListResponse,
+  type WorkbenchSeatFriendListResponse,
+  type WorkbenchKickGroupMemberRequest,
+  type WorkbenchKickGroupMemberResponse,
+  type WorkbenchPullGroupMembersRequest,
+  type WorkbenchPullGroupMembersResponse,
   type WorkbenchSubUserDto,
   type WorkbenchMessageDto,
   type WorkbenchMessageQueryBySeqsRequest,
@@ -166,6 +172,8 @@ export type WorkbenchService = {
   };
   deleteConversation: (conversationId: string) => Promise<WorkbenchConversationDeleteResponse>;
   getSeats: () => Promise<WorkbenchSeatDto[]>;
+  getEnterpriseMembers: () => Promise<WorkbenchEnterpriseMemberListResponse>;
+  getSeatFriends: (seatId: string) => Promise<WorkbenchSeatFriendListResponse>;
   getConversations: (
     seatId: string,
     options?: WorkbenchConversationListOptions,
@@ -226,6 +234,14 @@ export type WorkbenchService = {
     input: WorkbenchVoiceTranscriptionRequest,
   ) => Promise<WorkbenchVoiceTranscriptionResponse>;
   getGroupMembers: (conversationId: string) => Promise<WorkbenchGroupMembersResponse>;
+  pullGroupMembers: (
+    conversationId: string,
+    request: WorkbenchPullGroupMembersRequest,
+  ) => Promise<WorkbenchPullGroupMembersResponse>;
+  kickGroupMember: (
+    conversationId: string,
+    request: WorkbenchKickGroupMemberRequest,
+  ) => Promise<WorkbenchKickGroupMemberResponse>;
   getUploadCredential: (conversationId: string) => Promise<WorkbenchUploadCredentialResponse>;
   markConversationRead: (conversationId: string) => Promise<WorkbenchConversationReadResponse>;
   markConversationUnread: (conversationId: string) => Promise<WorkbenchConversationUnreadResponse>;
@@ -492,6 +508,28 @@ export function createMockWorkbenchService(): WorkbenchService {
     },
     async getSeats() {
       return clone(state.seats);
+    },
+    async getEnterpriseMembers() {
+      return {
+        items: clone(state.seats).flatMap((seat) => {
+          const thirdUserId = seat.thirdUserId?.trim();
+
+          if (!thirdUserId || seat.bizStatus === 0) {
+            return [];
+          }
+
+          return [
+            {
+              avatarUrl: seat.avatar,
+              displayName: seat.name.trim() || thirdUserId,
+              thirdUserId,
+            },
+          ];
+        }),
+      };
+    },
+    async getSeatFriends() {
+      return { items: [] };
     },
     async deleteConversation(conversationId) {
       return removeConversation(state, conversationId);
@@ -1614,6 +1652,12 @@ export function createMockWorkbenchService(): WorkbenchService {
         thirdGroupId: `third-group-${conversationId}`,
       });
     },
+    async pullGroupMembers(conversationId) {
+      return { conversationId };
+    },
+    async kickGroupMember(conversationId) {
+      return { conversationId };
+    },
     async getUploadCredential(conversationId) {
       if (!findConversation(state, conversationId)) {
         throw new Error("Conversation not found");
@@ -2074,6 +2118,14 @@ export function createHttpWorkbenchService(): WorkbenchService {
     getSeats() {
       return http.get<WorkbenchSeatDto[]>("/server/seats");
     },
+    getEnterpriseMembers() {
+      return http.get<WorkbenchEnterpriseMemberListResponse>("/server/employees");
+    },
+    getSeatFriends(seatId) {
+      return http.get<WorkbenchSeatFriendListResponse>(
+        `/server/seats/${encodeURIComponent(seatId)}/friends`,
+      );
+    },
     deleteConversation(conversationId) {
       return http.post<WorkbenchConversationDeleteResponse>(
         `/server/conversations/${conversationId}/delete`,
@@ -2488,6 +2540,18 @@ export function createHttpWorkbenchService(): WorkbenchService {
       return http.get<WorkbenchGroupMembersResponse>(
         `/server/conversations/${conversationId}/group-members`,
       );
+    },
+    pullGroupMembers(conversationId, request) {
+      return http.post<
+        WorkbenchPullGroupMembersResponse,
+        WorkbenchPullGroupMembersRequest
+      >(`/server/conversations/${conversationId}/group-members`, request);
+    },
+    kickGroupMember(conversationId, request) {
+      return http.post<
+        WorkbenchKickGroupMemberResponse,
+        WorkbenchKickGroupMemberRequest
+      >(`/server/conversations/${conversationId}/group-members/remove`, request);
     },
     getUploadCredential(conversationId) {
       return http.post<

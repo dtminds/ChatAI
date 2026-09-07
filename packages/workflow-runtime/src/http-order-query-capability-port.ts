@@ -97,9 +97,12 @@ export async function executeWorkflowOrderQuery(input: {
                 ? { shopIdList: input.command.shopIds }
                 : {}),
               // Java applies inclusive bounds before aggregating all matches. An absent
-              // range is unrestricted; a single bound uses the agreed API defaults.
+              // range is unrestricted; null leaves that side unfiltered (zero is a bound).
               ...(input.command.amount.min !== undefined || input.command.amount.max !== undefined
-                ? { priceRange: [String(input.command.amount.min ?? 0), String(input.command.amount.max ?? 999999)] }
+                ? { priceRange: [
+                    input.command.amount.min === undefined ? null : String(input.command.amount.min),
+                    input.command.amount.max === undefined ? null : String(input.command.amount.max),
+                  ] }
                 : {}),
               xyId: input.xyId,
               [getJavaTimeRangeField(input.command.timeField)]: input.command.timeRange,

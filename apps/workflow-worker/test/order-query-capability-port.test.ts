@@ -29,9 +29,10 @@ describe("Workflow Order Query Java port", () => {
 
   it.each([
     { amount: {}, priceRange: undefined },
-    { amount: { min: 12.34 }, priceRange: ["12.34", "999999"] },
-    { amount: { max: 56.78 }, priceRange: ["0", "56.78"] },
-    { amount: { max: 0 }, priceRange: ["0", "0"] },
+    { amount: { min: 12.34 }, priceRange: ["12.34", null] },
+    { amount: { max: 56.78 }, priceRange: [null, "56.78"] },
+    { amount: { min: 0 }, priceRange: ["0", null] },
+    { amount: { max: 0 }, priceRange: [null, "0"] },
   ])("encodes optional inclusive price bounds: $amount", async ({ amount, priceRange }) => {
     const fetchMock = vi.fn<typeof fetch>(async () => javaResponse(zeroStatistics()));
     await executeWorkflowOrderQuery({

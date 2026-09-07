@@ -34,8 +34,10 @@ export class HttpWorkflowSmartsheetWriteCapabilityPort implements WorkflowCapabi
       for (const field of command.fields) {
         if (Object.hasOwn(values, field.fieldId)) return { success: false, errorCode: "DUPLICATE_FIELD" };
         if (field.fieldType === "url") {
-          if (typeof field.value !== "string" || !isValidSmartsheetUrl(field.value)) return { success: false, errorCode: "INVALID_URL_VALUE" };
-          values[field.fieldId] = [{ link: field.value, text: field.value }];
+          if (typeof field.value !== "string") return { success: false, errorCode: "INVALID_URL_VALUE" };
+          const url = field.value.trim();
+          if (!isValidSmartsheetUrl(url)) return { success: false, errorCode: "INVALID_URL_VALUE" };
+          values[field.fieldId] = [{ link: url, text: url }];
         } else if (field.fieldType === "single_select") {
           if (typeof field.value !== "string") return { success: false, errorCode: "INVALID_SINGLE_SELECT_VALUE" };
           values[field.fieldId] = [{ text: field.value }];

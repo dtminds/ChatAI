@@ -37,11 +37,13 @@ describe("smartsheet command projection", () => {
       { ...variable("s", "single_select", "choice", "string"), enumOptions: ["known"] },
       variable("d", "date_time", "date", "datetime"),
       { fieldId: "local", fieldType: "date_time", value: { kind: "literal", value: "2026-09-07T08:00" } },
+      { fieldId: "url", fieldType: "url", value: { kind: "literal", value: "  https://example.com/orders/123  " } },
     ] } })).toEqual({ webhookUrl, fields: [
       { fieldId: "n", fieldType: "number", value: 0 },
       { fieldId: "b", fieldType: "checkbox", value: false },
       { fieldId: "d", fieldType: "date_time", value: "1788739200000" },
       { fieldId: "local", fieldType: "date_time", value: "2026-09-07 08:00:00" },
+      { fieldId: "url", fieldType: "url", value: "https://example.com/orders/123" },
     ] });
   });
 
@@ -60,8 +62,22 @@ describe("smartsheet command projection", () => {
         execution: { nodeId: "sheet", revision: 1, runId: "1", sequence: 2, workflowId: "1" },
         executionKey: "9:1:sheet:2", port: { execute }, signal: new AbortController().signal,
         subjectId: "1", subjectType: "wecom_contact", uid: 9,
-      })).resolves.toMatchObject({ success: false, errorCode: expect.any(String) });
+      })).resolves.toEqual({ success: false, errorCode: "INVALID_FIELD_VALUE" });
       expect(execute).not.toHaveBeenCalled();
     }
+  });
+
+  it("returns INVALID_URL_VALUE before execution for an invalid URL literal", async () => {
+    const execute = vi.fn();
+    await expect(executeWorkflowCapability({
+      binding: WORKFLOW_SMARTSHEET_WRITE_CAPABILITY_BINDING, commandContext: context,
+      config: { webhookUrl, fieldMappings: [
+        { fieldId: "url", fieldType: "url", value: { kind: "literal", value: "not a url" } },
+      ] }, deadlineAt: new Date(),
+      execution: { nodeId: "sheet", revision: 1, runId: "1", sequence: 2, workflowId: "1" },
+      executionKey: "9:1:sheet:2", port: { execute }, signal: new AbortController().signal,
+      subjectId: "1", subjectType: "wecom_contact", uid: 9,
+    })).resolves.toEqual({ success: false, errorCode: "INVALID_URL_VALUE" });
+    expect(execute).not.toHaveBeenCalled();
   });
 });

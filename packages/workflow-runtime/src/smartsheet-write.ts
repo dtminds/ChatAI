@@ -14,7 +14,13 @@ import { resolveWorkflowVariableSelector } from "./variable-content.js";
 
 export const WORKFLOW_SMARTSHEET_WRITE_CAPABILITY_BINDING = {
   completeWithoutExecution: (input) => createWorkflowSmartsheetWriteCommand(input) === null
-    ? { success: false, errorCode: "INVALID_FIELD_VALUE" } : undefined,
+    ? {
+        success: false,
+        errorCode: hasInvalidSmartsheetUrlValue(input.config, input.context)
+          ? "INVALID_URL_VALUE"
+          : "INVALID_FIELD_VALUE",
+      }
+    : undefined,
   createCommand: createWorkflowSmartsheetWriteCommand,
   definition: {
     capabilityKey: "smartsheet.write",
@@ -63,9 +69,27 @@ function convertValue(field: WorkflowSmartsheetExecutionFieldMapping, value: unk
   }
   if (field.fieldType === "date_time") return normalizeSmartsheetDateTime(value);
   if (typeof value !== "string" || value.length > WORKFLOW_SMARTSHEET_WRITE_VALUE_MAX_LENGTH) return undefined;
-  if (field.fieldType === "url") return isValidSmartsheetUrl(value) ? value : undefined;
+  if (field.fieldType === "url") return value.trim();
   if (field.fieldType === "single_select") return field.enumOptions?.includes(value) ? value : null;
   return value;
+}
+
+function hasInvalidSmartsheetUrlValue(
+  config: Record<string, unknown>,
+  context: WorkflowCapabilityCommandContext,
+) {
+  if (!Array.isArray(config.fieldMappings)) return false;
+  return config.fieldMappings.some(mapping => {
+    if (!isRecord(mapping) || mapping.fieldType !== "url" || !isRecord(mapping.value)) return false;
+    if (mapping.value.kind === "literal") {
+      return typeof mapping.value.value === "string" && !isValidSmartsheetUrl(mapping.value.value);
+    }
+    if (mapping.value.kind !== "variable" || !Array.isArray(mapping.value.selector)) return false;
+    const resolved = resolveWorkflowVariableSelector(mapping.value.selector, context);
+    return resolved.available
+      && typeof resolved.value === "string"
+      && !isValidSmartsheetUrl(resolved.value);
+  });
 }
 
 function normalizeSmartsheetDateTime(value: unknown): string | undefined {
@@ -79,4 +103,8 @@ function normalizeSmartsheetDateTime(value: unknown): string | undefined {
   if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?(?:Z|[+-]\d{2}:\d{2})$/i.test(text)
     || !isValidWorkflowLocalDate(text.slice(0, 10))) return undefined;
   return normalizeSmartsheetDateTime(Date.parse(text));
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
 }

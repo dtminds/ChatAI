@@ -33,7 +33,7 @@ Schema 原文最多 100,000 字符，完整目录从 Schema 恢复，不另存�
 - URL 字段按企微 `CellUrlValue` 写入 `[{link, text}]`，当前将链接地址同时作为跳转地址和展示文本，不发起 URL 请求。
 - Webhook 请求使用标准 `fetch`，只对 Webhook 地址校验 HTTPS、固定企微域名、路径和 key；不自定义 DNS、IPv4/IPv6 或 socket 连接逻辑。
 - POST 不重试，包括超时、连接断开、HTTP 错误和无法解析的响应。Runtime 在进入 Adapter 前持久化尝试标记；崩溃恢复后返回 `success=false`，不重发。标记落库后、实际发送前崩溃会放弃本次写入；已写入但结果未提交时也可能报告失败，不承诺 exactly-once。
-- 智能表格URL仅为草稿备注，不参与执行；Webhook key 和 Base64 不进入节点输出或远端错误日志。
+- 智能表格URL仅为草稿备注，不参与执行；Webhook key 不进入节点输出或远端错误日志。
 
 ## 验证边界
 

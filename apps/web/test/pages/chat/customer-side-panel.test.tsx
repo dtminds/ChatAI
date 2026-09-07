@@ -153,6 +153,38 @@ describe("CustomerSidePanel", () => {
     expect(screen.getByText("群二成员")).toBeInTheDocument();
   });
 
+  it("hides add group members when the current account is not taken over", () => {
+    render(
+      <CustomerSidePanel
+        {...defaultProps}
+        conversationMode="group"
+        sidebarIframeConversationId="conv-1"
+        sidebarIframeSeatId="seat-1"
+        sidebarIframeTos="0"
+        sidebarItems={undefined}
+      />,
+    );
+
+    expect(
+      screen.queryByRole("button", { name: "添加群成员" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("shows add group members when the current account is taken over", () => {
+    render(
+      <CustomerSidePanel
+        {...defaultProps}
+        conversationMode="group"
+        sidebarIframeConversationId="conv-1"
+        sidebarIframeSeatId="seat-1"
+        sidebarIframeTos="1"
+        sidebarItems={undefined}
+      />,
+    );
+
+    expect(screen.getByRole("button", { name: "添加群成员" })).toBeInTheDocument();
+  });
+
   it("collapses custom tabs to the first row and expands them on demand", async () => {
     const user = userEvent.setup();
 

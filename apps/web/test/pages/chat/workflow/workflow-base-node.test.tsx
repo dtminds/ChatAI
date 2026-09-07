@@ -50,9 +50,16 @@ describe("workflow node chrome", () => {
     const actionMenu = await screen.findByRole("menu");
 
     expect(within(actionMenu).getByRole("menuitem", { name: "重命名" })).toBeInTheDocument();
-    expect(within(actionMenu).getByRole("menuitem", { name: "复制节点" })).toBeInTheDocument();
-    expect(within(actionMenu).getByRole("menuitem", { name: "删除节点" })).toBeInTheDocument();
     expect(within(actionMenu).queryByRole("menuitem", { name: "打开配置" })).not.toBeInTheDocument();
+
+    await user.click(within(actionMenu).getByRole("menuitem", { name: "复制节点" }));
+    expect(onDuplicate).toHaveBeenCalledWith("message-welcome");
+    expect(onDelete).not.toHaveBeenCalled();
+
+    await user.click(screen.getByRole("button", { name: "更多操作：发送欢迎消息" }));
+    await user.click(within(await screen.findByRole("menu")).getByRole("menuitem", { name: "删除节点" }));
+    expect(onDelete).toHaveBeenCalledWith("message-welcome");
+    expect(onDuplicate).toHaveBeenCalledTimes(1);
   });
 
   it("renames editable nodes inline without opening settings and limits names to 10 characters", async () => {

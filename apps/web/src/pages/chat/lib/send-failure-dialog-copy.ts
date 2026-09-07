@@ -9,6 +9,13 @@ export type SendFailureReason =
   | "send"
   | "unavailable";
 
+export function getOversizedComposerFileDialogCopy() {
+  return {
+    description: "请选择不超过 10 MB 的文件",
+    title: "文件过大，无法发送",
+  };
+}
+
 export function getSendFailureDialogCopy(
   reason: SendFailureReason,
   errorCode: string,

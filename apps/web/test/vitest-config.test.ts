@@ -70,5 +70,6 @@ describe("vitest runtime config", () => {
       }),
     );
     expect(config.test?.testTimeout).toBe(20_000);
+    expect(config.test?.passWithNoTests).toBe(true);
   });
 });

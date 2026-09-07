@@ -18,14 +18,6 @@ import { useLocation, useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { useShallow } from "zustand/react/shallow";
 import { Button } from "@/components/ui/button";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
 import { DotMatrixLoader } from "@/components/ui/dot-matrix-loader";
 import {
   AlertDialog,
@@ -58,7 +50,10 @@ import { MessageForwardSelectedMessagesDialog } from "@/pages/chat/components/me
 import { MessageMultiSelectToolbar } from "@/pages/chat/components/message-forward/message-multi-select-toolbar";
 import { TicketDetailPage } from "@/pages/chat/tickets/ticket-detail-page";
 import { getMessageFeedItemKey } from "@/pages/chat/lib/message-feed-key";
-import { getSendFailureDialogCopy } from "@/pages/chat/lib/send-failure-dialog-copy";
+import {
+  getOversizedComposerFileDialogCopy,
+  getSendFailureDialogCopy,
+} from "@/pages/chat/lib/send-failure-dialog-copy";
 import type { InputEnterBehavior } from "@/pages/chat/components/input-enter-behavior";
 import {
   MaterialGroupSelectDialog,
@@ -82,7 +77,12 @@ import { useMaterialCollection } from "@/pages/chat/hooks/use-material-collectio
 import { useMessageForward } from "@/pages/chat/hooks/use-message-forward";
 import { useQuickReplies } from "@/pages/chat/hooks/use-quick-replies";
 import { useWorkbenchPolling } from "@/pages/chat/hooks/use-workbench-polling";
-import type { PollingPauseReason } from "@/pages/chat/hooks/use-workbench-polling";
+import { PollingPausedDialog } from "@/pages/chat/components/polling-paused-dialog";
+import { MentionRetryDialog } from "@/pages/chat/components/mention-retry-dialog";
+import {
+  resolveStickyPollingPauseReason,
+  type PollingPauseReason,
+} from "@/pages/chat/lib/polling-pause";
 import { useMediaQuery } from "@/pages/chat/hooks/use-media-query";
 import { isValidMessageSeq } from "@/pages/chat/lib/message-seq";
 import { useWorkbenchStore } from "@/store/workbench-store";
@@ -110,6 +110,7 @@ import {
   isConversationRoutePath,
 } from "@/pages/chat/lib/conversation-navigation";
 import {
+  FILE_UPLOAD_SWITCH_BLOCKED_MESSAGE,
   isComposerFileSizeAllowed,
   isSupportedComposerFile,
 } from "@/pages/chat/lib/composer-file-files";
@@ -119,7 +120,7 @@ import {
 } from "@/pages/chat/lib/composer-segments";
 import {
   hasConversationComposerDraftContent,
-  isConversationListedInWorkbench,
+  resolveComposerDraftPersistAction,
 } from "@/pages/chat/lib/conversation-composer-draft";
 import { QuickReplyCategoryDialog } from "@/pages/chat/components/quick-reply/quick-reply-category-dialog";
 import { QuickReplyFormDialog } from "@/pages/chat/components/quick-reply/quick-reply-form-dialog";
@@ -135,11 +136,15 @@ import { useConversationTicketReminder } from "@/pages/chat/tickets/use-conversa
 import { isConversationTicketSupported } from "@/pages/chat/tickets/conversation-ticket-policy";
 import { useTicketCountStore } from "@/pages/chat/tickets/ticket-count-store";
 import { QuickReplyPanel } from "@/pages/chat/components/quick-reply/quick-reply-panel";
-import { buildQuickReplyComposerSegments } from "@/pages/chat/lib/quick-reply-segments";
+import { resolveQuickReplyInsert } from "@/pages/chat/lib/quick-reply-segments";
+import {
+  findGroupMemberForMention,
+  resolveMentionRetryRefresh,
+  type MentionRetryDialogState,
+} from "@/pages/chat/lib/mention-retry";
 import type { QuickReplyFormValues } from "@/pages/chat/hooks/use-quick-replies";
 import { resolveWorkbenchPermissions } from "@/pages/chat/lib/workbench-permissions";
-import { openMessageDownloadUrl } from "@/pages/chat/lib/message-download";
-import { canUseExpiringUrl } from "@/pages/chat/lib/message-url-expiry";
+import { startMessageFileDownload } from "@/pages/chat/lib/message-download";
 import {
   findViewportAnchor,
   scrollToAndHighlightViewportAnchor,
@@ -171,13 +176,6 @@ type ConversationViewRetainedState = {
   isSeatAIHostingEnabled: boolean;
   mode: ChatMode;
   view: ConversationView;
-};
-
-type MentionRetryDialogState = {
-  conversationId: string;
-  displayName: string;
-  groupMemberId: string;
-  refreshedOnce: boolean;
 };
 
 type MobileWorkbenchPane = "list" | "chat";
@@ -1629,7 +1627,9 @@ function ChatWorkbenchContent({
       return;
     }
 
-    setPollingPauseReason((current) => current ?? "sync-gap");
+    setPollingPauseReason((current) =>
+      resolveStickyPollingPauseReason(current, "sync-gap"),
+    );
   }, [pollPauseReason, pollStatus]);
 
   useWorkbenchPolling({
@@ -1652,36 +1652,27 @@ function ChatWorkbenchContent({
   //     activeConversation?.mode === "single",
   // });
 
-  const hasUnsentComposerContent = () =>
-    draftRef.current.trim().length > 0 ||
-    composerSegmentsRef.current.length > 0 ||
-    quotedMessageRef.current !== null;
-
   const persistComposerDraftForConversation = (conversationId: string) => {
-    if (!conversationId) {
-      return;
-    }
-
-    const conversationStillExists = isConversationListedInWorkbench(
-      useWorkbenchStore.getState().conversationListsByScope,
+    const action = resolveComposerDraftPersistAction(
       conversationId,
+      useWorkbenchStore.getState().conversationListsByScope,
+      {
+        draft: draftRef.current,
+        quotedMessage: quotedMessageRef.current,
+        segments: composerSegmentsRef.current,
+      },
     );
 
-    if (!conversationStillExists) {
+    if (action.type === "skip") {
+      return;
+    }
+
+    if (action.type === "clear") {
       clearComposerDraft(conversationId);
       return;
     }
 
-    if (!hasUnsentComposerContent()) {
-      clearComposerDraft(conversationId);
-      return;
-    }
-
-    saveComposerDraft(conversationId, {
-      draft: draftRef.current,
-      quotedMessage: quotedMessageRef.current,
-      segments: composerSegmentsRef.current,
-    });
+    saveComposerDraft(conversationId, action.draft);
   };
 
   const resetComposerUI = (options?: { keepQuote?: boolean }) => {
@@ -2041,10 +2032,7 @@ function ChatWorkbenchContent({
       }
 
       if (!isComposerFileSizeAllowed(file)) {
-        setSendFailureDialog({
-          description: "请选择不超过 10 MB 的文件",
-          title: "文件过大，无法发送",
-        });
+        setSendFailureDialog(getOversizedComposerFileDialogCopy());
         continue;
       }
 
@@ -2139,54 +2127,15 @@ function ChatWorkbenchContent({
   };
 
   const handleDownloadMessageFile = (message: ChatMessage) => {
-    if (
-      message.content.type !== "file" &&
-      message.content.type !== "video" &&
-      message.content.type !== "image"
-    ) {
-      return;
-    }
-
-    const url = getMessageDownloadUrl(message);
-
-    if (isMessageDownloadUrlReady(message, url)) {
-      openMessageDownloadUrl(message, url);
-      return;
-    }
-
-    if (!message.content.fileSerialNo || !message.seq || !activeConversation) {
-      return;
-    }
-
-    if (message.conversationId !== activeConversation.id) {
-      return;
-    }
-
-    updateMessageDownloadContent(message.conversationId, message.uiMessageKey, {
-      downloadStatus: "ing",
-      updatedAtMs: Date.now(),
-    });
-
-    void downloadMessageFile({
-      conversationId: message.conversationId,
-      msgInfoId: message.seq,
-    })
-      .then(() => {
-        if (!isMountedRef.current) {
-          return;
-        }
-
-      })
-      .catch(() => {
-        if (!isMountedRef.current) {
-          return;
-        }
-
-        updateMessageDownloadContent(message.conversationId, message.uiMessageKey, {
-          downloadStatus: "failed",
-        });
+    void startMessageFileDownload(message, {
+      activeConversationId: activeConversation?.id,
+      downloadMessageFile,
+      isMounted: () => isMountedRef.current,
+      onTransferError: () => {
         toast.warning("下载失败，请稍后重试");
-      });
+      },
+      updateDownloadContent: updateMessageDownloadContent,
+    });
   };
 
   const handleVoicePlaybackReady = (
@@ -2213,32 +2162,18 @@ function ChatWorkbenchContent({
   };
 
   const handleSelectQuickReply = (quickReply: WorkbenchQuickReplyDto) => {
-    if (!canSendMessage) {
-      toast.warning("当前无法发送消息");
+    const result = resolveQuickReplyInsert(quickReply, canSendMessage);
+
+    if (result.type === "blocked") {
+      toast.warning(result.toast);
       return;
     }
 
-    const { invalidAttachmentCount, segments } =
-      buildQuickReplyComposerSegments(quickReply);
-
-    if (invalidAttachmentCount > 0) {
-      toast.warning("该话术附件数据异常，无法发送");
-      return;
-    }
-
-    if (segments.length === 0) {
-      toast.warning("话术数据异常");
-      return;
-    }
-
-    const nextDraft =
-      segments.find((segment) => segment.type === "text")?.text ?? "";
-
-    draftRef.current = nextDraft;
-    composerSegmentsRef.current = segments;
+    draftRef.current = result.nextDraft;
+    composerSegmentsRef.current = result.segments;
     setQuotedMessage(null);
     composerRef.current?.dispatchCommand(RESTORE_COMPOSER_COMMAND, {
-      segments,
+      segments: result.segments,
     });
     composerRef.current?.focus();
   };
@@ -2303,7 +2238,7 @@ function ChatWorkbenchContent({
       }
 
       if (hasActiveFileUploads()) {
-        setFileUploadTransitionError("文件上传中，暂不能切换会话");
+        setFileUploadTransitionError(FILE_UPLOAD_SWITCH_BLOCKED_MESSAGE);
         return false;
       }
 
@@ -2323,7 +2258,7 @@ function ChatWorkbenchContent({
       }
 
       if (hasActiveFileUploads()) {
-        setFileUploadTransitionError("文件上传中，暂不能切换会话");
+        setFileUploadTransitionError(FILE_UPLOAD_SWITCH_BLOCKED_MESSAGE);
         return;
       }
 
@@ -2413,8 +2348,9 @@ function ChatWorkbenchContent({
       return;
     }
 
-    const activeGroupMember = activeGroupMembers.find(
-      (member) => member.id === message.sender.groupMemberId,
+    const activeGroupMember = findGroupMemberForMention(
+      activeGroupMembers,
+      message.sender.groupMemberId,
     );
 
     if (!activeGroupMember) {
@@ -2454,39 +2390,30 @@ function ChatWorkbenchContent({
       }
 
       const refreshedState = useWorkbenchStore.getState();
-      const isStillActiveRetry =
-        refreshedState.activeConversationId === dialogState.conversationId &&
-        mentionRetryDialogStateRef.current?.conversationId ===
-          dialogState.conversationId &&
-        mentionRetryDialogStateRef.current?.groupMemberId ===
-          dialogState.groupMemberId;
-
-      if (!isStillActiveRetry) {
-        return;
-      }
-
       const refreshedMembers =
         refreshedState.groupMembersByConversationId[
           dialogState.conversationId
         ] ?? [];
-      const refreshedMember = refreshedMembers.find(
-        (member) => member.id === dialogState.groupMemberId,
-      );
+      const retryResult = resolveMentionRetryRefresh({
+        activeConversationId: refreshedState.activeConversationId,
+        currentDialogState: mentionRetryDialogStateRef.current,
+        dialogState,
+        members: refreshedMembers,
+      });
 
-      if (!refreshedMember) {
-        const nextDialogState = {
-          ...dialogState,
-          refreshedOnce: true,
-        };
+      if (retryResult.type === "stale") {
+        return;
+      }
 
-        mentionRetryDialogStateRef.current = nextDialogState;
-        setMentionRetryDialogState(nextDialogState);
+      if (retryResult.type === "missing") {
+        mentionRetryDialogStateRef.current = retryResult.nextState;
+        setMentionRetryDialogState(retryResult.nextState);
         return;
       }
 
       composerRef.current?.dispatchCommand(INSERT_COMPOSER_MENTION_COMMAND, {
-        displayName: refreshedMember.displayName,
-        memberId: refreshedMember.id,
+        displayName: retryResult.member.displayName,
+        memberId: retryResult.member.id,
       });
       composerRef.current?.focus();
       mentionRetryDialogStateRef.current = null;
@@ -3061,38 +2988,12 @@ function ChatWorkbenchContent({
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-      <AlertDialog open={pollingPauseReason !== null}>
-        <AlertDialogContent
-          className="overflow-hidden p-0"
-          size="sm"
-          style={{ height: 286, maxWidth: 520, width: 520 }}
-        >
-          <div className="relative h-full overflow-hidden px-10 py-9">
-            <AlertDialogHeader className="relative z-10 min-w-0 space-y-4 text-left">
-              <AlertDialogTitle>
-                {getPollingPausedDialogCopy(pollingPauseReason).title}
-              </AlertDialogTitle>
-              <AlertDialogDescription>
-                {getPollingPausedDialogCopy(pollingPauseReason).description}
-              </AlertDialogDescription>
-            </AlertDialogHeader>
-            <img
-              alt=""
-              aria-hidden="true"
-              className="pointer-events-none absolute bottom-2 left-2 w-[250px] select-none"
-              data-testid="polling-paused-illustration"
-              src="https://b5.bokr.com.cn/dist/pause_poll.png"
-            />
-            <AlertDialogFooter className="absolute bottom-10 right-10 z-10">
-              <AlertDialogAction onClick={() => {
-                window.location.reload();
-              }}>
-                刷新页面
-              </AlertDialogAction>
-            </AlertDialogFooter>
-          </div>
-        </AlertDialogContent>
-      </AlertDialog>
+      <PollingPausedDialog
+        onRefresh={() => {
+          window.location.reload();
+        }}
+        reason={pollingPauseReason}
+      />
       <AlertDialog
         open={sendFailureDialog !== null}
         onOpenChange={(open) => {
@@ -3126,51 +3027,18 @@ function ChatWorkbenchContent({
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-      <Dialog
-        open={mentionRetryDialogState !== null}
-        onOpenChange={(open) => {
-          if (!open) {
-            mentionRetryDialogStateRef.current = null;
-            setMentionRetryDialogState(null);
-            setIsRefreshingMentionTarget(false);
-          }
+      <MentionRetryDialog
+        isRefreshing={isRefreshingMentionTarget}
+        onCancel={() => {
+          mentionRetryDialogStateRef.current = null;
+          setMentionRetryDialogState(null);
+          setIsRefreshingMentionTarget(false);
         }}
-      >
-        <DialogContent className="sm:max-w-sm">
-          <DialogHeader>
-            <DialogTitle>
-              {mentionRetryDialogState?.refreshedOnce
-                ? "刷新后仍未找到该成员"
-                : "该成员已退群或群成员数据未更新"}
-            </DialogTitle>
-            <DialogDescription>
-              {mentionRetryDialogState?.refreshedOnce
-                ? `${mentionRetryDialogState.displayName} 可能已退群，暂不支持 @Ta`
-                : `${mentionRetryDialogState?.displayName ?? ""} 暂不支持 @Ta，请刷新群成员后重试`}
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter className="gap-2 sm:gap-0">
-            <Button
-              disabled={isRefreshingMentionTarget}
-              onClick={() => {
-                void handleRetryMentionTarget();
-              }}
-            >
-              {isRefreshingMentionTarget ? "刷新中" : "刷新群成员并重试"}
-            </Button>
-            <Button
-              onClick={() => {
-                mentionRetryDialogStateRef.current = null;
-                setMentionRetryDialogState(null);
-                setIsRefreshingMentionTarget(false);
-              }}
-              variant="outline"
-            >
-              取消
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+        onRetry={() => {
+          void handleRetryMentionTarget();
+        }}
+        state={mentionRetryDialogState}
+      />
       <MaterialGroupSelectDialog
         bizType={pendingMaterialCollection?.bizType ?? MATERIAL_COLLECTION_BIZ_TYPE.FILE}
         groups={materialCollectionGroups}
@@ -3289,58 +3157,6 @@ function WorkbenchSectionLoading() {
       <DotMatrixLoader ariaLabel="正在加载" dotSize={3} size={22} />
       <span>正在加载</span>
     </div>
-  );
-}
-
-function getPollingPausedDialogCopy(reason: PollingPauseReason | null) {
-  if (reason === "sync-gap") {
-    return {
-      description: "消息同步遇到了问题，请刷新页面后继续使用",
-      title: "消息同步已暂停",
-    };
-  }
-
-  if (reason === "background-timeout") {
-    return {
-      description: "检测到你已离开页面一段时间，已暂停消息同步。",
-      title: "已暂停新消息同步",
-    };
-  }
-
-  return {
-    description: "当前页面已暂停消息同步。若要在此页面继续，请刷新页面",
-    title: "实时同步已被其他页面占用",
-  };
-}
-
-function getMessageDownloadUrl(message: ChatMessage) {
-  if (message.content.type === "file") {
-    return message.content.fileUrl?.trim() ?? "";
-  }
-
-  if (message.content.type === "video") {
-    return message.content.videoUrl?.trim() ?? "";
-  }
-
-  if (message.content.type === "image") {
-    return message.content.imageUrl.trim();
-  }
-
-  return "";
-}
-
-function isMessageDownloadUrlReady(message: ChatMessage, url: string) {
-  if (message.content.type === "video") {
-    return (
-      message.content.downloadStatus === "finished" &&
-      canUseExpiringUrl(url, message.content.fileUrlExpireTime)
-    );
-  }
-
-  return (
-    message.content.type === "file" &&
-    message.content.downloadStatus === "finished" &&
-    url
   );
 }
 

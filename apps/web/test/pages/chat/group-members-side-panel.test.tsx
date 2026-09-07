@@ -16,6 +16,44 @@ afterEach(() => {
 });
 
 describe("GroupMembersSidePanel", () => {
+  it("shows a loading indicator instead of an empty member list", () => {
+    render(
+      <GroupMembersSidePanel
+        groupMembers={[]}
+        isLoading
+        onRefresh={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByTestId("dot-matrix-loader")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "刷新群成员" })).toBeDisabled();
+    expect(screen.queryByRole("heading", { level: 3 })).not.toBeInTheDocument();
+  });
+
+  it("refreshes members from the header action", async () => {
+    const user = userEvent.setup();
+    const onRefresh = vi.fn();
+
+    render(
+      <GroupMembersSidePanel
+        groupMembers={[
+          {
+            avatarUrl: "",
+            displayName: "小林",
+            id: "member-002",
+            type: GROUP_MEMBER_TYPE.NORMAL,
+          },
+        ]}
+        isLoading={false}
+        onRefresh={onRefresh}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "刷新群成员" }));
+
+    expect(onRefresh).toHaveBeenCalledTimes(1);
+  });
+
   it("shows shadow group account identities beside the matching members", () => {
     render(
       <GroupMembersSidePanel

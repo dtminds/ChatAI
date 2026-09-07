@@ -17,7 +17,12 @@ import { buildCacheKeys } from "../../cache/keys.js";
 import type { Database } from "../../db/schema.js";
 import { BadRequestError, NotFoundError } from "../../shared/errors.js";
 import { uniquePositiveNumbers } from "../../shared/id-utils.js";
-import { deriveAccountRole, normalizeAccountRole } from "../auth/permissions.js";
+import {
+  chatAiSubAccountTypes,
+  dbSubAccountType,
+  deriveAccountRole,
+  normalizeAccountRole,
+} from "../auth/permissions.js";
 import { hashPassword } from "../auth/password.service.js";
 import { createAuthSessionStore } from "../auth/auth-session-store.js";
 import type { AuthenticatedWorkbenchScope } from "../workbench-platform-scope.js";
@@ -56,11 +61,6 @@ const dbSubAccountStatus = {
   active: 1,
   deleted: 0,
   disabled: 2,
-} as const;
-
-const dbSubAccountType = {
-  main: 1,
-  sub: 0,
 } as const;
 
 export class SubAccountSettingsService {
@@ -296,6 +296,7 @@ export class SubAccountSettingsService {
       ])
       .where("sub_user.uid", "=", scope.uid)
       .where("sub_user.status", "!=", dbSubAccountStatus.deleted)
+      .where("sub_user.type", "in", chatAiSubAccountTypes)
       .orderBy("sub_user.id", "desc")
       .execute() as Promise<SubAccountRow[]>;
   }
@@ -351,6 +352,7 @@ export class SubAccountSettingsService {
       .where("id", "=", subAccountId)
       .where("uid", "=", scope.uid)
       .where("status", "!=", dbSubAccountStatus.deleted)
+      .where("type", "in", chatAiSubAccountTypes)
       .executeTakeFirst();
 
     if (!subAccount) {
@@ -365,6 +367,7 @@ export class SubAccountSettingsService {
       .where("id", "=", subAccountId)
       .where("uid", "=", scope.uid)
       .where("status", "!=", dbSubAccountStatus.deleted)
+      .where("type", "in", chatAiSubAccountTypes)
       .executeTakeFirst();
 
     if (!subAccount) {
@@ -485,6 +488,7 @@ export class SubAccountSettingsService {
       .where("sub_user.id", "=", subAccountId)
       .where("sub_user.uid", "=", scope.uid)
       .where("sub_user.status", "!=", dbSubAccountStatus.deleted)
+      .where("sub_user.type", "in", chatAiSubAccountTypes)
       .executeTakeFirst() as Promise<SubAccountRow | undefined>;
   }
 }

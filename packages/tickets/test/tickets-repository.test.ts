@@ -364,8 +364,8 @@ describe("TicketsRepository", () => {
     const sql = queries.map(normalizeSql).join("\n");
     expect(sql).toContain("relation.sub_id");
     expect(sql).toContain("sub_user.status = ?");
+    expect(sql).toContain("sub_user.type in (?, ?)");
     expect(sql).not.toContain("sub_user.role");
-    expect(sql).not.toContain("sub_user.type");
   });
 
   it("creates the manual ticket and first activity in one transaction", async () => {

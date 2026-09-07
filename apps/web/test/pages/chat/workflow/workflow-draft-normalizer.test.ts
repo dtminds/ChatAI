@@ -125,7 +125,7 @@ describe("workflow draft normalizer", () => {
     expect(isWorkflowNodeDraftConfig("start", draftConfig)).toBe(true);
   });
 
-  it("clamps legacy rolling entry windows to 90 days during hydration", () => {
+  it("clamps legacy rolling entry windows to 30 days during hydration", () => {
     const startData = createDefaultNodeData("start");
     const draft = hydrateWorkflowDraft({
       edges: [],
@@ -149,7 +149,7 @@ describe("workflow draft normalizer", () => {
       entryPolicy: {
         maxEntries: 2,
         mode: "rolling_window",
-        windowSize: 90,
+        windowSize: 30,
         windowUnit: "day",
       },
     });

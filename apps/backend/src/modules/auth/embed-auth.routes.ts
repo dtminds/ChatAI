@@ -99,7 +99,7 @@ export async function registerEmbedAuthRoutes(app: FastifyInstance) {
     "/api/embed/auth/session",
     { preHandler: [requireEmbedHost, app.authenticate] },
     async (request) => apiSuccess({
-      subUser: await getCurrentSession(app, request.user),
+      subUser: await getCurrentSession(app, request.user, "embed"),
     }),
   );
 

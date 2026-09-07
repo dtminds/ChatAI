@@ -305,7 +305,7 @@ Worker 会使用 `WORKFLOW_PULSAR_CLUSTER_ID` 和 `WORKFLOW_PULSAR_NAMESPACE` �
 - `outbox`：认领并发布数据库 Outbox。
 - `reconciler`：恢复过期租约、收敛停止或删除的 Run，并低频分批清理超过保留期的运行历史。
 
-启用历史清理前必须先执行 `docs/db/change-log.md` 中 2026-07-13 的 Workflow history retention migration。1.0 对所有租户使用同一套策略：活跃 Run 不清理；已结束 Run 与 Node Execution 保留 180 天；所属 Run 结束 30 天后清理 Task 与 Outbox。默认每小时启动一次清理，每个阶段每批最多选择 1000 个 Run；存在积压时按 Reconciler 的 30 秒间隔继续追赶，不需要提高常态扫描频率。
+启用历史清理前必须先执行 `docs/db/change-log.md` 中 2026-07-13 的 Workflow history retention migration。1.0 对所有租户使用同一套策略：活跃 Run 不清理；已结束 Run 与 Node Execution 保留 45 天；所属 Run 结束 7 天后清理 Task 与 Outbox。默认每小时启动一次清理，每个阶段每批最多选择 1000 个 Run；存在积压时按 Reconciler 的 30 秒间隔继续追赶，不需要提高常态扫描频率。
 
 进程收到 `SIGTERM` 或 `SIGINT` 后会停止角色循环、关闭 Consumer/Producer、数据库连接和健康检查服务。TKE 应提供足够的 `terminationGracePeriodSeconds`，首发建议 60 秒。
 

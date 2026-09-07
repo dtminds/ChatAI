@@ -1553,9 +1553,9 @@ describe("WorkflowService", () => {
     const enabled = await service.enable(operator, created.id);
     const [revision] = (await service.listRevisions(operator, created.id)).items;
 
-    expect(getStartEntryPolicy(published.definition.draft)).toMatchObject({ windowSize: 90, windowUnit: "day" });
-    expect(getStartEntryPolicy(enabled.draft)).toMatchObject({ windowSize: 90, windowUnit: "day" });
-    expect(getStartEntryPolicy(revision!.draft)).toMatchObject({ windowSize: 90, windowUnit: "day" });
+    expect(getStartEntryPolicy(published.definition.draft)).toMatchObject({ windowSize: 30, windowUnit: "day" });
+    expect(getStartEntryPolicy(enabled.draft)).toMatchObject({ windowSize: 30, windowUnit: "day" });
+    expect(getStartEntryPolicy(revision!.draft)).toMatchObject({ windowSize: 30, windowUnit: "day" });
   });
 
   it("publishes immutable revisions after first enable without changing pause state", async () => {

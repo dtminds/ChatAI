@@ -28,6 +28,7 @@ describe("settings managed-account routes", () => {
     expect(
       body.data.managedAccounts.map((account: { id: string }) => account.id),
     ).not.toContain("103");
+    expect(db.subAccountValidationWheres).toContainEqual(["sub_user.type", "in", [0, 1]]);
     expect(body).toEqual({
       data: {
         managedAccounts: [
@@ -123,6 +124,7 @@ describe("settings managed-account routes", () => {
     expect(db.managedAccountSeatWheres).toContainEqual(["seat.platform", "=", 5]);
     expect(db.subAccountValidationWheres).not.toContainEqual(["sub_user.platform", "=", 5]);
     expect(db.subAccountValidationWheres).toContainEqual(["sub_user.id", "in", [12]]);
+    expect(db.subAccountValidationWheres).toContainEqual(["sub_user.type", "in", [0, 1]]);
     expect(db.deletedRelationSeatIds).toEqual([101]);
     expect(app.cache.del).toHaveBeenCalledWith(
       "chatai:seat-access:1",
@@ -150,6 +152,29 @@ describe("settings managed-account routes", () => {
       },
       success: true,
     });
+
+    await app.close();
+  });
+
+  it("rejects an embed-only identity from managed-account relations", async () => {
+    const { app, authorization, db } = await createSettingsApp();
+
+    const response = await app.inject({
+      headers: { authorization },
+      method: "PUT",
+      payload: {
+        subAccountIds: ["99"],
+      },
+      url: "/api/server/settings/managed-accounts/101/sub-accounts",
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(response.json()).toMatchObject({
+      error: { code: "INVALID_SUB_ACCOUNT" },
+      success: false,
+    });
+    expect(db.deletedRelationSeatIds).toEqual([]);
+    expect(db.insertedRelations).toEqual([]);
 
     await app.close();
   });
@@ -258,6 +283,15 @@ function createSettingsDbMock() {
       platform: 5,
       status: 1,
       type: 0,
+      uid: 9001,
+    },
+    {
+      account: "embed-internal",
+      id: 99,
+      name: "Embed 内部身份",
+      platform: 5,
+      status: 1,
+      type: 2,
       uid: 9001,
     },
   ];
@@ -447,7 +481,10 @@ function createSettingsDbMock() {
                   return false;
                 }
 
-                return typeFilter === undefined || subUser.type === typeFilter;
+                return typeFilter === undefined
+                  || (Array.isArray(typeFilter)
+                    ? typeFilter.includes(subUser.type)
+                    : subUser.type === typeFilter);
               })
               .map((subUser) => ({
                 account: subUser.account,
@@ -510,10 +547,22 @@ function createSettingsDbMock() {
           if (table === "xy_wap_embed_sub_user") {
             state.scopeLookupCount += 1;
             const id = wheres.find(([column]) => column === "id")?.[2];
-
-            return id
+            const candidate = id
               ? subUsers.find((subUser) => subUser.id === id)
               : subUsers[0];
+            const typeFilter = wheres.find(([column]) => column === "type")?.[2];
+
+            if (
+              candidate
+              && (typeFilter === undefined
+                || (Array.isArray(typeFilter)
+                  ? typeFilter.includes(candidate.type)
+                  : candidate.type === typeFilter))
+            ) {
+              return candidate;
+            }
+
+            return undefined;
           }
 
           if (table === "xy_wap_embed_user_seat as seat") {

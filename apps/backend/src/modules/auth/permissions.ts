@@ -25,7 +25,13 @@ const viewerPermissions = [
 export const dbSubAccountType = {
   main: 1,
   sub: 0,
+  embed: 2,
 } as const;
+
+export const chatAiSubAccountTypes = [
+  dbSubAccountType.sub,
+  dbSubAccountType.main,
+] as const;
 
 export function deriveAccountType(type: number | null | undefined): AccountType {
   return type === dbSubAccountType.main ? "main" : "sub";

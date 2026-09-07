@@ -200,10 +200,10 @@ describe("workflow worker config", () => {
       outboxIntervalMs: 1_000,
       readinessIntervalMs: 30_000,
       reconcileIntervalMs: 30_000,
-      runRetentionDays: 180,
+      runRetentionDays: 45,
       retryDelayMs: 5_000,
       schedulerIntervalMs: 1_000,
-      taskOutboxRetentionDays: 30,
+      taskOutboxRetentionDays: 7,
     });
   });
 

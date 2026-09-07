@@ -1,11 +1,11 @@
 import type { WorkflowEntryPolicy } from "./trigger.js";
 
-export const WORKFLOW_ENTRY_WINDOW_MAX_DAYS = 90;
-export const WORKFLOW_ENTRY_WINDOW_MAX_HOURS = 2_160;
+export const WORKFLOW_ENTRY_WINDOW_MAX_DAYS = 30;
+export const WORKFLOW_ENTRY_WINDOW_MAX_HOURS = 720;
 export const WORKFLOW_ENTRY_MAX_ENTRIES = 10;
 export const WORKFLOW_INBOX_RETENTION_DAYS = 31;
-export const WORKFLOW_RUN_RETENTION_DAYS = 180;
-export const WORKFLOW_TASK_OUTBOX_RETENTION_DAYS = 30;
+export const WORKFLOW_RUN_RETENTION_DAYS = 45;
+export const WORKFLOW_TASK_OUTBOX_RETENTION_DAYS = 7;
 
 export function normalizeWorkflowEntryPolicy(policy: WorkflowEntryPolicy): WorkflowEntryPolicy;
 export function normalizeWorkflowEntryPolicy(policy: unknown): unknown;

@@ -1,7 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
 import type { CachePort } from "../../../src/cache/cache-port.js";
 import {
+  getCurrentSession,
   loginWithPassword,
+  refreshAccessToken,
   revokeSession,
   verifyAccessSession,
 } from "../../../src/modules/auth/auth.service.js";
@@ -91,6 +93,7 @@ function createLoginDb(
     id: number;
     session_version: number;
   }> = {},
+  subUserType = 0,
 ) {
   const session = {
     expires_at: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000),
@@ -120,15 +123,26 @@ function createLoginDb(
       return builder;
     },
     selectFrom(table: string) {
+      const wheres: Array<[string, string, unknown]> = [];
       const builder = {
         executeTakeFirst: async () => {
           if (table === "xy_wap_embed_sub_user") {
+            const typeFilter = wheres.find(([column]) => column === "type");
+            const typeAllowed = typeFilter === undefined
+              || (typeFilter[1] === "in"
+                && Array.isArray(typeFilter[2])
+                && typeFilter[2].includes(subUserType));
+
+            if (!typeAllowed) {
+              return undefined;
+            }
+
             return {
               id: 101,
               name: "客服一号",
               password_hash: "hash",
               role: "operator",
-              type: 0,
+              type: subUserType,
               uid: 9001,
             };
           }
@@ -142,7 +156,10 @@ function createLoginDb(
         executeTakeFirstOrThrow: async () => session,
         orderBy: () => builder,
         select: () => builder,
-        where: () => builder,
+        where: (column: string, operator: string, value: unknown) => {
+          wheres.push([column, operator, value]);
+          return builder;
+        },
       };
 
       return builder;
@@ -429,6 +446,59 @@ describe("revokeSession cache invalidation", () => {
 });
 
 describe("loginWithPassword cache invalidation", () => {
+  it("rejects an embed-only sub-account from password login", async () => {
+    const app = {
+      cache: createCache(),
+      cacheKeys: {
+        authSession: (sessionId: string) => `chatai:auth:session:${sessionId}`,
+        authSessionIndex: (subUserId: string) => `chatai:auth:session-index:${subUserId}`,
+      },
+      db: createLoginDb(vi.fn(), {}, 2),
+      jwt: {
+        sign: vi.fn(() => "access-token"),
+      },
+      log: { warn: vi.fn() },
+    };
+
+    await expect(
+      loginWithPassword(app as never, {
+        account: "agent001",
+        altcha: "mock-altcha",
+        password: "correct-password",
+      }),
+    ).rejects.toMatchObject({ code: "INVALID_CREDENTIALS" });
+    expect(app.jwt.sign).not.toHaveBeenCalled();
+  });
+
+  it("rejects an embed-only sub-account from app session lookup and refresh", async () => {
+    const app = {
+      cache: createCache(),
+      cacheKeys: {
+        authSession: (sessionId: string) => `chatai:auth:session:${sessionId}`,
+        authSessionIndex: (subUserId: string) => `chatai:auth:session-index:${subUserId}`,
+      },
+      db: createLoginDb(vi.fn(), {}, 2),
+      jwt: {
+        sign: vi.fn(() => "access-token"),
+      },
+      log: { warn: vi.fn() },
+    };
+
+    await expect(
+      getCurrentSession(app as never, {
+        roles: ["operator"],
+        sessionId: "501",
+        sessionVersion: 1,
+        subUserId: "101",
+        uid: 9001,
+      }, "app"),
+    ).rejects.toMatchObject({ code: "UNAUTHORIZED" });
+
+    await expect(refreshAccessToken(app as never, "refresh-token", "app"))
+      .rejects.toMatchObject({ code: "UNAUTHORIZED" });
+    expect(app.jwt.sign).not.toHaveBeenCalled();
+  });
+
   it("clears old cached sessions for a reused sub-user session row", async () => {
     const cache = {
       ...createCache(),

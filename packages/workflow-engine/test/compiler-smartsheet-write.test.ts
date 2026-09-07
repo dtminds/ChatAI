@@ -70,6 +70,30 @@ describe("Smartsheet Write compiler validation", () => {
     }).not.toThrow();
   });
 
+  it("preserves the execution config error for incomplete webhook and mappings", () => {
+    for (const config of [
+      { fieldMappings: [COMPLETE_FIELD], schema: COMPLETE_SCHEMA, webhookUrl: "" },
+      { fieldMappings: [], schema: COMPLETE_SCHEMA, webhookUrl: COMPLETE_WEBHOOK_URL },
+    ]) {
+      try {
+        compileWorkflowDraft({
+          draft: createDraft(config),
+          revision: 1,
+          workflowId: "42",
+          workflowType: "chatai_sop",
+        });
+        expect.fail("Expected Smartsheet Write compilation to fail");
+      } catch (error) {
+        expect(error).toBeInstanceOf(WorkflowCompilationError);
+        expect((error as WorkflowCompilationError).issues).toContainEqual({
+          code: "invalid-node-config",
+          message: "Smartsheet Write node requires a valid webhook URL and complete field mappings",
+          nodeId: "smartsheet-write",
+        });
+      }
+    }
+  });
+
   it("rejects unavailable and mismatched variable selectors before publication", () => {
     for (const value of [
       { kind: "variable", selector: ["node", "missing", "value"], valueType: { kind: "string" } },

@@ -28,6 +28,7 @@ import type {
   WorkflowOrderConversionDraftConfig,
   WorkflowOrderQueryDraftConfig,
   WorkflowRatioSplitDraftConfig,
+  WorkflowSmartsheetWriteDraftConfig,
   WorkflowTagDraftConfig,
   WorkflowTagQueryDraftConfig,
   WorkflowNodeKind as SharedWorkflowNodeKind,
@@ -163,6 +164,8 @@ export type AudienceFilterNodeData = WorkflowNodeDataBase<"audience-filter">
   & WorkflowAudienceFilterDraftConfig;
 export type WorkflowIntentOption = SharedWorkflowIntentOption;
 export type AiIntentNodeData = WorkflowNodeDataBase<"ai-intent"> & WorkflowAiIntentDraftConfig;
+export type SmartsheetWriteNodeData = WorkflowNodeDataBase<"smartsheet-write">
+  & WorkflowSmartsheetWriteDraftConfig;
 export type EndNodeData = WorkflowNodeDataBase<"end">;
 
 export type WorkflowNodeDataMap = {
@@ -182,6 +185,7 @@ export type WorkflowNodeDataMap = {
   "order-query": OrderQueryNodeData;
   "order-conversion": OrderConversionNodeData;
   "ratio-split": RatioSplitNodeData;
+  "smartsheet-write": SmartsheetWriteNodeData;
   start: StartNodeData;
   tag: TagNodeData;
   "tag-query": TagQueryNodeData;

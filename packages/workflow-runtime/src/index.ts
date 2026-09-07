@@ -6,6 +6,7 @@ export * from "./capability-port.js";
 export * from "./chatai-action-context.js";
 export * from "./contact-custom-field.js";
 export * from "./customer-update.js";
+export * from "./smartsheet-write.js";
 export * from "./errors.js";
 export * from "./entitlement.js";
 export * from "./execution-context-prepare.js";

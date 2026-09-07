@@ -5574,6 +5574,7 @@ function parseNodeKind(value: string): WorkflowNodeKind {
     "ai-intent",
     "audience-filter",
     "end",
+    "smartsheet-write",
   ].includes(value)) {
     return value as WorkflowNodeKind;
   }

@@ -707,6 +707,7 @@ function fallbackNodeTitle(kind: WorkflowEntryRecordStepNodeKind) {
     "order-query": "订单查询",
     "order-conversion": "代客转积分",
     "ratio-split": "A/B 分流",
+    "smartsheet-write": "写入智能表格",
     start: "开始",
     tag: "客户打标",
     "tag-query": "标签查询",

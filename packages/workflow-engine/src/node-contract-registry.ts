@@ -174,6 +174,22 @@ export function projectWorkflowNodeExecutionConfig({
     }));
   }
 
+  if (kind === "smartsheet-write") {
+    const fieldMappings = Array.isArray(draftConfig.fieldMappings) ? draftConfig.fieldMappings : [];
+    return cloneJsonRecord({
+      fieldMappings: fieldMappings.map((item) => {
+        const record = isRecord(item) ? item : {};
+        return compactUndefined({
+          enumOptions: record.enumOptions,
+          fieldId: record.fieldId,
+          fieldType: record.fieldType,
+          value: record.value,
+        });
+      }),
+      webhookUrl: draftConfig.webhookUrl,
+    });
+  }
+
   if (kind === "ai-collect") {
     const fields = Array.isArray(draftConfig.fields) ? draftConfig.fields : [];
     const openingMessage = typeof draftConfig.openingMessage === "string"
@@ -255,6 +271,8 @@ function getWorkflowNodeInvalidConfigMessage(kind: WorkflowNodeKind) {
       return "Order Bind node requires an order number variable";
     case "order-query":
       return "Order Query node requires an order number variable or complete query conditions";
+    case "smartsheet-write":
+      return "Smartsheet Write node requires a valid webhook URL and complete field mappings";
     default:
       return `Node configuration does not match its registered schema: ${kind}`;
   }

@@ -180,6 +180,16 @@ const projectableDraftData = {
     mode: "order-number",
     orderNumberSelector: ["node", "llm", "orderNo"],
   },
+  "smartsheet-write": {
+    webhookUrl: "https://qyapi.weixin.qq.com/cgi-bin/wedoc/smartsheet/webhook?key=test",
+    schema: '{"f1":{"title":"姓名","type":"text"}}',
+    fieldMappings: [{
+      fieldId: "f1",
+      fieldTitle: "姓名",
+      fieldType: "text",
+      value: { kind: "literal", value: "张三" },
+    }],
+  },
   start: {
     entryPolicy: { mode: "never" },
     seatIds: [101],

@@ -54,6 +54,11 @@ import {
   type WorkflowOrderQueryDraftConfig,
   type WorkflowOrderQueryExecutionConfig,
 } from "./order-query.js";
+import {
+  isWorkflowSmartsheetWriteExecutionConfigComplete,
+  WorkflowSmartsheetWriteDraftConfigSchema,
+  WorkflowSmartsheetWriteExecutionConfigSchema,
+} from "./smartsheet-write.js";
 
 export const WorkflowNodeMaturitySchema = Type.Union([
   Type.Literal("placeholder"),
@@ -766,6 +771,12 @@ export const workflowNodeContractRegistry = {
     WorkflowWaitEventDraftConfigSchema,
     WorkflowWaitEventConfigSchema,
   ),
+  "smartsheet-write": runtimeReadyContract(
+    "action",
+    1,
+    WorkflowSmartsheetWriteDraftConfigSchema,
+    WorkflowSmartsheetWriteExecutionConfigSchema,
+  ),
 } satisfies Record<WorkflowNodeKind, WorkflowNodeContractDefinition>;
 
 export type WorkflowNodeExecutionClassFor<TKind extends WorkflowNodeKind> =
@@ -837,6 +848,7 @@ export function isWorkflowNodeExecutionConfig(
   if (kind === "audience-filter") return isWorkflowAudienceFilterExecutionConfigComplete(value);
   if (kind === "customer-update") return isWorkflowCustomerUpdateExecutionConfigComplete(value);
   if (kind === "order-query") return isWorkflowOrderQueryExecutionConfigComplete(value);
+  if (kind === "smartsheet-write") return isWorkflowSmartsheetWriteExecutionConfigComplete(value);
   const schema = getWorkflowNodeContract(kind).executionConfigSchema;
   return schema !== null
     && Value.Check(schema, value)
@@ -1198,6 +1210,15 @@ export function getWorkflowNodeOutputContracts(
         key: "netAmount",
         usages: ["variable"],
         valueType: { kind: "number" },
+      },
+    ];
+  }
+  if (kind === "smartsheet-write") {
+    return [
+      {
+        key: "success",
+        usages: ["variable"],
+        valueType: { kind: "boolean" },
       },
     ];
   }

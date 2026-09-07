@@ -164,6 +164,7 @@ describe("workflow contracts", () => {
       "ai-collect",
       "audience-filter",
       "ai-intent",
+      "smartsheet-write",
       "end",
     ];
 

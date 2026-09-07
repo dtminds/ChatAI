@@ -47,7 +47,7 @@ import {
 } from "./trigger.js";
 import {
   hasValidWorkflowOrderQueryAmountPrecision,
-  WORKFLOW_ORDER_QUERY_MAX_LOOKBACK_DAYS,
+  isWorkflowOrderQueryRelativeRangeComplete,
   WORKFLOW_ORDER_QUERY_TIME_RANGE_REJECTION_DAYS,
   WorkflowOrderQueryDraftConfigSchema,
   WorkflowOrderQueryExecutionConfigSchema,
@@ -897,9 +897,7 @@ export function isWorkflowOrderQueryExecutionConfigComplete(
     return false;
   }
   if (timeRange.mode === "relative"
-    && [timeRange.start, timeRange.end].some(point =>
-      getWorkflowOrderQueryRelativeLookbackMilliseconds(point)
-        > WORKFLOW_ORDER_QUERY_MAX_LOOKBACK_DAYS * 86_400_000)) {
+    && !isWorkflowOrderQueryRelativeRangeComplete(timeRange)) {
     return false;
   }
   if (timeRange.mode === "dynamic"
@@ -913,20 +911,6 @@ export function isWorkflowOrderQueryExecutionConfigComplete(
 
 function getWorkflowLocalDateTimeDifference(start: string, end: string) {
   return Date.parse(`${end}:00Z`) - Date.parse(`${start}:00Z`);
-}
-
-function getWorkflowOrderQueryRelativeLookbackMilliseconds(
-  point: Extract<
-    Extract<WorkflowOrderQueryExecutionConfig, { mode: "conditions" }>["conditions"]["timeRange"],
-    { mode: "relative" }
-  >["start"],
-) {
-  const unitMilliseconds = point.unit === "day"
-    ? 86_400_000
-    : point.unit === "hour"
-      ? 3_600_000
-      : 60_000;
-  return point.amount * unitMilliseconds;
 }
 
 export function isWorkflowCustomerFieldTypeSupported(

@@ -27,6 +27,13 @@ describe("Workflow Order Query contract", () => {
     expect(isWorkflowNodeExecutionConfig("order-query", conditions({ max: 99.999 }))).toBe(false);
   });
 
+  it("limits configured prices to 100000", () => {
+    expect(isWorkflowNodeDraftConfig("order-query", conditions({ min: 100000 }))).toBe(true);
+    expect(isWorkflowNodeExecutionConfig("order-query", conditions({ max: 100000 }))).toBe(true);
+    expect(isWorkflowNodeDraftConfig("order-query", conditions({ min: 100000.01 }))).toBe(false);
+    expect(isWorkflowNodeExecutionConfig("order-query", conditions({ max: 100000.01 }))).toBe(false);
+  });
+
   it("limits a condition query to 20 shops", () => {
     const twentyShopIds = Array.from({ length: 20 }, (_, index) => index + 1);
     const twentyOneShopIds = Array.from({ length: 21 }, (_, index) => index + 1);
@@ -124,6 +131,11 @@ describe("Workflow Order Query contract", () => {
       end: { amount: 0, time: "23:59", unit: "day" },
       mode: "relative",
       start: { amount: 361, time: "00:00", unit: "day" },
+    }))).toBe(false);
+    expect(isWorkflowNodeExecutionConfig("order-query", conditions({}, {
+      end: { amount: 1, time: "00:00", unit: "day" },
+      mode: "relative",
+      start: { amount: 0, time: "23:59", unit: "day" },
     }))).toBe(false);
   });
 

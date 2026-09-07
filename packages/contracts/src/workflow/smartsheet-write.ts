@@ -265,3 +265,19 @@ export function isWorkflowSmartsheetWriteExecutionConfigComplete(
   const fieldIds = value.fieldMappings.map(mapping => mapping.fieldId);
   return new Set(fieldIds).size === fieldIds.length;
 }
+
+export function isWorkflowSmartsheetWriteDraftConfigComplete(
+  value: unknown,
+): value is WorkflowSmartsheetWriteDraftConfig {
+  if (!Value.Check(WorkflowSmartsheetWriteDraftConfigSchema, value)) return false;
+  const fields = parseSmartsheetSchema(value.schema);
+  if (!fields || !isValidSmartsheetWebhookUrl(value.webhookUrl)) return false;
+  if (value.fieldMappings.length === 0
+    || !value.fieldMappings.every(mapping =>
+      fields[mapping.fieldId]?.type === mapping.fieldType
+      && isSmartsheetFieldMappingComplete(mapping))) {
+    return false;
+  }
+  const fieldIds = value.fieldMappings.map(mapping => mapping.fieldId);
+  return new Set(fieldIds).size === fieldIds.length;
+}

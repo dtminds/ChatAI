@@ -2,6 +2,7 @@ import { Type, type Static } from "@sinclair/typebox";
 
 export const WORKFLOW_ORDER_QUERY_MAX_SELECTED_SHOPS = 20;
 export const WORKFLOW_ORDER_QUERY_MAX_LOOKBACK_DAYS = 360;
+export const WORKFLOW_ORDER_QUERY_MAX_AMOUNT = 100_000;
 export const WORKFLOW_ORDER_QUERY_TIME_RANGE_REJECTION_DAYS =
   WORKFLOW_ORDER_QUERY_MAX_LOOKBACK_DAYS + 1;
 
@@ -70,8 +71,8 @@ export const WorkflowOrderQueryTimeRangeSchema = Type.Union([
 ]);
 
 export const WorkflowOrderQueryAmountSchema = Type.Object({
-  max: Type.Optional(Type.Number({ maximum: Number.MAX_SAFE_INTEGER, minimum: 0 })),
-  min: Type.Optional(Type.Number({ maximum: Number.MAX_SAFE_INTEGER, minimum: 0 })),
+  max: Type.Optional(Type.Number({ maximum: WORKFLOW_ORDER_QUERY_MAX_AMOUNT, minimum: 0 })),
+  min: Type.Optional(Type.Number({ maximum: WORKFLOW_ORDER_QUERY_MAX_AMOUNT, minimum: 0 })),
 }, { additionalProperties: false });
 
 export function hasValidWorkflowOrderQueryAmountPrecision(amount: {
@@ -80,6 +81,56 @@ export function hasValidWorkflowOrderQueryAmountPrecision(amount: {
 }) {
   return [amount.min, amount.max].every(value => value === undefined
     || /^\d+(?:\.\d{1,2})?$/.test(String(value)));
+}
+
+export function isWorkflowOrderQueryRelativeRangeComplete(
+  range: Static<typeof WorkflowOrderQueryRelativeTimeSchema>,
+) {
+  const { start, end } = range;
+  if ([start, end].some(point => getWorkflowOrderQueryRelativeLookbackMilliseconds(point)
+    > WORKFLOW_ORDER_QUERY_MAX_LOOKBACK_DAYS * 86_400_000)) {
+    return false;
+  }
+  if (start.unit !== "day" && end.unit !== "day") {
+    return getWorkflowOrderQueryRelativeLookbackMilliseconds(start)
+      >= getWorkflowOrderQueryRelativeLookbackMilliseconds(end);
+  }
+  if (start.unit === "day" && end.unit === "day") {
+    return start.amount > end.amount
+      || (start.amount === end.amount && start.time <= end.time);
+  }
+  const midnight = Date.parse("2000-01-01T00:00:00+08:00");
+  return [midnight, midnight + 86_400_000 - 1].some(anchor =>
+    resolveWorkflowOrderQueryRelativePoint(anchor, start, false)
+      <= resolveWorkflowOrderQueryRelativePoint(anchor, end, true));
+}
+
+function getWorkflowOrderQueryRelativeLookbackMilliseconds(
+  point: Static<typeof WorkflowOrderQueryRelativePointSchema>,
+) {
+  const unitMilliseconds = point.unit === "day"
+    ? 86_400_000
+    : point.unit === "hour"
+      ? 3_600_000
+      : 60_000;
+  return point.amount * unitMilliseconds;
+}
+
+function resolveWorkflowOrderQueryRelativePoint(
+  enteredAt: number,
+  point: Static<typeof WorkflowOrderQueryRelativePointSchema>,
+  end: boolean,
+) {
+  if (point.unit !== "day") {
+    return enteredAt - getWorkflowOrderQueryRelativeLookbackMilliseconds(point);
+  }
+  const offsetMilliseconds = 8 * 3_600_000;
+  const local = new Date(
+    enteredAt - getWorkflowOrderQueryRelativeLookbackMilliseconds(point) + offsetMilliseconds,
+  );
+  const [hours, minutes] = point.time.split(":").map(Number);
+  local.setUTCHours(hours!, minutes!, end ? 59 : 0, 0);
+  return local.getTime() - offsetMilliseconds;
 }
 
 export const WorkflowOrderQueryConditionSchema = Type.Object({

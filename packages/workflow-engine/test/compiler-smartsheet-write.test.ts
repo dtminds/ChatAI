@@ -70,6 +70,30 @@ describe("Smartsheet Write compiler validation", () => {
     }).not.toThrow();
   });
 
+  it("preserves the execution config error for incomplete webhook and mappings", () => {
+    for (const config of [
+      { fieldMappings: [COMPLETE_FIELD], schema: COMPLETE_SCHEMA, webhookUrl: "" },
+      { fieldMappings: [], schema: COMPLETE_SCHEMA, webhookUrl: COMPLETE_WEBHOOK_URL },
+    ]) {
+      try {
+        compileWorkflowDraft({
+          draft: createDraft(config),
+          revision: 1,
+          workflowId: "42",
+          workflowType: "chatai_sop",
+        });
+        expect.fail("Expected Smartsheet Write compilation to fail");
+      } catch (error) {
+        expect(error).toBeInstanceOf(WorkflowCompilationError);
+        expect((error as WorkflowCompilationError).issues).toContainEqual({
+          code: "invalid-node-config",
+          message: "Smartsheet Write node requires a valid webhook URL and complete field mappings",
+          nodeId: "smartsheet-write",
+        });
+      }
+    }
+  });
+
   it("rejects unavailable and mismatched variable selectors before publication", () => {
     for (const value of [
       { kind: "variable", selector: ["node", "missing", "value"], valueType: { kind: "string" } },
@@ -78,6 +102,20 @@ describe("Smartsheet Write compiler validation", () => {
       expect(() => compileWorkflowDraft({
         draft: createDraft({ fieldMappings: [{ ...COMPLETE_FIELD, value }], schema: COMPLETE_SCHEMA, webhookUrl: COMPLETE_WEBHOOK_URL }),
         revision: 1, workflowId: "42", workflowType: "chatai_sop",
+      })).toThrow(WorkflowCompilationError);
+    }
+  });
+
+  it("rejects field mappings that no longer match the saved schema", () => {
+    for (const fieldMappings of [
+      [{ ...COMPLETE_FIELD, fieldId: "missing" }],
+      [{ ...COMPLETE_FIELD, fieldType: "number", value: { kind: "literal", value: "1" } }],
+    ]) {
+      expect(() => compileWorkflowDraft({
+        draft: createDraft({ fieldMappings, schema: COMPLETE_SCHEMA, webhookUrl: COMPLETE_WEBHOOK_URL }),
+        revision: 1,
+        workflowId: "42",
+        workflowType: "chatai_sop",
       })).toThrow(WorkflowCompilationError);
     }
   });

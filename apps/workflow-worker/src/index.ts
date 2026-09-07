@@ -15,6 +15,7 @@ import {
   WorkflowRuntimeService,
   WORKFLOW_AUDIENCE_FILTER_CAPABILITY_BINDING,
   WORKFLOW_CUSTOMER_UPDATE_CAPABILITY_BINDING,
+  WORKFLOW_SMARTSHEET_WRITE_CAPABILITY_BINDING,
   WORKFLOW_HANDOFF_CAPABILITY_BINDING,
   WORKFLOW_MESSAGE_CAPABILITY_BINDING,
   WORKFLOW_ORDER_CONVERSION_CAPABILITY_BINDING,
@@ -32,6 +33,7 @@ import { HttpWorkflowAudienceFilterCapabilityPort } from "./audience-filter-capa
 import { HttpWorkflowContactIdentityPort } from "./contact-identity-port.js";
 import { HttpWorkflowContactCustomFieldPort } from "./contact-custom-field-port.js";
 import { HttpWorkflowCustomerUpdateCapabilityPort } from "./customer-update-capability-port.js";
+import { HttpWorkflowSmartsheetWriteCapabilityPort } from "./smartsheet-write-capability-port.js";
 import { createWorkflowEntitlementCache } from "./entitlement-cache.js";
 import { startEntryConsumer } from "./entry-consumer.js";
 import { startWorkflowHealthServer } from "./health.js";
@@ -141,6 +143,7 @@ export async function startWorkflowWorkerProcess(env: NodeJS.ProcessEnv = proces
     token: config.javaInternalApi.token,
   });
   const capabilityPort = new WorkflowCapabilityRouter([
+    { binding: WORKFLOW_SMARTSHEET_WRITE_CAPABILITY_BINDING, port: new HttpWorkflowSmartsheetWriteCapabilityPort() },
     {
       binding: WORKFLOW_COUPON_CAPABILITY_BINDING,
       port: new HttpWorkflowCouponCapabilityPort({ baseUrl: config.javaInternalApi.baseUrl, token: config.javaInternalApi.token }),
@@ -302,6 +305,7 @@ export * from "./contact-identity-port.js";
 export * from "./conversation-directive-port.js";
 export * from "./conversation-directive-worker.js";
 export * from "./customer-update-capability-port.js";
+export * from "./smartsheet-write-capability-port.js";
 export * from "./database.js";
 export * from "./entry-consumer.js";
 export * from "./entitlement-cache.js";

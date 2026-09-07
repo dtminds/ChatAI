@@ -26,6 +26,7 @@ import {
   WorkflowTagResultSchema,
   WORKFLOW_WAIT_EVENT_DELAY_MAX_BY_UNIT,
   workflowNodeContractRegistry,
+  parseSmartsheetSchema,
   type WorkflowNodeKind,
 } from "../src/index.js";
 import {
@@ -117,6 +118,11 @@ const draftConfigs = {
     event: { type: "message.received" },
     timeout: { duration: 24, unit: "hour" },
   },
+  "smartsheet-write": {
+    webhookUrl: "",
+    schema: "",
+    fieldMappings: [],
+  },
 } as const satisfies Record<WorkflowNodeKind, Record<string, unknown>>;
 
 describe("workflow node contracts", () => {
@@ -168,7 +174,7 @@ describe("workflow node contracts", () => {
   it("registers every production kind with an explicit maturity", () => {
     const entries = Object.entries(workflowNodeContractRegistry);
 
-    expect(entries).toHaveLength(21);
+    expect(entries).toHaveLength(22);
     for (const [kind, contract] of entries) {
       expect(Value.Check(WorkflowNodeKindSchema, kind)).toBe(true);
       expect(["action", "composite", "core", "inference", "query"])
@@ -182,7 +188,7 @@ describe("workflow node contracts", () => {
       .toEqual(["ratio-split"]);
 
     expect(entries.filter(([, contract]) => contract.maturity === "runtime-ready").map(([kind]) => kind))
-      .toEqual(["ai-collect", "ai-intent", "audience-filter", "branch", "ratio-split", "coupon", "customer-update", "end", "handoff", "llm", "message", "message-query", "order-bind", "order-query", "order-conversion", "start", "tag", "tag-query", "wait", "wait-event"]);
+      .toEqual(["ai-collect", "ai-intent", "audience-filter", "branch", "ratio-split", "coupon", "customer-update", "end", "handoff", "llm", "message", "message-query", "order-bind", "order-query", "order-conversion", "start", "tag", "tag-query", "wait", "wait-event", "smartsheet-write"]);
     expect(entries.filter(([, contract]) => contract.maturity === "draft-ready").map(([kind]) => kind))
       .toEqual([]);
     expect(entries.filter(([, contract]) => contract.maturity === "placeholder").map(([kind]) => kind))
@@ -524,6 +530,7 @@ describe("workflow node contracts", () => {
       "order-query": "query",
       "order-conversion": "action",
       "ratio-split": "core",
+      "smartsheet-write": "action",
       start: "core",
       tag: "action",
       "tag-query": "query",
@@ -553,6 +560,7 @@ describe("workflow node contracts", () => {
       "order-query": [],
       "order-conversion": ["mallUserId"],
       "ratio-split": [],
+      "smartsheet-write": [],
       start: [],
       tag: ["externalUserId"],
       "tag-query": ["externalUserId"],
@@ -742,6 +750,94 @@ describe("workflow node contracts", () => {
     expect(getWorkflowNodeOutputContracts("order-conversion", {})).toEqual([
       { key: "result", usages: ["variable"], valueType: { kind: "boolean" } },
     ]);
+  });
+
+  it("keeps incomplete Smartsheet Write drafts editable and requires a webhook plus complete fields to execute", () => {
+    expect(getWorkflowNodeContract("smartsheet-write")).toMatchObject({
+      currentDraftSchemaVersion: 1,
+      executionClass: "action",
+      identityInputs: [],
+      maturity: "runtime-ready",
+    });
+    expect(isWorkflowNodeDraftConfig("smartsheet-write", {
+      webhookUrl: "",
+      schema: "",
+      fieldMappings: [],
+    })).toBe(true);
+    expect(isWorkflowNodeExecutionConfig("smartsheet-write", {
+      webhookUrl: "",
+      fieldMappings: [],
+    })).toBe(false);
+    expect(isWorkflowNodeExecutionConfig("smartsheet-write", {
+      webhookUrl: "https://qyapi.weixin.qq.com/cgi-bin/wedoc/smartsheet/webhook?key=test",
+      fieldMappings: [{
+        fieldId: "f1",
+        fieldType: "text",
+        value: { kind: "literal", value: "张三" },
+      }],
+    })).toBe(true);
+    expect(isWorkflowNodeExecutionConfig("smartsheet-write", {
+      webhookUrl: "https://example.com/webhook",
+      fieldMappings: [{
+        fieldId: "f1",
+        fieldType: "text",
+        value: { kind: "literal", value: "张三" },
+      }],
+    })).toBe(false);
+    expect(isWorkflowNodeExecutionConfig("smartsheet-write", {
+      webhookUrl: "https://qyapi.weixin.qq.com/cgi-bin/wedoc/smartsheet/webhook?key=test",
+      fieldMappings: [{
+        fieldId: "f1",
+        fieldType: "number",
+        value: { kind: "variable", selector: ["subject", "id"], valueType: { kind: "string" } },
+      }],
+    })).toBe(false);
+    expect(isWorkflowNodeExecutionConfig("smartsheet-write", {
+      webhookUrl: "https://qyapi.weixin.qq.com/cgi-bin/wedoc/smartsheet/webhook?key=test",
+      fieldMappings: [{
+        fieldId: "f1",
+        fieldType: "url",
+        value: { kind: "literal", value: "https://cdn.example.com/order.png" },
+      }],
+    })).toBe(true);
+    expect(isWorkflowNodeExecutionConfig("smartsheet-write", {
+      webhookUrl: "https://qyapi.weixin.qq.com/cgi-bin/wedoc/smartsheet/webhook?key=test",
+      fieldMappings: [{
+        fieldId: "f1",
+        fieldType: "date_time",
+        value: { kind: "literal", value: "2026-09-07T14:30" },
+      }],
+    })).toBe(true);
+    expect(getWorkflowNodeOutputContracts("smartsheet-write", {})).toEqual([
+      { key: "success", usages: ["variable"], valueType: { kind: "boolean" } },
+    ]);
+  });
+
+  it("reads official WeCom webhook schema JSON and ignores add_records", () => {
+    expect(parseSmartsheetSchema(JSON.stringify({
+      schema: {
+        f04Gwj: { title: "姓名", type: "text" },
+        fUlfaq: { title: "回款状态", type: "single_select", enum: ["已回款", "未回款"] },
+      },
+      add_records: [{
+        values: {
+          f04Gwj: "测试文本",
+          fUlfaq: [{ text: "已回款" }],
+        },
+      }],
+    }))).toEqual({
+      f04Gwj: { title: "姓名", type: "text" },
+      fUlfaq: { title: "回款状态", type: "single_select", enum: ["已回款", "未回款"] },
+    });
+    expect(parseSmartsheetSchema(JSON.stringify({
+      f04Gwj: { title: "姓名", type: "text" },
+    }))).toEqual({
+      f04Gwj: { title: "姓名", type: "text" },
+    });
+    expect(parseSmartsheetSchema(JSON.stringify({
+      schema: [],
+      add_records: [],
+    }))).toBeNull();
   });
 
   it("keeps the Customer Update Java command batched and bounded", () => {

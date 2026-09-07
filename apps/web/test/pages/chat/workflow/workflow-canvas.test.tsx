@@ -323,6 +323,7 @@ describe("WorkflowCanvas", () => {
 
       expect(screen.getByRole("button", { name: "添加 等待节点" })).toBeInTheDocument();
       expect(screen.queryByRole("button", { name: "添加 转 Agent节点" })).not.toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "添加 写入智能表格节点" })).toBeInTheDocument();
       expect(screen.getByRole("button", { name: "添加 发券节点" })).toBeInTheDocument();
     }
     finally {
@@ -336,6 +337,7 @@ describe("WorkflowCanvas", () => {
 
     expect(within(palette).getByRole("button", { name: "添加 转人工节点" })).toBeInTheDocument();
     expect(within(palette).getByRole("button", { name: "添加 发券节点" })).toBeInTheDocument();
+    expect(within(palette).getByRole("button", { name: "添加 写入智能表格节点" })).toBeInTheDocument();
     expect(within(palette).queryByRole("textbox")).not.toBeInTheDocument();
   });
 });

@@ -1,6 +1,6 @@
 import { Calendar03Icon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { Button } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
 import {
@@ -29,6 +29,7 @@ const minutes = Array.from({ length: 60 }, (_, index) =>
 type LocalDateTimePickerProps = {
   "aria-label": string;
   "aria-invalid"?: boolean;
+  children?: ReactNode;
   className?: string;
   disabled?: boolean;
   onValueChange(value: string): void;
@@ -142,6 +143,7 @@ export function DatePicker({
 function LocalDateTimePicker({
   "aria-label": ariaLabel,
   "aria-invalid": ariaInvalid,
+  children,
   className,
   disabled = false,
   onValueChange,
@@ -177,31 +179,33 @@ function LocalDateTimePicker({
   return (
     <Popover onOpenChange={handleOpenChange} open={open}>
       <PopoverTrigger asChild>
-        <Button
-          aria-label={ariaLabel}
-          aria-invalid={ariaInvalid || undefined}
-          className={cn(
-            "h-9 w-full justify-between px-3 font-normal",
-            ariaInvalid && "border-destructive focus-visible:ring-destructive/20",
-            className,
-          )}
-          disabled={disabled}
-          type="button"
-          variant="outline"
-        >
-          <span className={cn("truncate", !parsedValue && "text-muted-foreground")}>
-            {parsedValue
-              ? `${formatDateValue(parsedValue.date)} ${parsedValue.time}`
-              : "请选择日期时间"}
-          </span>
-          <HugeiconsIcon
-            aria-hidden="true"
-            className="shrink-0 text-muted-foreground"
-            icon={Calendar03Icon}
-            size={16}
-            strokeWidth={1.8}
-          />
-        </Button>
+        {children ?? (
+          <Button
+            aria-label={ariaLabel}
+            aria-invalid={ariaInvalid || undefined}
+            className={cn(
+              "h-9 w-full justify-between px-3 font-normal",
+              ariaInvalid && "border-destructive focus-visible:ring-destructive/20",
+              className,
+            )}
+            disabled={disabled}
+            type="button"
+            variant="outline"
+          >
+            <span className={cn("truncate", !parsedValue && "text-muted-foreground")}>
+              {parsedValue
+                ? `${formatDateValue(parsedValue.date)} ${parsedValue.time}`
+                : "请选择日期时间"}
+            </span>
+            <HugeiconsIcon
+              aria-hidden="true"
+              className="shrink-0 text-muted-foreground"
+              icon={Calendar03Icon}
+              size={16}
+              strokeWidth={1.8}
+            />
+          </Button>
+        )}
       </PopoverTrigger>
       <PopoverContent align="start" className="w-auto p-0">
         <Calendar

@@ -49,6 +49,7 @@ export * from "./workflow/order-conversion.js";
 export * from "./workflow/policy.js";
 export * from "./workflow/ratio-split.js";
 export * from "./workflow/retention.js";
+export * from "./workflow/smartsheet-write.js";
 export * from "./workflow/tag.js";
 export * from "./workflow/tag-query.js";
 export * from "./workflow/test-attempt.js";

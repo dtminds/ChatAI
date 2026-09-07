@@ -104,6 +104,12 @@ function getRequiredContextSelectors(
       return value?.kind === "variable" ? selectorFrom(value.selector) : [];
     });
   }
+  if (node.kind === "smartsheet-write") {
+    return readArray(config.fieldMappings).flatMap(field => {
+      const value = isRecord(field) && isRecord(field.value) ? field.value : null;
+      return value?.kind === "variable" ? selectorFrom(value.selector) : [];
+    });
+  }
   if (node.kind === "ai-intent") return selectorFrom(config.inputSelector);
   if (node.kind === "ai-collect") return selectorFrom(config.inputSelector);
   if (node.kind === "order-bind") return selectorFrom(config.orderNumberSelector);

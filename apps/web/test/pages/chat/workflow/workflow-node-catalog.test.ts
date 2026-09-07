@@ -203,6 +203,7 @@ describe("workflow node catalog", () => {
 
       expect(allowedInsertableNodeKinds).toContain("ratio-split");
       expect(allowedInsertableNodeKinds).toContain("audience-filter");
+      expect(allowedInsertableNodeKinds).toContain("smartsheet-write");
     },
   );
 
@@ -227,6 +228,7 @@ describe("workflow node catalog", () => {
       "order-query",
       "order-conversion",
       "ratio-split",
+      "smartsheet-write",
       "start",
       "tag",
       "tag-query",
@@ -257,7 +259,7 @@ describe("workflow node catalog", () => {
     const schemaNodeKinds: WorkflowNodeKind[] = [
       "agent",
     ];
-    const customNodeKinds: WorkflowNodeKind[] = ["ai-collect", "ai-intent", "audience-filter", "branch", "coupon", "customer-update", "handoff", "llm", "message", "message-query", "order-bind", "order-query", "order-conversion", "ratio-split", "start", "tag", "tag-query", "wait", "wait-event"];
+    const customNodeKinds: WorkflowNodeKind[] = ["ai-collect", "ai-intent", "audience-filter", "branch", "coupon", "customer-update", "handoff", "llm", "message", "message-query", "order-bind", "order-query", "order-conversion", "ratio-split", "smartsheet-write", "start", "tag", "tag-query", "wait", "wait-event"];
 
     expect(Object.keys(nodeDefinitions)).toEqual(nodeKinds);
     expect(Object.keys(workflowNodeCatalog)).toEqual(nodeKinds);
@@ -374,6 +376,7 @@ describe("workflow node catalog", () => {
       "order-bind",
       "order-query",
       "order-conversion",
+      "smartsheet-write",
       "start",
       "tag",
       "tag-query",
@@ -488,6 +491,7 @@ describe("workflow node catalog", () => {
       "message",
       "operate",
       "operate",
+      "data",
     ]);
     expect(workflowNodePaletteGroups.map((group) => group.id)).toEqual([
       "flow",
@@ -506,7 +510,7 @@ describe("workflow node catalog", () => {
       items: group.items.map((item) => item.id),
     }))).toEqual([
       { id: "flow", items: ["wait", "wait-event", "branch", "audience-filter", "ratio-split", "ai-intent"] },
-      { id: "data", items: ["llm", "ai-collect", "order-query", "tag-query", "message-query"] },
+      { id: "data", items: ["llm", "ai-collect", "order-query", "tag-query", "message-query", "smartsheet-write"] },
       { id: "message", items: ["message", "handoff", "agent"] },
       { id: "operate", items: ["tag", "customer-update", "order-bind", "coupon", "order-conversion"] },
     ]);
@@ -517,7 +521,7 @@ describe("workflow node catalog", () => {
       items: group.items.map((item) => item.id),
     }))).toEqual([
       { id: "flow", items: ["wait", "wait-event", "branch", "audience-filter", "ratio-split", "ai-intent"] },
-      { id: "data", items: ["llm", "ai-collect", "order-query", "tag-query", "message-query"] },
+      { id: "data", items: ["llm", "ai-collect", "order-query", "tag-query", "message-query", "smartsheet-write"] },
       { id: "message", items: ["message", "handoff", "agent"] },
       { id: "operate", items: ["tag", "customer-update", "order-bind", "coupon", "order-conversion"] },
     ]);

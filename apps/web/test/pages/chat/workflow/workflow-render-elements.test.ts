@@ -90,6 +90,7 @@ describe("createWorkflowRenderElements", () => {
       "agent",
       "coupon",
       "order-conversion",
+      "smartsheet-write",
     ]);
     expect(rendered.edges[1].data?.onInsertBetween).toBe(handlers.onInsertNodeBetween);
   });

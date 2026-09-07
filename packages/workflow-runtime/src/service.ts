@@ -626,6 +626,30 @@ export class WorkflowRuntimeService {
       | Awaited<ReturnType<ReturnType<typeof createCoreNodeExecutorRegistry>["execute"]>>
       | { kind: "inference-waiting"; type: "inference-wait" };
     let nextContext: Record<string, unknown>;
+    const recoveredSmartsheetAttempt = node.kind === "smartsheet-write"
+      && nodeExecutionInput.smartsheetAttemptStarted === true;
+    const capabilityPort: WorkflowCapabilityPort | undefined = node.kind === "smartsheet-write" && this.capabilityPort
+      ? {
+          execute: async (definition, request) => {
+            // WeCom cannot deduplicate this action. Fence retries before entering the adapter,
+            // including lease recovery after a successful write whose result was not committed.
+            if (nodeExecutionInput.smartsheetAttemptStarted === true) return { success: false, errorCode: "UNKNOWN_OUTCOME_RECOVERED" };
+            nodeExecutionInput = { ...nodeExecutionInput, smartsheetAttemptStarted: true };
+            const marked = await this.runtimeRepository.updateCapabilityExecutionInput({
+              expectedRunLockVersion: run.lockVersion,
+              expectedTaskVersion: claimed.task.taskVersion,
+              executionKey: nodeExecutionKey,
+              input: nodeExecutionInput,
+              runId: run.id,
+              taskId: claimed.task.id,
+              uid: run.uid,
+            });
+            if (marked.kind !== "success") throw staleTaskError();
+            request.signal.throwIfAborted();
+            return this.capabilityPort!.execute(definition, request);
+          },
+        }
+      : this.capabilityPort;
     try {
       assertWorkflowRuntimeValue(run.context, "run-context", WORKFLOW_RUN_CONTEXT_MAX_BYTES);
       let preparedContext: WorkflowPreparedExecutionContext = { customFields: {}, identities: {} };
@@ -633,8 +657,8 @@ export class WorkflowRuntimeService {
         nodeExecutionInput,
         contextRequirements.customFields,
       );
-      if (contextRequirements.identities.length > 0
-        || contextRequirements.customFieldIds.length > 0) {
+      if (!recoveredSmartsheetAttempt && (contextRequirements.identities.length > 0
+        || contextRequirements.customFieldIds.length > 0)) {
         preparedContext = await prepareWorkflowExecutionContext({
           contactCustomFieldPort: this.contactCustomFieldPort,
           contactIdentityPort: this.contactIdentityPort,
@@ -662,7 +686,9 @@ export class WorkflowRuntimeService {
           if (updated.kind !== "success") throw staleTaskError();
         }
       }
-      executionResult = node.kind === "wait" && claimed.task.taskType === "wait"
+      executionResult = recoveredSmartsheetAttempt
+        ? { output: { success: false, errorCode: "UNKNOWN_OUTCOME_RECOVERED" }, sourceOutletId: "default", type: "advance" as const }
+        : node.kind === "wait" && claimed.task.taskType === "wait"
         ? {
             output: { dueAt: claimed.task.dueAt.toISOString() },
             sourceOutletId: "default",
@@ -703,7 +729,7 @@ export class WorkflowRuntimeService {
             binding: capabilityBinding,
             enteredAt: claimed.task.createdAt,
             node,
-            port: this.capabilityPort,
+            port: capabilityPort,
             preparedContext,
             run,
             startedAt: this.clock(),
@@ -763,50 +789,59 @@ export class WorkflowRuntimeService {
       }
       const capabilityError = requiresPreparedExecution ? toCapabilityExecutionError(error) : null;
       if (!capabilityError) throw error;
-      const failureInput = {
-        errorCode: capabilityError.code.slice(0, 128),
-        errorMessage: capabilityError.message.slice(0, 512),
-        expectedRunLockVersion: run.lockVersion,
-        expectedTaskVersion: claimed.task.taskVersion,
-        failureKind: capabilityError.failureKind,
-        executionKey: nodeExecutionKey,
-        inbox: createInbox(input.messageId, task.id, input.taskVersion, input.now),
-        now: input.now,
-        runId: run.id,
-        taskId: task.id,
-        uid: input.uid,
-      };
-      if (capabilityError.failureKind === "terminal" || claimed.task.attempt >= this.maxTaskAttempts) {
-        const failed = await this.runtimeRepository.failCapabilityExecution(failureInput);
-        if (failed.kind === "already-processed") throw alreadyProcessedError();
-        if (failed.kind !== "success") throw staleTaskError();
+      if (node.kind === "smartsheet-write" && error instanceof WorkflowCapabilityExecutionError) {
+        executionResult = { output: { success: false, errorCode: "EXECUTION_FAILED" }, sourceOutletId: "default", type: "advance" };
+        nextContext = appendNodeOutput(run.context, node.id, executionResult.output, {
+          enteredAt: claimed.task.createdAt,
+          exitedAt: this.clock(),
+        });
+        assertWorkflowRuntimeValue(nextContext, "run-context", WORKFLOW_RUN_CONTEXT_MAX_BYTES);
+      } else {
+        const failureInput = {
+          errorCode: capabilityError.code.slice(0, 128),
+          errorMessage: capabilityError.message.slice(0, 512),
+          expectedRunLockVersion: run.lockVersion,
+          expectedTaskVersion: claimed.task.taskVersion,
+          failureKind: capabilityError.failureKind,
+          executionKey: nodeExecutionKey,
+          inbox: createInbox(input.messageId, task.id, input.taskVersion, input.now),
+          now: input.now,
+          runId: run.id,
+          taskId: task.id,
+          uid: input.uid,
+        };
+        if (capabilityError.failureKind === "terminal" || claimed.task.attempt >= this.maxTaskAttempts) {
+          const failed = await this.runtimeRepository.failCapabilityExecution(failureInput);
+          if (failed.kind === "already-processed") throw alreadyProcessedError();
+          if (failed.kind !== "success") throw staleTaskError();
+          return {
+            errorCode: failureInput.errorCode,
+            diagnosticMessage: capabilityError.diagnosticMessage.slice(0, 1_024),
+            failureKind: failureInput.failureKind,
+            kind: "failed" as const,
+            run: failed.run,
+            task: failed.task,
+          };
+        }
+        const retryDelayMs = Math.min(
+          this.capabilityRetryDelayMs * 2 ** Math.max(0, claimed.task.attempt - 1),
+          this.capabilityMaxRetryDelayMs,
+        );
+        const scheduled = await this.runtimeRepository.scheduleCapabilityRetry({
+          ...failureInput,
+          dueAt: new Date(input.now.getTime() + retryDelayMs),
+        });
+        if (scheduled.kind === "already-processed") throw alreadyProcessedError();
+        if (scheduled.kind !== "success") throw staleTaskError();
         return {
           errorCode: failureInput.errorCode,
           diagnosticMessage: capabilityError.diagnosticMessage.slice(0, 1_024),
           failureKind: failureInput.failureKind,
-          kind: "failed" as const,
-          run: failed.run,
-          task: failed.task,
+          kind: "retry-scheduled" as const,
+          retryAt: scheduled.task.dueAt,
+          task: scheduled.task,
         };
       }
-      const retryDelayMs = Math.min(
-        this.capabilityRetryDelayMs * 2 ** Math.max(0, claimed.task.attempt - 1),
-        this.capabilityMaxRetryDelayMs,
-      );
-      const scheduled = await this.runtimeRepository.scheduleCapabilityRetry({
-        ...failureInput,
-        dueAt: new Date(input.now.getTime() + retryDelayMs),
-      });
-      if (scheduled.kind === "already-processed") throw alreadyProcessedError();
-      if (scheduled.kind !== "success") throw staleTaskError();
-      return {
-        errorCode: failureInput.errorCode,
-        diagnosticMessage: capabilityError.diagnosticMessage.slice(0, 1_024),
-        failureKind: failureInput.failureKind,
-        kind: "retry-scheduled" as const,
-        retryAt: scheduled.task.dueAt,
-        task: scheduled.task,
-      };
     }
     const commitInput: WorkflowCommitNodeResultInput = {
       context: nextContext,

@@ -51,6 +51,7 @@ export const sourceNodeKinds: WorkflowNodeKind[] = [
   "customer-update",
   "ai-collect",
   "ai-intent",
+  "smartsheet-write",
 ];
 export const targetNodeKinds: WorkflowNodeKind[] = [
   "wait",
@@ -72,6 +73,7 @@ export const targetNodeKinds: WorkflowNodeKind[] = [
   "customer-update",
   "ai-collect",
   "ai-intent",
+  "smartsheet-write",
   "end",
 ];
 

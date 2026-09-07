@@ -901,8 +901,6 @@ export type WorkbenchKickGroupMemberResponse = {
 
 /** 加群弹窗成员候选：该企业已开通 ChatAI 席位的稳定上限。 */
 export const WORKBENCH_ENTERPRISE_MEMBER_MAX_ITEMS = 2000;
-/** 加群弹窗客户候选：当前接管账号客户目录的稳定上限，搜索在客户端完成。 */
-export const WORKBENCH_SEAT_FRIEND_MAX_ITEMS = 2000;
 
 export const WorkbenchEnterpriseMemberSchema = Type.Object({
   avatarUrl: Type.String(),
@@ -920,24 +918,6 @@ export type WorkbenchEnterpriseMemberDto = Static<typeof WorkbenchEnterpriseMemb
 
 export type WorkbenchEnterpriseMemberListResponse = Static<
   typeof WorkbenchEnterpriseMemberListResponseSchema
->;
-
-export const WorkbenchSeatFriendSchema = Type.Object({
-  avatarUrl: Type.String(),
-  displayName: Type.String(),
-  thirdExternalUserId: Type.String({ minLength: 1 }),
-});
-
-export const WorkbenchSeatFriendListResponseSchema = Type.Object({
-  items: Type.Array(WorkbenchSeatFriendSchema, {
-    maxItems: WORKBENCH_SEAT_FRIEND_MAX_ITEMS,
-  }),
-});
-
-export type WorkbenchSeatFriendDto = Static<typeof WorkbenchSeatFriendSchema>;
-
-export type WorkbenchSeatFriendListResponse = Static<
-  typeof WorkbenchSeatFriendListResponseSchema
 >;
 
 export type WorkbenchUploadCredentialResponse = {

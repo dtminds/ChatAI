@@ -16,7 +16,6 @@ import type {
   WorkbenchPullGroupMembersResponse,
   WorkbenchEnterpriseMemberListResponse,
   WorkbenchEnterpriseMemberDto,
-  WorkbenchSeatFriendListResponse,
   WorkbenchHistoryMessagePageDto,
   WorkbenchHistoryMessageQuery,
   WorkbenchChatRecordDetailResponse,
@@ -464,10 +463,6 @@ export type WorkbenchService = {
   getEnterpriseMembers(
     subUserId: string,
   ): Promise<WorkbenchEnterpriseMemberListResponse> | WorkbenchEnterpriseMemberListResponse;
-  getSeatFriends(
-    subUserId: string,
-    seatId: string,
-  ): Promise<WorkbenchSeatFriendListResponse> | WorkbenchSeatFriendListResponse;
   getCustomers(
     subUserId: string,
     options: {
@@ -886,20 +881,6 @@ export class MysqlWorkbenchService implements WorkbenchService {
     return {
       items: mapTenantSeatsToEnterpriseMembers(seats),
     };
-  }
-
-  async getSeatFriends(
-    subUserId: string,
-    seatId: string,
-  ): Promise<WorkbenchSeatFriendListResponse> {
-    const scope = await this.getAuthenticatedWorkbenchScope(subUserId);
-
-    return this.repository.listSeatFriends({
-      platform: scope.platform,
-      seatId,
-      subUserId,
-      uid: scope.uid,
-    });
   }
 
   async getCustomers(

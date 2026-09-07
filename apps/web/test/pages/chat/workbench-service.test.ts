@@ -119,30 +119,6 @@ describe("createWorkbenchService", () => {
     expect(mock.history.get[0]?.url).toBe("/server/employees");
   });
 
-  it("fetches current-seat friends from the seat friends API", async () => {
-    const service = createHttpWorkbenchService();
-    mock.onGet("/server/seats/12/friends").reply(200, {
-      items: [
-        {
-          avatarUrl: "https://example.com/xiaoming.png",
-          displayName: "小明",
-          thirdExternalUserId: "external-xiaoming",
-        },
-      ],
-    });
-
-    await expect(service.getSeatFriends("12")).resolves.toEqual({
-      items: [
-        {
-          avatarUrl: "https://example.com/xiaoming.png",
-          displayName: "小明",
-          thirdExternalUserId: "external-xiaoming",
-        },
-      ],
-    });
-    expect(mock.history.get[0]?.url).toBe("/server/seats/12/friends");
-  });
-
   it("passes customer pagination and search params", async () => {
     const service = createHttpWorkbenchService();
     mock.onGet("/server/customers").reply((config) => [

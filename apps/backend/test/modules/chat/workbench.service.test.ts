@@ -2257,39 +2257,6 @@ describe("MysqlWorkbenchService", () => {
     expect(listTenantSeatIdentities).toHaveBeenCalledOnce();
   });
 
-  it("lists seat friends for the add-group dialog from the current takeover seat", async () => {
-    const javaClient = createJavaClient();
-    const listSeatFriends = vi.fn().mockResolvedValue({
-      items: [
-        {
-          avatarUrl: "",
-          displayName: "水门溪风",
-          thirdExternalUserId: "external-shuimen",
-        },
-      ],
-    });
-    const service = createWorkbenchService(
-      { listSeatFriends } as unknown as WorkbenchRepository,
-      javaClient,
-    );
-
-    await expect(service.getSeatFriends("101", "12")).resolves.toEqual({
-      items: [
-        {
-          avatarUrl: "",
-          displayName: "水门溪风",
-          thirdExternalUserId: "external-shuimen",
-        },
-      ],
-    });
-    expect(listSeatFriends).toHaveBeenCalledWith({
-      platform: 5,
-      seatId: "12",
-      subUserId: "101",
-      uid: 9001,
-    });
-  });
-
   it("rejects kicking a group member when the conversation seat is not taken over", async () => {
     const javaClient = createJavaClient();
     const service = createWorkbenchService(

@@ -12,7 +12,6 @@ import type {
   WorkbenchCustomerSeatRelationsResponse,
   WorkbenchGroupMembersResponse,
   WorkbenchEnterpriseMemberListResponse,
-  WorkbenchSeatFriendListResponse,
   WorkbenchKickGroupMemberRequest,
   WorkbenchKickGroupMemberResponse,
   WorkbenchPullGroupMembersRequest,
@@ -201,9 +200,6 @@ export function createMemoryWorkbenchService() {
           ];
         }),
       };
-    },
-    getSeatFriends(_subUserId: string, _seatId: string): WorkbenchSeatFriendListResponse {
-      return { items: [] };
     },
     getConversations(
       _subUserId: string,

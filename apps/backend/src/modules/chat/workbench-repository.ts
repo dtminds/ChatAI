@@ -20,12 +20,10 @@ import {
   type WorkbenchSeatDto,
   type WorkbenchCustomerListResponse,
   WORKBENCH_ENTERPRISE_MEMBER_MAX_ITEMS,
-  WORKBENCH_SEAT_FRIEND_MAX_ITEMS,
   type WorkbenchCustomerLastConversationDto,
   type WorkbenchCustomerSeatRelationDto,
   type WorkbenchCustomerRelationConversationDto,
   type WorkbenchCustomerSummaryDto,
-  type WorkbenchSeatFriendListResponse,
   type WorkbenchMaterialCollectionGroupDto,
   type WorkbenchMaterialCollectionItemDto,
   type WorkbenchQuickReplyCategoryDto,
@@ -91,7 +89,7 @@ const POLL_MESSAGE_LOOKBACK_MS = 24 * 60 * 60 * 1000;
 const DEFAULT_HISTORY_MESSAGE_LIMIT = 30;
 const MAX_HISTORY_MESSAGE_LIMIT = 100;
 const DEFAULT_CUSTOMER_LIST_LIMIT = 50;
-const MAX_CUSTOMER_LIST_LIMIT = 100;
+const MAX_CUSTOMER_LIST_LIMIT = 200;
 const QUICK_REPLY_SORT_UPDATE_BATCH_SIZE = 500;
 const SEAT_CONVERSATION_AGGREGATE_BATCH_SIZE = 8;
 const SEAT_CONVERSATION_AGGREGATE_CONCURRENCY = 3;
@@ -375,13 +373,6 @@ type CustomerContactPageRow = {
   third_external_userid: string;
   uid: number | string;
   update_time: Date | string | number | null;
-};
-
-type SeatFriendRow = {
-  avatar: string | null;
-  name: string | null;
-  real_name: string | null;
-  third_external_userid: string;
 };
 
 type CustomerLastMessageRow = {
@@ -3036,75 +3027,6 @@ export class WorkbenchRepository {
           : undefined,
       total: customers.length,
     };
-  }
-
-  async listSeatFriends(input: {
-    platform: number;
-    seatId: string;
-    subUserId: string;
-    uid: number;
-  }): Promise<WorkbenchSeatFriendListResponse> {
-    const subUserNumericId = parseMySqlId(input.subUserId);
-    const seatId = parseMySqlId(input.seatId);
-
-    if (subUserNumericId == null || seatId == null) {
-      return { items: [] };
-    }
-
-    const [seat] = await this.listAccessibleSeatContexts(
-      {
-        platform: input.platform,
-        subUserId: subUserNumericId,
-        uid: input.uid,
-      },
-      [seatId],
-    );
-
-    if (!seat?.thirdUserId) {
-      return { items: [] };
-    }
-
-    const rows = (await this.db
-      .selectFrom("xy_wap_embed_customer_bind_relation as bind")
-      .leftJoin("xy_wap_embed_contact as contact", (join) =>
-        join
-          .onRef("contact.third_external_userid", "=", "bind.third_external_userid")
-          .onRef("contact.uid", "=", "bind.uid")
-          .onRef("contact.platform", "=", "bind.platform"),
-      )
-      .select([
-        "contact.avatar as avatar",
-        "contact.name as name",
-        "contact.real_name as real_name",
-        "bind.third_external_userid as third_external_userid",
-      ])
-      .where("bind.uid", "=", seat.uid)
-      .where("bind.platform", "=", seat.platform)
-      .where("bind.third_userid", "=", seat.thirdUserId)
-      .orderBy("bind.add_time", "desc")
-      .orderBy("bind.id", "desc")
-      .limit(WORKBENCH_SEAT_FRIEND_MAX_ITEMS)
-      .execute()) as SeatFriendRow[];
-
-    const items: WorkbenchSeatFriendListResponse["items"] = [];
-    const seenIds = new Set<string>();
-
-    for (const row of rows) {
-      const thirdExternalUserId = row.third_external_userid.trim();
-
-      if (!thirdExternalUserId || seenIds.has(thirdExternalUserId)) {
-        continue;
-      }
-
-      seenIds.add(thirdExternalUserId);
-      items.push({
-        avatarUrl: row.avatar?.trim() ?? "",
-        displayName: row.name?.trim() || row.real_name?.trim() || thirdExternalUserId,
-        thirdExternalUserId,
-      });
-    }
-
-    return { items };
   }
 
   private async listAllCustomersFromContact(

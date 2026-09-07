@@ -759,21 +759,6 @@ export async function registerChatRoutes(app: FastifyInstance) {
     getWorkbenchService(app, request).getEnterpriseMembers(getSubUserId(request)),
   );
 
-  app.get<{ Params: SeatParams }>(
-    "/api/server/seats/:seatId/friends",
-    {
-      preHandler: app.authenticate,
-      schema: {
-        params: SeatParamsSchema,
-      },
-    },
-    async (request) =>
-      getWorkbenchService(app, request).getSeatFriends(
-        getSubUserId(request),
-        request.params.seatId,
-      ),
-  );
-
   app.get<{ Querystring: CustomersQuery }>(
     "/api/server/customers",
     {

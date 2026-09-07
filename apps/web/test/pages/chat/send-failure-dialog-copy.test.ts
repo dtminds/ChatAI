@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { MEDIA_UPLOAD_SDK_LOAD_FAILED_MESSAGE } from "@/pages/chat/api/media-upload-errors";
-import { getSendFailureDialogCopy } from "@/pages/chat/lib/send-failure-dialog-copy";
+import {
+  getOversizedComposerFileDialogCopy,
+  getSendFailureDialogCopy,
+} from "@/pages/chat/lib/send-failure-dialog-copy";
 
 describe("getSendFailureDialogCopy", () => {
   it("prefers a Chinese API message over the error code when send fails", () => {
@@ -58,6 +61,13 @@ describe("getSendFailureDialogCopy", () => {
     expect(getSendFailureDialogCopy("unavailable", "UNAVAILABLE")).toEqual({
       description: "错误码：UNAVAILABLE",
       title: "当前无法发送消息，请稍后重试",
+    });
+  });
+
+  it("uses the oversized file dialog copy", () => {
+    expect(getOversizedComposerFileDialogCopy()).toEqual({
+      description: "请选择不超过 10 MB 的文件",
+      title: "文件过大，无法发送",
     });
   });
 });

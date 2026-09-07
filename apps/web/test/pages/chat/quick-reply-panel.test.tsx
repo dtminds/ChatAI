@@ -1629,6 +1629,29 @@ describe("QuickReplyPanel", () => {
     save.resolve();
   });
 
+  it("keeps the form open when saving fails", async () => {
+    const user = userEvent.setup();
+    const onOpenChange = vi.fn();
+
+    render(
+      <QuickReplyFormDialog
+        categories={categories}
+        initialValues={createQuickReplyInitialValues()}
+        onOpenChange={onOpenChange}
+        onSubmit={vi.fn().mockRejectedValue(new Error("保存失败"))}
+        open
+      />,
+    );
+
+    await user.type(screen.getByPlaceholderText("请输入话术内容"), "您好");
+    await user.click(screen.getByRole("button", { name: "保存" }));
+
+    await waitFor(() => {
+      expect(onOpenChange).not.toHaveBeenCalled();
+    });
+    expect(screen.getByPlaceholderText("请输入话术内容")).toHaveValue("您好");
+  });
+
   it("does not render a category selector in the form dialog", () => {
     render(
       <QuickReplyFormDialog

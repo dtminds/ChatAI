@@ -60,6 +60,19 @@ describe("MaterialExpressionSection", () => {
     expect(handleDelete).toHaveBeenCalledWith(item);
   });
 
+  it("disables collected expression send while another expression is sending", () => {
+    render(
+      <MaterialExpressionSection
+        items={[createExpressionItem()]}
+        onSelect={vi.fn()}
+        sendingItemId="expression-1"
+      />,
+    );
+
+    expect(screen.getByRole("button", { name: "发送收藏表情 表情" })).toBeDisabled();
+    expect(screen.getByRole("status", { name: "发送中" })).toBeInTheDocument();
+  });
+
   it("does not render expression images when fileUrl is missing", () => {
     render(
       <MaterialExpressionSection

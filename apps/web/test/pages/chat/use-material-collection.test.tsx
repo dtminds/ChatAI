@@ -484,6 +484,44 @@ describe("useMaterialCollection", () => {
     expect(toast.warning).toHaveBeenCalledWith("表情素材数据异常");
   });
 
+  it("sends a collected H5 material using a legacy linkUrl", async () => {
+    const sendAgentMessageSegments = vi.fn(async () => ({ ok: true as const }));
+
+    const { result } = renderHook(() =>
+      useMaterialCollection(
+        createDefaultOptions({
+          sendAgentMessageSegments,
+        }),
+      ),
+    );
+
+    await act(async () => {
+      await result.current.handleSelectMaterial({
+        bizType: 4,
+        content: {
+          desc: "活动说明",
+          linkUrl: "https://example.com/legacy-page",
+          title: "活动页",
+        },
+        contentType: "h5",
+        groupId: "group-h5",
+        id: "material-h5-link-url",
+        msgInfoId: "9104",
+        sort: 1_781_244_000_000,
+        title: "活动页",
+      });
+    });
+
+    expect(sendAgentMessageSegments).toHaveBeenCalledWith([
+      expect.objectContaining({
+        href: "https://example.com/legacy-page",
+        materialCollectionId: "material-h5-link-url",
+        title: "活动页",
+        type: "h5",
+      }),
+    ]);
+  });
+
   it("shows an incomplete content warning when video material content is invalid", async () => {
     const sendAgentMessageSegments = vi.fn(async () => ({ ok: true as const }));
 

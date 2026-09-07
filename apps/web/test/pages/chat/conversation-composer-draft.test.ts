@@ -6,6 +6,7 @@ import {
   getConversationComposerDraftPreview,
   hasConversationComposerDraftContent,
   isConversationListedInWorkbench,
+  resolveComposerDraftPersistAction,
 } from "@/pages/chat/lib/conversation-composer-draft";
 import type { Conversation } from "@/pages/chat/chat-types";
 
@@ -113,5 +114,52 @@ describe("conversation composer draft", () => {
       },
     ]);
     expect(getConversationComposerDraftPreview(draft)).toBe("[草稿][链接]");
+  });
+
+  it("clears drafts for missing conversations and empty content, and saves listed unsent drafts", () => {
+    const conversationListsByScope: Record<string, Conversation[]> = {
+      drc: [
+        {
+          accountId: "drc",
+          conversationAIHostingSwitch: false,
+          handoffMsgId: 0,
+          customerAvatarUrl: "https://example.com/customer.png",
+          customerId: "customer-1",
+          customerName: "客户 A",
+          id: "conv-001",
+          mode: "single",
+          preview: "preview",
+          priority: "medium",
+          quietFor: "刚刚",
+          unread: 0,
+          updatedAt: "2026-05-07 09:00:00",
+        },
+      ],
+    };
+    const unsent = {
+      draft: "未发送内容",
+      quotedMessage: null,
+      segments: [{ text: "未发送内容", type: "text" as const }],
+    };
+
+    expect(
+      resolveComposerDraftPersistAction("", conversationListsByScope, unsent),
+    ).toEqual({ type: "skip" });
+    expect(
+      resolveComposerDraftPersistAction("conv-002", conversationListsByScope, unsent),
+    ).toEqual({ type: "clear" });
+    expect(
+      resolveComposerDraftPersistAction("conv-001", conversationListsByScope, {
+        draft: "  ",
+        quotedMessage: null,
+        segments: [],
+      }),
+    ).toEqual({ type: "clear" });
+    expect(
+      resolveComposerDraftPersistAction("conv-001", conversationListsByScope, unsent),
+    ).toEqual({
+      draft: buildConversationComposerDraft(unsent),
+      type: "save",
+    });
   });
 });

@@ -87,6 +87,7 @@ function createCustomerMessage(uiMessageKey: string): Message {
 }
 
 type HarnessProps = {
+  canUseConversationActions?: boolean;
   firstUnreadMessageKey?: string;
   isConversationLoading?: boolean;
   markConversationRead: (conversationId: string) => Promise<void>;
@@ -99,6 +100,7 @@ type HarnessProps = {
 };
 
 function UnreadReadHarness({
+  canUseConversationActions = true,
   firstUnreadMessageKey,
   isConversationLoading = false,
   markConversationRead,
@@ -112,7 +114,7 @@ function UnreadReadHarness({
     activeConversationId: "conv-001",
     activeMessages: messages,
     activeView: "chat",
-    canUseConversationActions: true,
+    canUseConversationActions,
     firstUnreadMessageKey,
     isConversationLoading,
     markConversationRead,
@@ -390,6 +392,24 @@ describe("useVisibleUnreadConversationRead", () => {
       ]);
     });
 
+    expect(markConversationRead).not.toHaveBeenCalled();
+  });
+
+  it("does not auto mark the active conversation read when conversation actions are unavailable", async () => {
+    const intersectionObserver = installIntersectionObserverMock();
+    const markConversationRead = vi.fn().mockResolvedValue(undefined);
+
+    render(
+      <UnreadReadHarness
+        canUseConversationActions={false}
+        firstUnreadMessageKey="8"
+        markConversationRead={markConversationRead}
+        messages={[createCustomerMessage("7"), createCustomerMessage("8")]}
+        unreadCount={2}
+      />,
+    );
+
+    expect(intersectionObserver.instances).toHaveLength(0);
     expect(markConversationRead).not.toHaveBeenCalled();
   });
 });

@@ -2,7 +2,7 @@
 
 import { describe, expect, it } from "vitest";
 import type { WorkbenchQuickReplyDto } from "@chatai/contracts";
-import { buildQuickReplyComposerSegments } from "@/pages/chat/lib/quick-reply-segments";
+import { buildQuickReplyComposerSegments, resolveQuickReplyInsert } from "@/pages/chat/lib/quick-reply-segments";
 
 describe("quick reply segments", () => {
   it("builds initial composer segments with text first and attachments in configured order", () => {
@@ -151,6 +151,107 @@ describe("quick reply segments", () => {
           type: "text",
         },
       ],
+    });
+  });
+
+  it("blocks insert when sending is unavailable or attachments are invalid", () => {
+    const textReply: WorkbenchQuickReplyDto = {
+      attachments: [],
+      categoryId: "11",
+      contentText: "只读用户话术",
+      id: "reply-readonly",
+      labelColor: "",
+      labelText: "",
+      scopeType: 1,
+      sort: 70,
+    };
+
+    expect(resolveQuickReplyInsert(textReply, false)).toEqual({
+      toast: "当前无法发送消息",
+      type: "blocked",
+    });
+    expect(
+      resolveQuickReplyInsert(
+        {
+          attachments: [
+            {
+              content: {},
+              type: "image",
+            },
+          ],
+          categoryId: "11",
+          contentText: "只有文本",
+          id: "reply-invalid",
+          labelColor: "",
+          labelText: "",
+          scopeType: 1,
+          sort: 80,
+        },
+        true,
+      ),
+    ).toEqual({
+      toast: "该话术附件数据异常，无法发送",
+      type: "blocked",
+    });
+    expect(
+      resolveQuickReplyInsert(
+        {
+          attachments: [],
+          categoryId: "11",
+          contentText: "   ",
+          id: "reply-empty",
+          labelColor: "",
+          labelText: "",
+          scopeType: 1,
+          sort: 60,
+        },
+        true,
+      ),
+    ).toEqual({
+      toast: "话术数据异常",
+      type: "blocked",
+    });
+  });
+
+  it("restores text and H5 segments when a quick reply is valid", () => {
+    const quickReply: WorkbenchQuickReplyDto = {
+      attachments: [
+        {
+          content: {
+            desc: "活动说明",
+            href: "https://example.com/activity",
+            title: "活动链接",
+          },
+          materialCollectionId: "material-h5-1",
+          msgInfoId: "9102",
+          type: "h5",
+        },
+      ],
+      categoryId: "11",
+      contentText: "您好，这是活动信息",
+      id: "reply-h5",
+      labelColor: "orange",
+      labelText: "活动",
+      scopeType: 1,
+      sort: 100,
+    };
+
+    expect(resolveQuickReplyInsert(quickReply, true)).toEqual({
+      nextDraft: "您好，这是活动信息",
+      segments: [
+        {
+          text: "您好，这是活动信息",
+          type: "text",
+        },
+        {
+          desc: "活动说明",
+          href: "https://example.com/activity",
+          msgInfoId: "9102",
+          title: "活动链接",
+          type: "h5",
+        },
+      ],
+      type: "restore",
     });
   });
 });

@@ -248,6 +248,119 @@ describe("useWorkbenchStore", () => {
     );
   });
 
+  it("loads sidebar items once during bootstrap and reuses them across conversations", async () => {
+    const baseService = createMockWorkbenchService();
+    const getSidebarItems = vi.fn(async () => ({
+      items: [
+        {
+          bindTypes: ["1", "2"] as Array<"1" | "2">,
+          id: "sidebar-1",
+          name: "快捷回复",
+          sort: 1,
+          status: "active" as const,
+          url: "https://example.com/replies",
+        },
+      ],
+    }));
+
+    setWorkbenchService({
+      ...baseService,
+      getSidebarItems,
+    });
+
+    await useWorkbenchStore.getState().initializeWorkbench();
+    expect(useWorkbenchStore.getState().sidebarItems).toEqual([
+      expect.objectContaining({ id: "sidebar-1", name: "快捷回复" }),
+    ]);
+    expect(getSidebarItems).toHaveBeenCalledTimes(1);
+
+    await useWorkbenchStore.getState().setActiveMode("group");
+    await useWorkbenchStore.getState().setActiveConversation("conv-001");
+
+    expect(getSidebarItems).toHaveBeenCalledTimes(1);
+    expect(useWorkbenchStore.getState().sidebarItems).toEqual([
+      expect.objectContaining({ id: "sidebar-1", name: "快捷回复" }),
+    ]);
+  });
+
+  it("refreshes cached group members when forced", async () => {
+    const baseService = createMockWorkbenchService();
+    let requestCount = 0;
+
+    setWorkbenchService({
+      ...baseService,
+      async getGroupMembers(conversationId) {
+        requestCount += 1;
+        const response = await baseService.getGroupMembers(conversationId);
+
+        return {
+          ...response,
+          items:
+            requestCount === 2
+              ? response.items.map((member) =>
+                  member.displayName === "小林"
+                    ? { ...member, displayName: "小林（刷新）" }
+                    : member,
+                )
+              : response.items,
+        };
+      },
+    });
+
+    await useWorkbenchStore.getState().initializeWorkbench();
+    await useWorkbenchStore.getState().setActiveMode("group");
+
+    expect(
+      useWorkbenchStore.getState().groupMembersByConversationId["conv-004"]?.some(
+        (member) => member.displayName === "小林",
+      ),
+    ).toBe(true);
+    expect(requestCount).toBe(1);
+
+    await useWorkbenchStore.getState().loadActiveGroupMembers();
+    expect(requestCount).toBe(1);
+
+    await useWorkbenchStore.getState().loadActiveGroupMembers({ force: true });
+
+    expect(requestCount).toBe(2);
+    expect(
+      useWorkbenchStore.getState().groupMembersByConversationId["conv-004"]?.some(
+        (member) => member.displayName === "小林（刷新）",
+      ),
+    ).toBe(true);
+  });
+
+  it("marks group members as loading while a group conversation is opening", async () => {
+    const baseService = createMockWorkbenchService();
+    const membersDeferred = createDeferred<
+      Awaited<ReturnType<typeof baseService.getGroupMembers>>
+    >();
+
+    setWorkbenchService({
+      ...baseService,
+      async getGroupMembers(conversationId) {
+        expect(conversationId).toBe("conv-004");
+        return membersDeferred.promise;
+      },
+    });
+
+    await useWorkbenchStore.getState().initializeWorkbench();
+    const opening = useWorkbenchStore.getState().setActiveMode("group");
+
+    await waitForStoreAssertion(() => {
+      expect(
+        useWorkbenchStore.getState().groupMembersLoadingByConversationId["conv-004"],
+      ).toBe(true);
+    });
+
+    membersDeferred.resolve(await baseService.getGroupMembers("conv-004"));
+    await opening;
+
+    expect(
+      useWorkbenchStore.getState().groupMembersLoadingByConversationId["conv-004"],
+    ).toBe(false);
+  });
+
   it("changes active conversation full-auto through the workbench service", async () => {
     const baseService = createMockWorkbenchService();
     const changeConversationFullAuto = vi.fn().mockResolvedValue({
@@ -11365,6 +11478,45 @@ describe("useWorkbenchStore", () => {
     expect(state.activeConversationId).toBe("conv-002");
     expect(observedMessageConversationIds).toEqual(["conv-002"]);
     expect(state.messagesByConversationId["conv-002"]?.length).toBeGreaterThan(0);
+  });
+
+  it("saves and clears composer drafts, and drops them when the conversation is deleted", async () => {
+    await useWorkbenchStore.getState().initializeWorkbench();
+
+    useWorkbenchStore.getState().saveComposerDraft("conv-001", {
+      draft: "未发送内容",
+      quotedMessage: {
+        contentType: "text",
+        senderName: "客户",
+        text: "原消息",
+      },
+      segments: [{ text: "未发送内容", type: "text" }],
+    });
+
+    expect(
+      useWorkbenchStore.getState().composerDraftsByConversationId["conv-001"],
+    ).toMatchObject({
+      draft: "未发送内容",
+      quotedMessage: {
+        text: "原消息",
+      },
+    });
+
+    useWorkbenchStore.getState().clearComposerDraft("conv-001");
+    expect(
+      useWorkbenchStore.getState().composerDraftsByConversationId["conv-001"],
+    ).toBeUndefined();
+
+    useWorkbenchStore.getState().saveComposerDraft("conv-001", {
+      draft: "删除后不应保留",
+      quotedMessage: null,
+      segments: [{ text: "删除后不应保留", type: "text" }],
+    });
+    await useWorkbenchStore.getState().deleteConversation("conv-001");
+
+    expect(
+      useWorkbenchStore.getState().composerDraftsByConversationId["conv-001"],
+    ).toBeUndefined();
   });
 
   it("refreshes an unverified next conversation after deleting the active conversation", async () => {

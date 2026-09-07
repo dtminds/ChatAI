@@ -1088,6 +1088,40 @@ describe("material collection components", () => {
     expect(handleSelect).toHaveBeenCalledWith(item);
   });
 
+  it("uses the mobile library dialog title without the desktop hint", () => {
+    render(
+      <MaterialLibraryDialog
+        activeGroupId="group-video"
+        bizType={MATERIAL_COLLECTION_BIZ_TYPE.VIDEO}
+        groups={[createGroup({ id: "group-video", title: "常用视频" })]}
+        isMobileLayout
+        items={[
+          createItem({
+            bizType: MATERIAL_COLLECTION_BIZ_TYPE.VIDEO,
+            contentType: "video",
+            groupId: "group-video",
+            id: "video-1",
+            title: "视频",
+          }),
+        ]}
+        onCreateGroup={() => undefined}
+        onDeleteGroup={() => undefined}
+        onDeleteMaterial={() => undefined}
+        onEditMaterial={() => undefined}
+        onMoveMaterial={() => undefined}
+        onOpenChange={() => undefined}
+        onRenameGroup={() => undefined}
+        onSelectGroup={() => undefined}
+        onSelectMaterial={() => undefined}
+        onTopGroup={() => undefined}
+        onTopMaterial={() => undefined}
+        open
+      />,
+    );
+
+    expect(screen.getByRole("dialog", { name: "收录的视频" })).toBeInTheDocument();
+  });
+
   it("renders collected expression section", async () => {
     const user = userEvent.setup();
     const handleSelect = vi.fn();

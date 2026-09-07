@@ -71,8 +71,5 @@ jobs:
       - name: Test frontend (unit)
         run: pnpm --filter @chatai/web test:unit
 
-      - name: Test frontend (integration)
-        run: pnpm --filter @chatai/web test:integration
-
       - name: Build frontend
         run: pnpm --filter @chatai/web build

@@ -32,8 +32,8 @@ describe("vitest runtime config", () => {
     });
   });
 
-  it("runs *.test.ts in node and *.test.tsx in jsdom, excluding workbench integration files from unit", () => {
-    const config = createWebTestViteConfig({ testGroup: "unit" });
+  it("runs *.test.ts in node and *.test.tsx in jsdom", () => {
+    const config = createWebTestViteConfig();
     const projects = config.test?.projects ?? [];
 
     expect(projects).toEqual([
@@ -47,29 +47,15 @@ describe("vitest runtime config", () => {
       expect.objectContaining({
         test: expect.objectContaining({
           environment: "jsdom",
-          exclude: ["test/pages/chat/**/*.int.test.tsx"],
           include: ["test/**/*.test.tsx"],
           name: "jsdom",
         }),
       }),
     ]);
-  });
-
-  it("limits the integration group to workbench jsdom files", () => {
-    const config = createWebTestViteConfig({ testGroup: "integration" });
-    const projects = config.test?.projects ?? [];
-
-    expect(projects).toHaveLength(1);
-    expect(projects[0]).toEqual(
-      expect.objectContaining({
-        test: expect.objectContaining({
-          environment: "jsdom",
-          include: ["test/pages/chat/**/*.int.test.tsx"],
-          name: "jsdom",
-        }),
-      }),
-    );
-    expect(config.test?.testTimeout).toBe(20_000);
-    expect(config.test?.passWithNoTests).toBe(true);
+    expect(
+      (projects[1] as { test?: { exclude?: unknown } } | undefined)?.test
+        ?.exclude,
+    ).toBeUndefined();
+    expect(config.test?.passWithNoTests).toBeUndefined();
   });
 });

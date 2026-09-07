@@ -28,7 +28,7 @@
   --workflow-canvas-bg: color-mix(in oklch, var(--background) 86%, black);
   --workflow-grid: color-mix(in oklch, var(--foreground) 28%, transparent);
   --workflow-edge: color-mix(in oklch, var(--foreground) 38%, var(--workflow-canvas-bg));
-  --workflow-border: color-mix(in oklch, var(--border) 74%, transparent);
+  --workflow-border: color-mix(in oklch, var(--border) 44%, transparent);
   --workflow-panel-bg-blur: color-mix(in oklch, var(--card) 90%, transparent);
   --workflow-node-handle-ring: color-mix(in oklch, var(--foreground) 24%, var(--workflow-panel-bg));
   --workflow-control-active: color-mix(in oklch, var(--foreground) 9%, transparent);
@@ -257,7 +257,7 @@
 
 .workflow-node-actionbar {
   position: absolute;
-  top: 10px;
+  top: calc((var(--workflow-node-header-height) - 24px) / 2);
   right: 10px;
   z-index: 16;
   display: flex;

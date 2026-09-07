@@ -212,7 +212,7 @@ function NodeHeader({
         ) : (
           <span className="flex min-w-0 items-center gap-2">
             <span
-              className="truncate text-sm font-bold text-foreground"
+              className="truncate text-[15px] font-bold text-foreground"
               onDoubleClick={(event) => {
                 if (!canRename) return;
 

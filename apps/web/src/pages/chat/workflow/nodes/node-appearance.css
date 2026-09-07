@@ -1,10 +1,11 @@
 .workflow-node-card {
+  --workflow-node-header-height: 48px;
   --node-outline-strength: 65%;
   --node-border: color-mix(in oklch, var(--workflow-border) 78%, var(--foreground) 4%);
   --node-wash-strong: 9%;
   --node-wash-soft: 3%;
-  --node-highlight-strong: 35%;
-  --node-highlight-soft: 12%;
+  --node-highlight-strong: 18%;
+  --node-highlight-soft: 11%;
 }
 
 .dark .workflow-node-card {
@@ -12,8 +13,8 @@
   --node-border: var(--workflow-border);
   --node-wash-strong: 24%;
   --node-wash-soft: 8%;
-  --node-highlight-strong: 80%;
-  --node-highlight-soft: 35%;
+  --node-highlight-strong: 60%;
+  --node-highlight-soft: 18%;
 }
 
 .workflow-node-shell {
@@ -86,7 +87,7 @@
   position: relative;
   border-radius: 14px 14px 0 0;
   margin-bottom: 0;
-  min-height: 52px;
+  min-height: var(--workflow-node-header-height);
   padding-top: 0;
   padding-bottom: 0;
   background: transparent;
@@ -103,7 +104,7 @@
 
 .workflow-node-title-only .workflow-node-header {
   margin-bottom: 0;
-  min-height: 52px;
+  min-height: var(--workflow-node-header-height);
   padding-top: 0;
   padding-bottom: 0;
   border-radius: 14px;

@@ -46,7 +46,8 @@ describe("Coupon configuration", () => {
     await user.click(screen.getByRole("combobox", { name: "发放张数" }));
     expect(screen.getAllByRole("option")).toHaveLength(5);
     await user.click(screen.getByRole("option", { name: "5 张" }));
-    expect(screen.getAllByText("优惠券")).toHaveLength(3);
+    expect(screen.getByRole("combobox", { name: "发放张数" })).toHaveTextContent("5 张");
+    expect(screen.getByRole("heading", { name: "选择优惠券" })).toBeInTheDocument();
     expect(screen.queryByText("优惠券（共5张）")).not.toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "编辑" }));
     expect(await screen.findByRole("radio", { name: "选择满减券" })).toBeChecked();

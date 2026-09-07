@@ -41,12 +41,15 @@ export function MessageKeywords({ onChange, values }: {
           消息关键词
           <span className="text-xs font-normal text-muted-foreground">{values.length} / {WORKFLOW_MESSAGE_MAX_KEYWORDS}</span>
         </p>
-        <Popover onOpenChange={setOpen} open={open}>
+        <Popover onOpenChange={nextOpen => {
+          if (nextOpen) setError("");
+          setOpen(nextOpen);
+        }} open={open}>
           <TooltipProvider>
             <Tooltip>
               <TooltipTrigger asChild>
                 <PopoverTrigger asChild>
-                  <Button aria-label="添加消息关键词" className="size-7 shrink-0" size="icon" type="button" variant="ghost">
+                  <Button aria-label="添加消息关键词" className="size-7 shrink-0" disabled={values.length >= WORKFLOW_MESSAGE_MAX_KEYWORDS} size="icon" type="button" variant="ghost">
                     <HugeiconsIcon icon={Add01Icon} size={16} strokeWidth={1.8} />
                   </Button>
                 </PopoverTrigger>

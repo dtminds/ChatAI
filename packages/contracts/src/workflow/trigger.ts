@@ -68,7 +68,7 @@ const WorkflowMessageKeywordSchema = Type.String({
   minLength: 1,
 });
 
-const WorkflowTriggerStringListSchema = Type.Array(
+const WorkflowMessageKeywordListSchema = Type.Array(
   WorkflowMessageKeywordSchema,
   { maxItems: WORKFLOW_MESSAGE_MAX_KEYWORDS, uniqueItems: true },
 );
@@ -87,7 +87,7 @@ const WorkflowRequiredFriendSourceIdListSchema = Type.Array(
   },
 );
 
-const WorkflowRequiredTriggerStringListSchema = Type.Array(
+const WorkflowRequiredMessageKeywordListSchema = Type.Array(
   WorkflowMessageKeywordSchema,
   { maxItems: WORKFLOW_MESSAGE_MAX_KEYWORDS, minItems: 1, uniqueItems: true },
 );
@@ -124,12 +124,12 @@ const WorkflowContactTagAddedDraftTriggerSchema = Type.Object({
 }, { additionalProperties: false });
 
 const WorkflowMessageReceivedTriggerSchema = Type.Object({
-  keywords: WorkflowRequiredTriggerStringListSchema,
+  keywords: WorkflowRequiredMessageKeywordListSchema,
   type: Type.Literal("message.received"),
 }, { additionalProperties: false });
 
 const WorkflowMessageReceivedDraftTriggerSchema = Type.Object({
-  keywords: WorkflowTriggerStringListSchema,
+  keywords: WorkflowMessageKeywordListSchema,
   type: Type.Literal("message.received"),
 }, { additionalProperties: false });
 
@@ -265,7 +265,7 @@ export const WorkflowTriggerBindingFilterSchema = Type.Union([
   Type.Object({
     entryPolicy: WorkflowEntryPolicySchema,
     eventType: Type.Literal("message.received"),
-    keywords: WorkflowRequiredTriggerStringListSchema,
+    keywords: WorkflowRequiredMessageKeywordListSchema,
     seatIds: Type.Array(Type.Integer({ maximum: Number.MAX_SAFE_INTEGER, minimum: 1 }), {
       maxItems: 100,
       minItems: 1,

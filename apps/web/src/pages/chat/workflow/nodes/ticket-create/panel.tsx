@@ -61,16 +61,31 @@ export function TicketCreateConfig({
       <WorkflowSettingsSection title="优先级">
         <SegmentedControl
           aria-label="优先级"
-          className="w-full"
+          className="h-9 w-full rounded-full p-1"
           onValueChange={(value) => {
             if (value) onNodeChange({ priority: value as TicketPriority });
           }}
           type="single"
           value={node.data.priority}
         >
-          <SegmentedControlItem value="low">低</SegmentedControlItem>
-          <SegmentedControlItem value="medium">中</SegmentedControlItem>
-          <SegmentedControlItem value="high">高</SegmentedControlItem>
+          <SegmentedControlItem
+            className="h-7 w-auto flex-1 rounded-full px-3 text-xs font-medium data-[state=on]:bg-foreground data-[state=on]:text-background"
+            value="low"
+          >
+            低
+          </SegmentedControlItem>
+          <SegmentedControlItem
+            className="h-7 w-auto flex-1 rounded-full px-3 text-xs font-medium data-[state=on]:bg-foreground data-[state=on]:text-background"
+            value="medium"
+          >
+            中
+          </SegmentedControlItem>
+          <SegmentedControlItem
+            className="h-7 w-auto flex-1 rounded-full px-3 text-xs font-medium data-[state=on]:bg-foreground data-[state=on]:text-background"
+            value="high"
+          >
+            高
+          </SegmentedControlItem>
         </SegmentedControl>
       </WorkflowSettingsSection>
     </>

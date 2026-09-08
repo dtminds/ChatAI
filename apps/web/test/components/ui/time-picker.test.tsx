@@ -60,6 +60,41 @@ describe("TimePicker", () => {
     expect(onValueChange).toHaveBeenCalledWith("09:30:45");
   });
 
+  it("scrolls each selected time column after the popover content mounts", async () => {
+    const user = userEvent.setup();
+    const requestAnimationFrame = vi.fn<(callback: FrameRequestCallback) => number>();
+    const scrollIntoView = vi.fn();
+    vi.stubGlobal("requestAnimationFrame", requestAnimationFrame);
+    Object.defineProperty(HTMLElement.prototype, "scrollIntoView", {
+      configurable: true,
+      value: scrollIntoView,
+    });
+
+    try {
+      render(
+        <TimePicker
+          aria-label="执行时间"
+          onValueChange={() => undefined}
+          precision="second"
+          value="22:00:00"
+        />,
+      );
+
+      await user.click(screen.getByRole("button", { name: "执行时间" }));
+      expect(requestAnimationFrame).toHaveBeenCalledTimes(1);
+
+      requestAnimationFrame.mock.calls[0]![0](0);
+      expect(scrollIntoView.mock.contexts).toEqual(expect.arrayContaining([
+        screen.getByRole("button", { name: "22时" }),
+        screen.getByRole("button", { name: "00分" }),
+        screen.getByRole("button", { name: "00秒" }),
+      ]));
+    } finally {
+      vi.unstubAllGlobals();
+      delete (HTMLElement.prototype as { scrollIntoView?: unknown }).scrollIntoView;
+    }
+  });
+
   it("prevents time-column wheel events from reaching the surrounding surface", async () => {
     const user = userEvent.setup();
     const onWheel = vi.fn();

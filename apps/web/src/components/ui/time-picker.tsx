@@ -44,9 +44,12 @@ export function TimePicker({
 
   useEffect(() => {
     if (!open) return;
-    selectedHourRef.current?.scrollIntoView?.({ block: "center" });
-    selectedMinuteRef.current?.scrollIntoView?.({ block: "center" });
-    selectedSecondRef.current?.scrollIntoView?.({ block: "center" });
+    const frame = requestAnimationFrame(() => {
+      selectedHourRef.current?.scrollIntoView?.({ block: "center" });
+      selectedMinuteRef.current?.scrollIntoView?.({ block: "center" });
+      selectedSecondRef.current?.scrollIntoView?.({ block: "center" });
+    });
+    return () => cancelAnimationFrame(frame);
   }, [open]);
 
   const handleOpenChange = (nextOpen: boolean) => {

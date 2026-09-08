@@ -70,6 +70,24 @@ describe("compileWorkflowDraft", () => {
     )).toBe(true);
   });
 
+  it("strips unread leftover start fields instead of failing compile", () => {
+    const draft = createDraft();
+    Object.assign(draft.nodes.find((item) => item.id === "start")!.data, {
+      pushAccountStrategy: "earliest-added",
+    });
+
+    const spec = compileWorkflowDraft({
+      draft,
+      revision: 3,
+      workflowId: "42",
+      workflowType: "chatai_sop",
+    });
+
+    expect(spec.nodes.find((node) => node.id === "start")?.config).not.toHaveProperty(
+      "pushAccountStrategy",
+    );
+  });
+
   it("compiles direct push without entry events", () => {
     const draft = createDraft();
     Object.assign(draft.nodes.find((item) => item.id === "start")!.data, {

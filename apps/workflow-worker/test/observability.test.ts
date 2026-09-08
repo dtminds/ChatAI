@@ -96,6 +96,33 @@ describe("workflow worker observability", () => {
     }, "workflow entry consume summary");
   });
 
+  it("logs Start config schema errors on sampled Entry failures", () => {
+    const logger = createLogger();
+    const observer = createWorkflowEntryConsumeObserver({
+      deadLetterTopic: "entry-dlq",
+      logger,
+      options: { intervalMs: 3_600_000, sampleLimit: 1 },
+    });
+
+    observer.record({ id: "message-1", redeliveryCount: 3, topic: "entry-topic" }, {
+      code: "temporary_failure",
+      disposition: "nack",
+      errorCode: "WORKFLOW_START_CONFIG_INVALID",
+      errorDetails: { reason: "schema", workflowId: "31" },
+      errorMessage: "Workflow Start 配置无效",
+      errorName: "WorkflowRuntimeError",
+      failureStage: "runtime_admission",
+    });
+
+    expect(logger.warn).toHaveBeenCalledWith(expect.objectContaining({
+      errorCode: "WORKFLOW_START_CONFIG_INVALID",
+      errorDetails: { reason: "schema", workflowId: "31" },
+      errorMessage: "Workflow Start 配置无效",
+      event: "workflow.entry.consume.failed",
+    }), "workflow entry message processing failed");
+    observer.close();
+  });
+
   it("summarizes Task outcomes and limits failure samples without storing message IDs", () => {
     const logger = createLogger();
     const observer = createWorkflowTaskConsumeObserver({

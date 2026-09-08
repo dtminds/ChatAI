@@ -136,6 +136,8 @@ export type WorkflowEntryConsumeResult = {
   code: WorkflowEntryConsumeResultCode;
   disposition: "ack" | "nack";
   errorCode?: string;
+  errorDetails?: Record<string, unknown>;
+  errorMessage?: string;
   errorName?: "Error" | "UnknownError" | "WorkflowRuntimeError";
   failureStage?: WorkflowEntryFailureStage;
 };
@@ -244,6 +246,7 @@ export function createEntryConsumerHandler(input: {
       let entryPolicyRejected = 0;
       let runtimeRejected = 0;
       failureStage = "runtime_admission";
+      let admissionNack: unknown = null;
       const matchedBindings = bindings.flatMap(binding => {
         if (!matchWorkflowTrigger(binding.filter, projection)) return [];
         const subject = getProjectedSubject(projection, binding.subjectType);
@@ -313,11 +316,15 @@ export function createEntryConsumerHandler(input: {
               || result.kind === "not-found") deduplicated += 1;
             else if (result.kind !== "not-matched") runtimeRejected += 1;
           } catch (error) {
-            if (classifyEntryError(error) === "nack") throw error;
+            if (classifyEntryError(error) === "nack") {
+              admissionNack ??= error;
+              continue;
+            }
             runtimeRejected += 1;
           }
         }
       }
+      if (admissionNack) throw admissionNack;
       const processedAt = observedAt;
       failureStage = "inbox_record";
       await recordEntryInbox(
@@ -771,6 +778,10 @@ function createTemporaryFailure(
     code: "temporary_failure",
     disposition: "nack",
     errorCode: getStableErrorCode(error),
+    ...(error instanceof WorkflowRuntimeError && error.details
+      ? { errorDetails: error.details }
+      : {}),
+    ...(error instanceof Error && error.message ? { errorMessage: error.message } : {}),
     errorName: error instanceof WorkflowRuntimeError
       ? "WorkflowRuntimeError"
       : error instanceof Error

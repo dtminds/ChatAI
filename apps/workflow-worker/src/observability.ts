@@ -68,6 +68,8 @@ export function createWorkflowEntryConsumeObserver(input: {
             ...(input.deadLetterTopic ? { deadLetterTopic: input.deadLetterTopic } : {}),
             disposition: result.disposition,
             ...(result.errorCode ? { errorCode: result.errorCode } : {}),
+            ...(result.errorDetails ? { errorDetails: result.errorDetails } : {}),
+            ...(result.errorMessage ? { errorMessage: result.errorMessage } : {}),
             ...(result.errorName ? { errorName: result.errorName } : {}),
             event: "workflow.entry.consume.failed",
             ...(result.failureStage ? { failureStage: result.failureStage } : {}),

@@ -38,6 +38,49 @@ describe("Workflow runtime policy", () => {
     expect(harness.deactivateWorkflowForEntitlementLoss).not.toHaveBeenCalled();
   });
 
+  it("includes TypeBox errors when Start config fails admission", async () => {
+    const spec = createExecutionSpec("chatai-workflow");
+    spec.nodes[0]!.config = {
+      ...spec.nodes[0]!.config,
+      seatIds: [],
+    };
+    const harness = createHarness({
+      entitlement: async () => ({ activeRunLimit: 10_000, entitled: true }),
+      executionSpec: spec,
+    });
+
+    await expect(harness.service.startRun(entryInput())).rejects.toMatchObject({
+      code: "WORKFLOW_START_CONFIG_INVALID",
+      details: expect.objectContaining({
+        chatAiCheck: false,
+        reason: "schema",
+        workflowId: "chatai-workflow",
+      }),
+    });
+  });
+
+  it("admits published Start configs that still carry unread leftover fields", async () => {
+    const spec = createExecutionSpec("chatai-workflow");
+    spec.nodes[0]!.config = {
+      ...spec.nodes[0]!.config,
+      extraField: true,
+      pushAccountStrategy: "earliest-added",
+      triggers: [{
+        leftover: true,
+        sourceIds: ["qr-code-1"],
+        type: "contact.friend_added",
+      }],
+    };
+    const harness = createHarness({
+      entitlement: async () => ({ activeRunLimit: 10_000, entitled: true }),
+      executionSpec: spec,
+    });
+
+    await expect(harness.service.startRun(entryInput())).resolves.toMatchObject({
+      kind: "success",
+    });
+  });
+
   it("does not fall back to individual reads when a batched runtime snapshot is missing", async () => {
     const harness = createHarness({
       entitlement: async () => ({ activeRunLimit: 10_000, entitled: true }),

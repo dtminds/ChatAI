@@ -4,6 +4,7 @@ import {
   getWorkflowCustomFieldVariableValueType,
   getWorkflowContextVariableValueType,
   extractWorkflowNodeDraftConfig,
+  getUnknownWorkflowNodeDraftDataKeys,
   getWorkflowNodeOutputContracts,
   isWorkflowAiCollectExecutionConfigComplete,
   isWorkflowAiIntentExecutionConfigComplete,
@@ -634,8 +635,11 @@ function getWorkflowEntryEventTypes(nodes: WorkflowExecutionNode[]) {
 export function normalizeWorkflowDraft(draft: WorkflowDraft): WorkflowDraft {
   const normalized = structuredClone(draft);
   for (const node of normalized.nodes) {
-    if (node.data.kind !== "start") continue;
     const data = node.data as Record<string, unknown>;
+    for (const key of getUnknownWorkflowNodeDraftDataKeys(node.data.kind, data)) {
+      delete data[key];
+    }
+    if (node.data.kind !== "start") continue;
     data.entryPolicy = normalizeWorkflowEntryPolicy(data.entryPolicy);
     if (Array.isArray(data.workUserIds)) {
       delete data.messageSendingWindow;

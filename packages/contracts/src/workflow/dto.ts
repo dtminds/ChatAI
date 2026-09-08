@@ -38,6 +38,7 @@ export const WorkflowNodeKindSchema = Type.Union([
   Type.Literal("audience-filter"),
   Type.Literal("ai-intent"),
   Type.Literal("smartsheet-write"),
+  Type.Literal("ticket-create"),
   Type.Literal("end"),
 ]);
 

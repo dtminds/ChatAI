@@ -17,6 +17,7 @@ import {
   isWorkflowOrderQueryExecutionConfigComplete,
   isWorkflowOutputValueTypeEqual,
   isWorkflowSmartsheetWriteExecutionConfigComplete,
+  isWorkflowTicketCreateExecutionConfigComplete,
   isWorkflowSmartsheetWriteDraftConfigComplete,
   normalizeWorkflowEntryPolicy,
   type WorkflowDraft,
@@ -246,6 +247,37 @@ function validateWorkflowNodeReferences(
         issues.push({
           code: "invalid-node-config",
           message: "Handoff node references unavailable message data",
+          nodeId: node.id,
+        });
+      }
+    }
+
+    if (node.kind === "ticket-create"
+      && isWorkflowTicketCreateExecutionConfigComplete(node.config)) {
+      const guaranteedUpstreamIds = getWorkflowGuaranteedUpstreamNodeIds(
+        node.id,
+        nodeIds,
+        edges,
+      );
+      const selectors = [node.config.ticketTitle, node.config.description]
+        .flatMap(segments => segments.flatMap(segment =>
+          segment.type === "variable" ? [segment.selector] : []));
+      const referencesAvailable = selectors.every(selector =>
+        validateWorkflowVariableSelector({
+          edges,
+          guaranteedUpstreamIds,
+          customFieldById,
+          nodeById,
+          requiredUsage: "variable",
+          selector,
+          targetNodeId: node.id,
+          workflowType,
+          entryEventTypes,
+        }));
+      if (!referencesAvailable) {
+        issues.push({
+          code: "invalid-node-config",
+          message: "Ticket Create node references unavailable content data",
           nodeId: node.id,
         });
       }

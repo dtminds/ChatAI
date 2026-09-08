@@ -54,7 +54,7 @@ import { adaptInsightMessages } from "@/pages/chat/insights/insight-detail-panel
 import { formatInsightTime } from "@/pages/chat/insights/insights-utils";
 import { addTicketComment, claimTicket, deleteTicket, getTicketActivities, getTicketAssigneeOptions, getTicketContext, getTicketDetail, updateTicket } from "./api/tickets-service";
 import { refreshTicketCounts } from "./ticket-count-store";
-import { TicketOverdueBadge, TicketPriority, TicketStatusBadge, ticketPriorityText, ticketStatusText } from "./ticket-display";
+import { TicketOverdueBadge, TicketPriority, TicketStatusBadge, ticketCreatorText, ticketPriorityText, ticketStatusText } from "./ticket-display";
 import "./tickets.css";
 
 const ticketActivityPageSize = 20;
@@ -414,7 +414,7 @@ export function TicketDetailContent({
   return (
     <div className="h-full min-h-0 overflow-y-auto xl:overflow-hidden">
       <div className={`${presentation === "drawer" ? "w-full" : "mx-auto w-full max-w-[1180px]"} xl:grid xl:h-full xl:min-h-0 xl:grid-cols-[minmax(0,1fr)_380px]`}>
-        <ScrollArea className="xl:min-h-0" viewportProps={{ className: "overflow-x-hidden" }}>
+        <ScrollArea className="min-w-0 xl:min-h-0" viewportProps={{ className: "overflow-x-hidden" }}>
         <div className="space-y-6 px-8 py-6 xl:pr-6">
         <header>
           <div>
@@ -430,7 +430,7 @@ export function TicketDetailContent({
                 </Link>
               </Button>
             ) : null}
-            <h1 className={`${backTo ? "mt-1" : "pr-10"} text-[22px] font-semibold`}>{ticket.title}</h1>
+            <h1 className={`${backTo ? "mt-1" : "pr-10"} [overflow-wrap:anywhere] text-[22px] font-semibold`}>{ticket.title}</h1>
             <div className="mt-3 flex flex-wrap gap-2">
               {ticket.canEdit ? (
                 <Button
@@ -478,7 +478,7 @@ export function TicketDetailContent({
                   <Metadata label="优先级" value={<TicketPriority priority={ticket.priority} size="default" />} />
                   <Metadata label="工单 ID" value={`#${ticket.ticketId}`} />
                   <Metadata label="负责人" value={ticket.assignee?.displayName || "未分配"} />
-                  <Metadata label="创建人" value={ticket.createdBy?.displayName || (ticket.sourceType === "ai" ? "AI" : "-")} />
+                  <Metadata label="创建人" value={ticketCreatorText(ticket.sourceType, ticket.createdBy?.displayName)} />
                 </div>
                 <Metadata align="start" className="sm:col-span-2" label="描述" value={ticket.description || "暂无描述"} />
               </dl>

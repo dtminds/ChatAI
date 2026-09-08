@@ -52,6 +52,7 @@ export * from "./workflow/retention.js";
 export * from "./workflow/smartsheet-write.js";
 export * from "./workflow/tag.js";
 export * from "./workflow/tag-query.js";
+export * from "./workflow/ticket-create.js";
 export * from "./workflow/test-attempt.js";
 export * from "./workflow/trigger.js";
 export * from "./workflow/template.js";

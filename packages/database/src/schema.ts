@@ -23,6 +23,21 @@ export type JsonPrimitive = boolean | number | string | null;
 
 export type JsonValue = JsonArray | JsonObject | JsonPrimitive;
 
+export interface XyInternalRequestIdempotent {
+  /**
+   * 创建时间
+   */
+  create_time: Generated<Date>;
+  /**
+   * 主键ID
+   */
+  id: Generated<number>;
+  /**
+   * 幂等键
+   */
+  idempotent_key: string;
+}
+
 export interface XyWapEmbedAgent {
   /**
    * 自主学习开关: 0关 1开
@@ -2705,7 +2720,7 @@ export interface XyWapEmbedSessionActionItem {
    */
   snapshot_id: number | null;
   /**
-   * 来源，ai：AI生成，manual：人工创建
+   * 来源，ai：AI生成，manual：人工创建，workflow：工作流创建
    */
   source_type: Generated<string>;
   /**
@@ -3591,6 +3606,7 @@ export interface XyWapEmbedUserSeatSubRelation {
 }
 
 export interface DB {
+  xy_internal_request_idempotent: XyInternalRequestIdempotent;
   xy_wap_embed_agent: XyWapEmbedAgent;
   xy_wap_embed_agent_answer_record: XyWapEmbedAgentAnswerRecord;
   xy_wap_embed_agent_history: XyWapEmbedAgentHistory;

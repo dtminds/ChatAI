@@ -5575,6 +5575,7 @@ function parseNodeKind(value: string): WorkflowNodeKind {
     "audience-filter",
     "end",
     "smartsheet-write",
+    "ticket-create",
   ].includes(value)) {
     return value as WorkflowNodeKind;
   }

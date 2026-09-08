@@ -64,7 +64,7 @@ describe("workflow graph operations", () => {
       "agent", "ai-collect", "ai-intent", "audience-filter", "branch", "coupon",
       "customer-update", "end", "handoff", "llm", "message", "message-query",
       "order-bind", "order-query", "order-conversion", "ratio-split", "smartsheet-write", "start",
-      "tag", "tag-query", "wait", "wait-event",
+      "tag", "tag-query", "ticket-create", "wait", "wait-event",
     ]);
 
     for (const kind of nodeKinds) {
@@ -88,7 +88,7 @@ describe("workflow graph operations", () => {
       "start", "wait", "wait-event", "branch", "audience-filter", "ratio-split",
       "ai-intent", "llm", "ai-collect", "order-query", "tag-query", "tag",
       "customer-update", "order-bind", "message", "message-query", "handoff",
-      "agent", "coupon", "order-conversion", "smartsheet-write", "end",
+      "agent", "ticket-create", "coupon", "order-conversion", "smartsheet-write", "end",
     ]);
   });
 

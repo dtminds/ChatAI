@@ -52,6 +52,7 @@ import {
   TicketOverdueBadge,
   TicketPriority,
   TicketStatusBadge,
+  ticketCreatorText,
 } from "@/pages/chat/tickets/ticket-display";
 
 const pageSize = 20;
@@ -413,8 +414,7 @@ function TicketRow({
       </div>
 
       <p className="text-xs text-muted-foreground/75 pt-2.5">
-        {ticket.createdBy?.displayName ??
-          (ticket.sourceType === "ai" ? "AI" : "未知用户")} 创建，更新于{" "}
+        {ticketCreatorText(ticket.sourceType, ticket.createdBy?.displayName, "未知用户")} 创建，更新于{" "}
         {formatInsightTime(ticket.updatedAt)}
       </p>
     </article>

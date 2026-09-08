@@ -117,6 +117,14 @@ export function projectWorkflowNodeExecutionConfig({
     });
   }
 
+  if (kind === "ticket-create") {
+    return cloneJsonRecord({
+      description: draftConfig.description,
+      priority: draftConfig.priority,
+      ticketTitle: draftConfig.ticketTitle,
+    });
+  }
+
   if (kind === "ratio-split") {
     return cloneJsonRecord({
       groups: draftConfig.groups,
@@ -257,6 +265,8 @@ function getWorkflowNodeInvalidConfigMessage(kind: WorkflowNodeKind) {
       return "Ratio Split node requires 2-5 unique groups whose allocations total 100%";
     case "handoff":
       return "Handoff node requires a valid operator message";
+    case "ticket-create":
+      return "Ticket Create node requires a valid title and priority";
     case "tag":
       return "Tag node requires an operation and at least one valid tag";
     case "tag-query":

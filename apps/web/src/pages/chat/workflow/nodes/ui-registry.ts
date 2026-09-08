@@ -19,6 +19,7 @@ import { smartsheetWriteUi } from "./smartsheet-write/ui";
 import { startNodeUi } from "./start/ui";
 import { tagNodeUi } from "./tag/ui";
 import { tagQueryNodeUi } from "./tag-query/ui";
+import { ticketCreateNodeUi } from "./ticket-create/ui";
 import { waitNodeUi } from "./wait/ui";
 import { waitEventNodeUi } from "./wait-event/ui";
 import type { WorkflowNodeUiBinding } from "./ui-types";
@@ -44,6 +45,7 @@ export const workflowNodeUiRegistry = {
   start: startNodeUi,
   tag: tagNodeUi,
   "tag-query": tagQueryNodeUi,
+  "ticket-create": ticketCreateNodeUi,
   wait: waitNodeUi,
   "wait-event": waitEventNodeUi,
 } satisfies {

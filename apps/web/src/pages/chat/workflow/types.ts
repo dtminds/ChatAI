@@ -31,6 +31,7 @@ import type {
   WorkflowSmartsheetWriteDraftConfig,
   WorkflowTagDraftConfig,
   WorkflowTagQueryDraftConfig,
+  WorkflowTicketCreateDraftConfig,
   WorkflowNodeKind as SharedWorkflowNodeKind,
   WorkflowNodeOutputUsage as SharedWorkflowNodeOutputUsage,
   WorkflowOutputValueType as SharedWorkflowOutputValueType,
@@ -166,6 +167,8 @@ export type WorkflowIntentOption = SharedWorkflowIntentOption;
 export type AiIntentNodeData = WorkflowNodeDataBase<"ai-intent"> & WorkflowAiIntentDraftConfig;
 export type SmartsheetWriteNodeData = WorkflowNodeDataBase<"smartsheet-write">
   & WorkflowSmartsheetWriteDraftConfig;
+export type TicketCreateNodeData = WorkflowNodeDataBase<"ticket-create">
+  & WorkflowTicketCreateDraftConfig;
 export type EndNodeData = WorkflowNodeDataBase<"end">;
 
 export type WorkflowNodeDataMap = {
@@ -186,6 +189,7 @@ export type WorkflowNodeDataMap = {
   "order-conversion": OrderConversionNodeData;
   "ratio-split": RatioSplitNodeData;
   "smartsheet-write": SmartsheetWriteNodeData;
+  "ticket-create": TicketCreateNodeData;
   start: StartNodeData;
   tag: TagNodeData;
   "tag-query": TagQueryNodeData;

@@ -86,7 +86,7 @@ describe("ticket DTOs", () => {
     for (const priority of ["low", "medium", "high"]) {
       expect(Value.Check(TicketSchema, { ...ticket, priority })).toBe(true);
     }
-    for (const sourceType of ["manual", "ai"]) {
+    for (const sourceType of ["manual", "ai", "workflow"]) {
       expect(Value.Check(TicketSchema, { ...ticket, sourceType })).toBe(true);
     }
     for (const view of ["assigned_to_me_active", "assigned_to_me", "reception", "created_by_me", "all"]) {

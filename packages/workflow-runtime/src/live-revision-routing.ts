@@ -50,6 +50,10 @@ export function resolveWorkflowForwardRoute(input: {
     && !isWorkflowSelectorAvailable(["trigger", "projection", "seatId"], input.context)) {
     return { kind: "flow-changed", reason: "flow_changed_context_incompatible" };
   }
+  if (target.kind === "ticket-create"
+    && !isWorkflowSelectorAvailable(["trigger", "projection", "seatId"], input.context)) {
+    return { kind: "flow-changed", reason: "flow_changed_context_incompatible" };
+  }
   if (!getRequiredContextSelectors(target, input.latestSpec).every(selector =>
     isWorkflowSelectorAvailable(selector, input.context))) {
     return { kind: "flow-changed", reason: "flow_changed_context_incompatible" };
@@ -91,6 +95,9 @@ function getRequiredContextSelectors(
   }
   if (node.kind === "handoff") {
     return [config.customerMessage, config.operatorMessage].flatMap(selectorsFromSegments);
+  }
+  if (node.kind === "ticket-create") {
+    return [config.ticketTitle, config.description].flatMap(selectorsFromSegments);
   }
   if (node.kind === "llm") {
     return readArray(config.inputs).flatMap(parameter => {

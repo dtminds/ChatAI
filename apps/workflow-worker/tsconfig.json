@@ -9,7 +9,9 @@
     "types": ["node"],
     "paths": {
       "@chatai/contracts": ["../../packages/contracts/src/index.ts"],
+      "@chatai/database": ["../../packages/database/src/index.ts"],
       "@chatai/llm": ["../../packages/llm/src/index.ts"],
+      "@chatai/tickets": ["../../packages/tickets/src/index.ts"],
       "@chatai/workflow-engine": ["../../packages/workflow-engine/src/index.ts"],
       "@chatai/workflow-runtime": ["../../packages/workflow-runtime/src/index.ts"]
     }
@@ -17,7 +19,9 @@
   "include": ["src"],
   "references": [
     { "path": "../../packages/contracts" },
+    { "path": "../../packages/database" },
     { "path": "../../packages/llm" },
+    { "path": "../../packages/tickets" },
     { "path": "../../packages/workflow-engine" },
     { "path": "../../packages/workflow-runtime" }
   ]

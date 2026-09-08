@@ -57,11 +57,15 @@ export function ticketPriorityText(priority: unknown) {
     ?? String(priority ?? "-");
 }
 
-export function ticketCreatorText(sourceType: unknown, displayName?: string | null) {
+export function ticketCreatorText(
+  sourceType: unknown,
+  displayName?: string | null,
+  fallback = "-",
+) {
   if (displayName) return displayName;
   if (sourceType === "ai") return "AI";
   if (sourceType === "workflow") return "工作流";
-  return "-";
+  return fallback;
 }
 
 export function TicketPriority({ priority, size = "compact" }: { priority: string; size?: "compact" | "default" }) {

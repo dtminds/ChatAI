@@ -266,7 +266,7 @@ function getWorkflowNodeInvalidConfigMessage(kind: WorkflowNodeKind) {
     case "handoff":
       return "Handoff node requires a valid operator message";
     case "ticket-create":
-      return "Ticket Create node requires a valid title, description, and priority";
+      return "Ticket Create node requires a valid title and priority";
     case "tag":
       return "Tag node requires an operation and at least one valid tag";
     case "tag-query":

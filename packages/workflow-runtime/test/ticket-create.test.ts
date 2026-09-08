@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   createWorkflowTicketCreateCommand,
   executeWorkflowCapability,
+  resolveWorkflowForwardRoute,
   WORKFLOW_TICKET_CREATE_CAPABILITY_BINDING,
 } from "../src/index.js";
 
@@ -59,5 +60,31 @@ describe("Workflow Ticket Create capability", () => {
       config: { description: [], priority: "medium", ticketTitle: [{ type: "text", value: "   " }] },
       context,
     })).toThrow("执行所需数据不可用，流程已停止");
+  });
+
+  it("ends a live revision when the old run has no frozen seat", () => {
+    expect(resolveWorkflowForwardRoute({
+      context: { outputs: {}, trigger: {} },
+      currentNodeId: "start",
+      currentNodeKind: "start",
+      latestSpec: {
+        edges: [{ id: "start-ticket", source: "start", sourceOutletId: "default", target: "ticket-create" }],
+        entryNodeId: "start",
+        nodes: [
+          { config: {}, id: "start", kind: "start", nodeSchemaVersion: 1 },
+          {
+            config: { description: [], priority: "medium", ticketTitle: [{ type: "text", value: "处理客户需求" }] },
+            id: "ticket-create",
+            kind: "ticket-create",
+            nodeSchemaVersion: 1,
+          },
+        ],
+        revision: 2,
+        schemaVersion: 3,
+        terminalNodeId: "ticket-create",
+        workflowId: "workflow",
+      },
+      sourceOutletId: "default",
+    })).toEqual({ kind: "flow-changed", reason: "flow_changed_context_incompatible" });
   });
 });

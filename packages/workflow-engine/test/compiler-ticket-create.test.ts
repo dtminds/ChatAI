@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 
 import { compileWorkflowDraft } from "../src/compiler.js";
 import { WorkflowCompilationError } from "../src/errors.js";
+import { getWorkflowNodeExecutionConfigError } from "../src/node-contract-registry.js";
 
 describe("Ticket Create compiler validation", () => {
   it("compiles fixed and variable ticket content for ChatAI SOP", () => {
@@ -37,6 +38,26 @@ describe("Ticket Create compiler validation", () => {
       message: "Workflow type policy rejected node-kind-not-allowed",
       nodeId: "ticket-create",
     }, "wecom_sop");
+  });
+
+  it("rejects unavailable Ticket Create content variables", () => {
+    expectCompilationIssue(createDraft({
+      description: [],
+      priority: "medium",
+      ticketTitle: [{ selector: ["node", "missing", "value"], type: "variable" }],
+    }), {
+      code: "invalid-node-config",
+      message: "Ticket Create node references unavailable content data",
+      nodeId: "ticket-create",
+    }, "chatai_sop");
+  });
+
+  it("describes only the required Ticket Create fields in configuration errors", () => {
+    expect(getWorkflowNodeExecutionConfigError("ticket-create", {
+      description: undefined,
+      priority: "medium",
+      ticketTitle: [],
+    })).toBe("Ticket Create node requires a valid title and priority");
   });
 });
 

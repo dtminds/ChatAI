@@ -264,13 +264,24 @@ describe("TicketsPage", () => {
     await user.keyboard("{Escape}");
 
     await user.click(screen.getByRole("button", { name: "更多筛选" }));
-    await user.click(screen.getByRole("menuitem", { name: "来源" }));
+    await user.click(screen.getByRole("menuitem", { name: /^来源/ }));
     const aiSourceOption = screen.getByRole("menuitemradio", { name: "智能创建" });
     fireEvent.click(aiSourceOption);
     expect(aiSourceOption).toHaveAttribute("data-state", "checked");
     await waitFor(() => expect(api.getTickets).toHaveBeenLastCalledWith(
       expect.objectContaining({
         sourceType: "ai",
+        status: "done",
+        ticketId: "501",
+      }),
+    ));
+
+    await user.click(screen.getByRole("button", { name: "更多筛选" }));
+    await user.click(screen.getByRole("menuitem", { name: /^来源/ }));
+    fireEvent.click(screen.getByRole("menuitemradio", { name: "工作流创建" }));
+    await waitFor(() => expect(api.getTickets).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        sourceType: "workflow",
         status: "done",
         ticketId: "501",
       }),

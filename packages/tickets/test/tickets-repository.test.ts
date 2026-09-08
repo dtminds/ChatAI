@@ -494,6 +494,58 @@ describe("TicketsRepository", () => {
     expect(queries.some(query => normalizeSql(query).startsWith("insert into"))).toBe(false);
   });
 
+  it("creates a Workflow ticket and system activity with the stable execution key", async () => {
+    const { db, queries, transactionCount } = createRecordingDatabase({ hostSubUserId: 102 });
+
+    await expect(new TicketsRepository(db).createWorkflowTicket({
+      anchorMessageId: 601,
+      conversationId: 301,
+      description: "跟进客户需求",
+      priority: "high",
+      title: "处理客户需求",
+      uid: 9001,
+      workflowExecutionKey: "9001:run-1:ticket-create:2",
+    })).resolves.toBe(501);
+
+    const inserts = queries.filter((query) => normalizeSql(query).startsWith("insert into"));
+    expect(inserts).toHaveLength(2);
+    expect(inserts[0]?.parameters).toEqual(expect.arrayContaining([
+      601,
+      102,
+      301,
+      "high",
+      "workflow",
+      "处理客户需求",
+      "9001:run-1:ticket-create:2",
+    ]));
+    expect(inserts[1]?.parameters).toEqual(expect.arrayContaining([
+      "created",
+      "system",
+      501,
+    ]));
+    expect(transactionCount()).toBe(1);
+  });
+
+  it("reuses the inserted Workflow ticket after a duplicate-key race", async () => {
+    const { db, queries, transactionCount } = createRecordingDatabase({
+      workflowInsertError: { errno: 1062 },
+      workflowTicketRowsAfterInsert: [{ id: 503 }],
+    });
+
+    await expect(new TicketsRepository(db).createWorkflowTicket({
+      anchorMessageId: null,
+      conversationId: 301,
+      description: null,
+      priority: "medium",
+      title: "处理客户需求",
+      uid: 9001,
+      workflowExecutionKey: "9001:run-1:ticket-create:3",
+    })).resolves.toBe(503);
+
+    expect(transactionCount()).toBe(1);
+    expect(queries.filter(query => normalizeSql(query).includes("workflow_execution_key = ?"))).toHaveLength(2);
+  });
+
   it("fences status updates and writes their activities in the same transaction", async () => {
     const { db, queries } = createRecordingDatabase();
     const repository = new TicketsRepository(db);
@@ -641,15 +693,22 @@ function createRecordingDatabase(options: {
   accessibleSeatRows?: Record<string, unknown>[];
   hostSubUserId?: number;
   ticketPageRows?: Record<string, unknown>[];
+  workflowInsertError?: unknown;
   workflowTicketRows?: Record<string, unknown>[];
+  workflowTicketRowsAfterInsert?: Record<string, unknown>[];
 } = {}) {
   const queries: CompiledQuery[] = [];
   let transactionCount = 0;
+  let workflowInsertAttempted = false;
   const connection: DatabaseConnection = {
     executeQuery: async <R>(query: CompiledQuery): Promise<QueryResult<R>> => {
       queries.push(query);
 
       if (query.sql.includes("insert into `xy_wap_embed_session_action_item`")) {
+        if (options.workflowInsertError && !workflowInsertAttempted) {
+          workflowInsertAttempted = true;
+          throw options.workflowInsertError;
+        }
         return { insertId: 501n, rows: [] };
       }
       if (query.sql.includes("insert into `xy_wap_embed_ticket_activity`")) {
@@ -657,7 +716,11 @@ function createRecordingDatabase(options: {
       }
 
       if (query.sql.includes("`workflow_execution_key`")) {
-        return { rows: options.workflowTicketRows as R[] ?? [] };
+        return {
+          rows: (workflowInsertAttempted
+            ? options.workflowTicketRowsAfterInsert
+            : options.workflowTicketRows) as R[] ?? [],
+        };
       }
 
       if (query.sql.includes("select distinct `access_seat`.`platform` as `platform`, `access_seat`.`third_userid` as `third_userid`")) {

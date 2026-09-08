@@ -1383,10 +1383,9 @@ function normalizeSourceType(value: string): TicketSourceType {
 }
 
 function isDuplicateEntryError(error: unknown) {
-  return typeof error === "object"
-    && error !== null
-    && "code" in error
-    && error.code === "ER_DUP_ENTRY";
+  if (typeof error !== "object" || error === null) return false;
+  const value = error as { code?: unknown; errno?: unknown };
+  return value.code === "ER_DUP_ENTRY" || value.errno === 1062;
 }
 
 function normalizePersistenceStatus(value: string): TicketDeleteRecord["status"] {

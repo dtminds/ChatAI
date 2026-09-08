@@ -190,6 +190,11 @@ const projectableDraftData = {
       value: { kind: "literal", value: "张三" },
     }],
   },
+  "ticket-create": {
+    description: [],
+    priority: "medium",
+    ticketTitle: [{ type: "text", value: "处理客户需求" }],
+  },
   start: {
     entryPolicy: { mode: "never" },
     seatIds: [101],

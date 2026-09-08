@@ -40,6 +40,9 @@ export const ticketCreateNodeDefinition: WorkflowNodeDefinition<"ticket-create">
   sanitizeData: data => ({
     ...data,
     description: normalizeVariableContent(data.description),
+    priority: data.priority === "low" || data.priority === "high" || data.priority === "medium"
+      ? data.priority
+      : "medium",
     ticketTitle: normalizeVariableContent(data.ticketTitle),
   }),
   validate: node => getVariableContentPreview(node.data.ticketTitle)

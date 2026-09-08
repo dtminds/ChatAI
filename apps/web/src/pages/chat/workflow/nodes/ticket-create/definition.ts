@@ -9,7 +9,7 @@ import {
 const baseDefinition = createStandardNodeDefinition({
   accentClassName: "bg-emerald-600 text-white",
   accentRgb: "5 150 105",
-  description: "根据流程中的客户信息创建工单，供运营或客服继续跟进处理",
+  description: "创建工单，确保关键客户动作（如问题处理、回访、活动跟进等）不被遗漏",
   icon: ListTodoIcon,
   kind: "ticket-create",
   label: "创建工单",

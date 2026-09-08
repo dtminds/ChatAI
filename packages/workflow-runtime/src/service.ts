@@ -316,6 +316,7 @@ export class WorkflowRuntimeService {
     const startConfig = requireStartConfig(entryNode, {
       revision: revision.revision,
       workflowId: input.workflowId,
+      workflowType: revision.workflowType,
     });
     return this.createInitialRun({
       ...input,
@@ -352,6 +353,7 @@ export class WorkflowRuntimeService {
     const startConfig = requireStartConfig(entryNode, {
       revision: revision.revision,
       workflowId,
+      workflowType: revision.workflowType,
     });
     if (startConfig.entryMode !== "direct-push") throw directEntryUnavailableError();
     const subject = resolveDirectEntrySubject(revision.subjectType, startConfig, input.payload);
@@ -2062,7 +2064,7 @@ function requireExecutionNode(spec: WorkflowExecutionSpec, nodeId: string) {
 
 function requireStartConfig(
   node: WorkflowExecutionNode,
-  context: { revision: number; workflowId: string },
+  context: { revision: number; workflowId: string; workflowType: WorkflowType },
 ): WorkflowStartConfig {
   if (node.kind !== "start") {
     throw new WorkflowRuntimeError(
@@ -2078,11 +2080,12 @@ function requireStartConfig(
       },
     );
   }
-  const normalizedConfig = admitStartConfig({
+  const schema = getWorkflowStartConfigSchema(context.workflowType);
+  const normalizedConfig = admitStartConfig(schema, {
     ...node.config,
     entryPolicy: normalizeWorkflowEntryPolicy(node.config.entryPolicy),
   });
-  if (!Value.Check(WorkflowStartConfigSchema, normalizedConfig)) {
+  if (!Value.Check(schema, normalizedConfig)) {
     throw new WorkflowRuntimeError(
       "WORKFLOW_START_CONFIG_INVALID",
       "Workflow Start 配置无效",
@@ -2090,7 +2093,7 @@ function requireStartConfig(
       {
         chatAiCheck: Value.Check(WorkflowChatAiStartConfigSchema, normalizedConfig),
         configTypes: describeJsonTypes(normalizedConfig),
-        errors: collectSchemaErrors(WorkflowStartConfigSchema, normalizedConfig),
+        errors: collectSchemaErrors(schema, normalizedConfig),
         kind: node.kind,
         nodeId: node.id,
         reason: "schema",
@@ -2115,8 +2118,14 @@ function collectSchemaErrors(schema: Parameters<typeof Value.Errors>[0], value: 
   return errors;
 }
 
-function admitStartConfig(config: Record<string, unknown>) {
-  return dropUnreadSchemaProperties(WorkflowStartConfigSchema, config);
+function getWorkflowStartConfigSchema(workflowType: WorkflowType) {
+  if (workflowType === "chatai_sop") return WorkflowChatAiStartConfigSchema;
+  if (workflowType === "wecom_sop") return WorkflowWeComStartConfigSchema;
+  return WorkflowStartConfigSchema;
+}
+
+function admitStartConfig(schema: TSchema, config: Record<string, unknown>) {
+  return dropUnreadSchemaProperties(schema, config);
 }
 
 function dropUnreadSchemaProperties(schema: TSchema, value: unknown): unknown {

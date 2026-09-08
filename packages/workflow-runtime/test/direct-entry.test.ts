@@ -81,6 +81,33 @@ describe("workflow direct entry", () => {
     });
   });
 
+  it("uses WeCom identity fields when stale ChatAI Start fields remain", async () => {
+    const startConfig: Extract<WorkflowStartConfig, { workUserIds: number[] }> & {
+      messageSendingWindow: { endTime: string; startTime: string };
+      seatIds: number[];
+    } = {
+      entryMode: "direct-push",
+      entryPolicy: { mode: "never" },
+      messageSendingWindow: { endTime: "20:00", startTime: "09:00" },
+      seatIds: [101],
+      triggers: [],
+      workUserIds: [201],
+    };
+    const { service } = createHarness(startConfig, "wecom_sop");
+
+    await expect(service.startDirectRun(directInput({
+      payload: { externalUserId: 3267, workUserId: 201, workflowId: 31 },
+      source: "wecom",
+    }))).resolves.toMatchObject({
+      kind: "success",
+      run: {
+        context: { workflow: {} },
+        subjectId: "3267",
+        subjectType: "wecom_contact",
+      },
+    });
+  });
+
   it("rejects a direct entry matched against a stale binding revision", async () => {
     const { service } = createHarness(directStart({
       entryPolicy: { mode: "never" },

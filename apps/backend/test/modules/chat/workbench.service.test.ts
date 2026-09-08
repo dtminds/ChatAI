@@ -2114,13 +2114,14 @@ describe("MysqlWorkbenchService", () => {
     expect(javaClient.pullFriendsInGroup).not.toHaveBeenCalled();
   });
 
-  it("rejects pulling group members without contacts", async () => {
+  it("rejects pulling group members without contacts or employees", async () => {
     const javaClient = createJavaClient();
     const service = createWorkbenchService({} as unknown as WorkbenchRepository, javaClient);
 
     await expect(
       service.pullGroupMembers("101", "88", {
         contactThirdUserIds: ["  ", ""],
+        thirdUserIds: [" "],
       }),
     ).rejects.toMatchObject({
       code: "CONTACT_REQUIRED",
@@ -2129,25 +2130,15 @@ describe("MysqlWorkbenchService", () => {
     expect(javaClient.pullFriendsInGroup).not.toHaveBeenCalled();
   });
 
-  it("pulls selected friends into a taken-over group through Java", async () => {
+  it("pulls selected customers into a taken-over group through Java", async () => {
     const javaClient = createJavaClient();
+    const listOwnedCustomerExternalUserIds = vi
+      .fn()
+      .mockResolvedValue(["external-a", "external-b"]);
     const service = createWorkbenchService(
-      {
-        canAccessSeat: vi.fn().mockResolvedValue(true),
-        getConversationLookup: vi.fn().mockResolvedValue({
-          id: "88",
-          platform: 5,
-          seatId: "12",
-          seatHostSubUserId: "101",
-          uid: 9001,
-        }),
-        listGroupMembers: vi.fn().mockResolvedValue({
-          conversationId: "88",
-          groupSeatId: "501",
-          items: [],
-          thirdGroupId: "group-1",
-        }),
-      } as unknown as WorkbenchRepository,
+      createPullGroupMembersRepository({
+        listOwnedCustomerExternalUserIds,
+      }),
       javaClient,
     );
 
@@ -2158,6 +2149,12 @@ describe("MysqlWorkbenchService", () => {
     ).resolves.toEqual({
       conversationId: "88",
     });
+    expect(listOwnedCustomerExternalUserIds).toHaveBeenCalledWith({
+      platform: 5,
+      seatThirdUserId: "seat-owner",
+      thirdExternalUserIds: ["external-a", "external-b"],
+      uid: 9001,
+    });
     expect(javaClient.pullFriendsInGroup).toHaveBeenCalledWith({
       contactThirdUserids: ["external-a", "external-b"],
       groupSeatId: 501,
@@ -2167,6 +2164,107 @@ describe("MysqlWorkbenchService", () => {
     });
   });
 
+  it("pulls selected employees into a taken-over group through Java", async () => {
+    const javaClient = createJavaClient();
+    const listOwnedEmployeeThirdUserIds = vi.fn().mockResolvedValue(["seat-user-hua"]);
+    const service = createWorkbenchService(
+      createPullGroupMembersRepository({
+        listOwnedEmployeeThirdUserIds,
+      }),
+      javaClient,
+    );
+
+    await expect(
+      service.pullGroupMembers("101", "88", {
+        thirdUserIds: [" seat-user-hua "],
+      }),
+    ).resolves.toEqual({
+      conversationId: "88",
+    });
+    expect(listOwnedEmployeeThirdUserIds).toHaveBeenCalledWith({
+      platform: 5,
+      thirdUserIds: ["seat-user-hua"],
+      uid: 9001,
+    });
+    expect(javaClient.pullFriendsInGroup).toHaveBeenCalledWith({
+      groupSeatId: 501,
+      platform: 5,
+      subUserId: 101,
+      thirdUserids: ["seat-user-hua"],
+      uid: 9001,
+    });
+  });
+
+  it("pulls customers and employees in separate Java fields after ownership checks", async () => {
+    const javaClient = createJavaClient();
+    const listOwnedCustomerExternalUserIds = vi.fn().mockResolvedValue(["external-a"]);
+    const listOwnedEmployeeThirdUserIds = vi.fn().mockResolvedValue(["seat-user-hua"]);
+    const service = createWorkbenchService(
+      createPullGroupMembersRepository({
+        listOwnedCustomerExternalUserIds,
+        listOwnedEmployeeThirdUserIds,
+      }),
+      javaClient,
+    );
+
+    await expect(
+      service.pullGroupMembers("101", "88", {
+        contactThirdUserIds: ["external-a"],
+        thirdUserIds: ["seat-user-hua"],
+      }),
+    ).resolves.toEqual({
+      conversationId: "88",
+    });
+    expect(javaClient.pullFriendsInGroup).toHaveBeenCalledWith({
+      contactThirdUserids: ["external-a"],
+      groupSeatId: 501,
+      platform: 5,
+      subUserId: 101,
+      thirdUserids: ["seat-user-hua"],
+      uid: 9001,
+    });
+  });
+
+  it("rejects pulling customers that do not belong to the current seat", async () => {
+    const javaClient = createJavaClient();
+    const service = createWorkbenchService(
+      createPullGroupMembersRepository({
+        listOwnedCustomerExternalUserIds: vi.fn().mockResolvedValue(["external-a"]),
+      }),
+      javaClient,
+    );
+
+    await expect(
+      service.pullGroupMembers("101", "88", {
+        contactThirdUserIds: ["external-a", "external-b"],
+      }),
+    ).rejects.toMatchObject({
+      code: "CUSTOMER_NOT_OWNED",
+      statusCode: 403,
+    });
+    expect(javaClient.pullFriendsInGroup).not.toHaveBeenCalled();
+  });
+
+  it("rejects pulling employees that are not current-enterprise seats", async () => {
+    const javaClient = createJavaClient();
+    const service = createWorkbenchService(
+      createPullGroupMembersRepository({
+        listOwnedEmployeeThirdUserIds: vi.fn().mockResolvedValue([]),
+      }),
+      javaClient,
+    );
+
+    await expect(
+      service.pullGroupMembers("101", "88", {
+        thirdUserIds: ["seat-user-hua"],
+      }),
+    ).rejects.toMatchObject({
+      code: "EMPLOYEE_NOT_OWNED",
+      statusCode: 403,
+    });
+    expect(javaClient.pullFriendsInGroup).not.toHaveBeenCalled();
+  });
+
   it("rejects pulling more friends than the invite limit", async () => {
     const javaClient = createJavaClient();
     const service = createWorkbenchService({} as unknown as WorkbenchRepository, javaClient);
@@ -2174,8 +2272,12 @@ describe("MysqlWorkbenchService", () => {
     await expect(
       service.pullGroupMembers("101", "88", {
         contactThirdUserIds: Array.from(
-          { length: WORKBENCH_PULL_GROUP_MEMBERS_MAX_ITEMS + 1 },
+          { length: 21 },
           (_, index) => `external-${index + 1}`,
+        ),
+        thirdUserIds: Array.from(
+          { length: 20 },
+          (_, index) => `seat-${index + 1}`,
         ),
       }),
     ).rejects.toMatchObject({
@@ -8981,6 +9083,33 @@ describe("MysqlWorkbenchService", () => {
     },
   );
 });
+
+function createPullGroupMembersRepository(input: {
+  listOwnedCustomerExternalUserIds?: ReturnType<typeof vi.fn>;
+  listOwnedEmployeeThirdUserIds?: ReturnType<typeof vi.fn>;
+} = {}) {
+  return {
+    canAccessSeat: vi.fn().mockResolvedValue(true),
+    getConversationLookup: vi.fn().mockResolvedValue({
+      id: "88",
+      platform: 5,
+      seatId: "12",
+      seatHostSubUserId: "101",
+      thirdUserId: "seat-owner",
+      uid: 9001,
+    }),
+    listGroupMembers: vi.fn().mockResolvedValue({
+      conversationId: "88",
+      groupSeatId: "501",
+      items: [],
+      thirdGroupId: "group-1",
+    }),
+    listOwnedCustomerExternalUserIds:
+      input.listOwnedCustomerExternalUserIds ?? vi.fn().mockResolvedValue([]),
+    listOwnedEmployeeThirdUserIds:
+      input.listOwnedEmployeeThirdUserIds ?? vi.fn().mockResolvedValue([]),
+  } as unknown as WorkbenchRepository;
+}
 
 function createKickGroupMembersRepository(input: {
   currentSeatThirdUserId?: string;

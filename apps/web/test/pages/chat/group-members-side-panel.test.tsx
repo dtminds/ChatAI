@@ -654,7 +654,7 @@ describe("GroupMembersSidePanel", () => {
       });
     });
     expect(onRefresh).toHaveBeenCalledTimes(1);
-    expect(toast.success).toHaveBeenCalledWith("已添加");
+    expect(toast.success).toHaveBeenCalledWith("已添加，请稍后刷新查看");
     expect(screen.queryByRole("heading", { name: "添加群成员" })).not.toBeInTheDocument();
   });
 
@@ -905,7 +905,7 @@ describe("GroupMembersSidePanel", () => {
         kickOutThirdUserId: "member-xiaoming",
       });
     });
-    expect(toast.success).toHaveBeenCalled();
+    expect(toast.success).toHaveBeenCalledWith("已移出，请稍后刷新查看");
     expect(onRefresh).toHaveBeenCalledTimes(1);
     expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
   });
@@ -1133,6 +1133,54 @@ describe("GroupMembersSidePanel", () => {
     expect(screen.getByRole("checkbox", { name: "选择 花花" })).toBeInTheDocument();
     expect(screen.queryByRole("checkbox", { name: "选择 饭饭" })).not.toBeInTheDocument();
     expect(screen.queryByRole("checkbox", { name: "选择 当前席位" })).not.toBeInTheDocument();
+  });
+
+  it("sends employees and customers in separate pull fields", async () => {
+    const user = userEvent.setup();
+    const getCustomers = vi.fn().mockResolvedValue(
+      createCustomerPage([createCustomerSummary("external-xiaoming", "小明")]),
+    );
+    const getEnterpriseMembers = vi.fn().mockResolvedValue({
+      items: [
+        {
+          avatarUrl: "",
+          displayName: "花花",
+          thirdUserId: "seat-user-hua",
+        },
+      ],
+    });
+    const pullGroupMembers = vi.fn().mockResolvedValue({ conversationId: "conv-004" });
+    setWorkbenchService({
+      ...createMockWorkbenchService(),
+      getCustomers,
+      getEnterpriseMembers,
+      pullGroupMembers,
+    });
+
+    render(
+      <GroupMembersSidePanel
+        canAddMembers
+        conversationId="conv-004"
+        currentSeatThirdUserId="seat-user-current"
+        groupMembers={[]}
+        isLoading={false}
+        onRefresh={vi.fn()}
+        seatId="seat-001"
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "添加群成员" }));
+    await user.click(await screen.findByRole("checkbox", { name: "选择 小明" }));
+    await user.click(screen.getByRole("button", { name: "展开成员" }));
+    await user.click(screen.getByRole("checkbox", { name: "选择 花花" }));
+    await user.click(screen.getByRole("button", { name: "确认" }));
+
+    await waitFor(() => {
+      expect(pullGroupMembers).toHaveBeenCalledWith("conv-004", {
+        contactThirdUserIds: ["external-xiaoming"],
+        thirdUserIds: ["seat-user-hua"],
+      });
+    });
   });
 });
 

@@ -339,10 +339,18 @@ export function AddGroupMembersDialog({
 
     setIsSubmitting(true);
     try {
+      const contactThirdUserIds = selectedMembers
+        .filter((member) => member.kind === "member")
+        .map((member) => member.id);
+      const thirdUserIds = selectedMembers
+        .filter((member) => member.kind === "employee")
+        .map((member) => member.id);
+
       await getWorkbenchService().pullGroupMembers(conversationId, {
-        contactThirdUserIds: selectedMembers.map((member) => member.id),
+        ...(contactThirdUserIds.length ? { contactThirdUserIds } : {}),
+        ...(thirdUserIds.length ? { thirdUserIds } : {}),
       });
-      toast.success("已添加");
+      toast.success("已添加，请稍后刷新查看");
       onAdded?.();
       setIsSubmitting(false);
       onOpenChange(false);

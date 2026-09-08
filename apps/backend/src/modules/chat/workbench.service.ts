@@ -1212,13 +1212,17 @@ export class MysqlWorkbenchService implements WorkbenchService {
     conversationId: string,
     request: WorkbenchPullGroupMembersRequest,
   ): Promise<WorkbenchPullGroupMembersResponse> {
-    const contactThirdUserids = uniqueNonEmptyStrings(request.contactThirdUserIds);
+    const contactThirdUserids = uniqueNonEmptyStrings(request.contactThirdUserIds ?? []);
+    const thirdUserids = uniqueNonEmptyStrings(request.thirdUserIds ?? []);
 
-    if (contactThirdUserids.length === 0) {
-      throw new BadRequestError("CONTACT_REQUIRED", "请选择要邀请的客户");
+    if (contactThirdUserids.length === 0 && thirdUserids.length === 0) {
+      throw new BadRequestError("CONTACT_REQUIRED", "请选择要邀请的客户或成员");
     }
 
-    if (contactThirdUserids.length > WORKBENCH_PULL_GROUP_MEMBERS_MAX_ITEMS) {
+    if (
+      contactThirdUserids.length + thirdUserids.length >
+      WORKBENCH_PULL_GROUP_MEMBERS_MAX_ITEMS
+    ) {
       throw new BadRequestError(
         "CONTACT_LIMIT",
         `一次最多邀请 ${WORKBENCH_PULL_GROUP_MEMBERS_MAX_ITEMS} 人`,
@@ -1249,11 +1253,43 @@ export class MysqlWorkbenchService implements WorkbenchService {
       throw new BadRequestError("INVALID_GROUP_SEAT", "群席位无效");
     }
 
+    if (contactThirdUserids.length > 0) {
+      const seatThirdUserId = conversation.thirdUserId?.trim();
+
+      if (!seatThirdUserId) {
+        throw new ForbiddenError("CUSTOMER_NOT_OWNED", "存在无法邀请的客户");
+      }
+
+      const ownedCustomerIds = await this.repository.listOwnedCustomerExternalUserIds({
+        platform: conversation.platform,
+        seatThirdUserId,
+        thirdExternalUserIds: contactThirdUserids,
+        uid: conversation.uid,
+      });
+
+      if (!hasAllRequestedIds(ownedCustomerIds, contactThirdUserids)) {
+        throw new ForbiddenError("CUSTOMER_NOT_OWNED", "存在无法邀请的客户");
+      }
+    }
+
+    if (thirdUserids.length > 0) {
+      const ownedEmployeeIds = await this.repository.listOwnedEmployeeThirdUserIds({
+        platform: conversation.platform,
+        thirdUserIds: thirdUserids,
+        uid: conversation.uid,
+      });
+
+      if (!hasAllRequestedIds(ownedEmployeeIds, thirdUserids)) {
+        throw new ForbiddenError("EMPLOYEE_NOT_OWNED", "存在无法邀请的成员");
+      }
+    }
+
     await this.javaClient.pullFriendsInGroup({
-      contactThirdUserids,
+      ...(contactThirdUserids.length ? { contactThirdUserids } : {}),
       groupSeatId,
       platform: conversation.platform,
       subUserId: subUserNumericId,
+      ...(thirdUserids.length ? { thirdUserids } : {}),
       uid: conversation.uid,
     });
 
@@ -5614,6 +5650,11 @@ function uniqueNonEmptyStrings(values: readonly string[]) {
   return Array.from(
     new Set(values.map((value) => value.trim()).filter(Boolean)),
   );
+}
+
+function hasAllRequestedIds(ownedIds: readonly string[], requestedIds: readonly string[]) {
+  const ownedIdSet = new Set(ownedIds.map((id) => id.trim()).filter(Boolean));
+  return requestedIds.every((id) => ownedIdSet.has(id));
 }
 
 function findCurrentGroupMember(

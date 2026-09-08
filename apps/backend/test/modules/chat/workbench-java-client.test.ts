@@ -308,6 +308,7 @@ describe("createWorkbenchJavaClient", () => {
       groupSeatId: 501,
       platform: 5,
       subUserId: 101,
+      thirdUserids: ["seat-user-hua"],
       uid: 9001,
     });
 
@@ -319,6 +320,7 @@ describe("createWorkbenchJavaClient", () => {
           groupSeatId: 501,
           platform: 5,
           subUserId: 101,
+          thirdUserids: ["seat-user-hua"],
           uid: 9001,
         }),
         method: "POST",

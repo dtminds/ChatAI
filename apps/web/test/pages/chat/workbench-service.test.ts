@@ -186,6 +186,26 @@ describe("createWorkbenchService", () => {
     );
   });
 
+  it("posts selected employees separately when pulling them into a group", async () => {
+    const service = createHttpWorkbenchService();
+    mock.onPost("/server/conversations/88/group-members").reply(200, {
+      conversationId: "88",
+    });
+
+    await expect(
+      service.pullGroupMembers("88", {
+        contactThirdUserIds: ["external-a"],
+        thirdUserIds: ["seat-user-hua"],
+      }),
+    ).resolves.toEqual({ conversationId: "88" });
+    expect(mock.history.post[0]?.data).toBe(
+      JSON.stringify({
+        contactThirdUserIds: ["external-a"],
+        thirdUserIds: ["seat-user-hua"],
+      }),
+    );
+  });
+
   it("posts the selected member to kick them from a group", async () => {
     const service = createHttpWorkbenchService();
     mock.onPost("/server/conversations/88/group-members/remove").reply(200, {

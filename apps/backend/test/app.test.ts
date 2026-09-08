@@ -2673,6 +2673,31 @@ describe("backend app", () => {
     expect(response.json()).toEqual({ conversationId: "conv-004" });
     expect(pullGroupMembers).toHaveBeenCalledWith("101", "conv-004", {
       contactThirdUserIds: ["external-a", "external-b"],
+      thirdUserIds: undefined,
+    });
+
+    await app.close();
+  });
+
+  it("pulls selected employees into a group conversation", async () => {
+    const { app, authorization } = await createAuthenticatedApp();
+    const pullGroupMembers = vi
+      .spyOn(app.workbenchService, "pullGroupMembers")
+      .mockResolvedValue({ conversationId: "conv-004" });
+
+    const response = await app.inject({
+      headers: { authorization },
+      method: "POST",
+      payload: {
+        thirdUserIds: ["seat-user-hua"],
+      },
+      url: "/api/server/conversations/conv-004/group-members",
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(pullGroupMembers).toHaveBeenCalledWith("101", "conv-004", {
+      contactThirdUserIds: undefined,
+      thirdUserIds: ["seat-user-hua"],
     });
 
     await app.close();

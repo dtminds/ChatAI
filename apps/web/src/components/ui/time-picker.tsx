@@ -58,12 +58,30 @@ export function TimePicker({
     setOpen(nextOpen);
   };
 
+  const updateDraftTime = (next: Partial<{
+    hour: string;
+    minute: string;
+    second: string;
+  }>) => {
+    const nextHour = next.hour ?? draftHour;
+    const nextMinute = next.minute ?? draftMinute;
+    const nextSecond = next.second ?? draftSecond;
+    if (next.hour !== undefined) setDraftHour(next.hour);
+    if (next.minute !== undefined) setDraftMinute(next.minute);
+    if (next.second !== undefined) setDraftSecond(next.second);
+    onValueChange(formatTime(nextHour, nextMinute, nextSecond, precision));
+  };
+
   return (
     <Popover onOpenChange={handleOpenChange} open={open}>
       <PopoverTrigger asChild>
         <Button
           aria-label={ariaLabel}
-          className={cn("h-9 w-28 justify-between rounded-[10px] px-2.5 font-normal", className)}
+          className={cn(
+            "h-9 justify-between rounded-[10px] px-2.5 font-normal",
+            precision === "second" ? "w-36" : "w-28",
+            className,
+          )}
           disabled={disabled}
           type="button"
           variant={variant}
@@ -94,14 +112,14 @@ export function TimePicker({
         >
           <TimeColumn
             label="时"
-            onSelect={setDraftHour}
+            onSelect={hour => updateDraftTime({ hour })}
             options={hours}
             selectedRef={selectedHourRef}
             value={draftHour}
           />
           <TimeColumn
             label="分"
-            onSelect={setDraftMinute}
+            onSelect={minute => updateDraftTime({ minute })}
             options={minutes}
             selectedRef={selectedMinuteRef}
             value={draftMinute}
@@ -109,7 +127,7 @@ export function TimePicker({
           {precision === "second" ? (
             <TimeColumn
               label="秒"
-              onSelect={setDraftSecond}
+              onSelect={second => updateDraftTime({ second })}
               options={seconds}
               selectedRef={selectedSecondRef}
               value={draftSecond}
@@ -120,7 +138,6 @@ export function TimePicker({
           aria-label={`${ariaLabel}确认`}
           className="shrink-0 self-end"
           onClick={() => {
-            onValueChange(formatTime(draftHour, draftMinute, draftSecond, precision));
             setOpen(false);
           }}
           size="sm"

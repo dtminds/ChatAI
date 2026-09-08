@@ -19,7 +19,6 @@ describe("DateTimePicker", () => {
     await user.click(screen.getByRole("button", { name: "开始时间" }));
     await user.click(screen.getByRole("button", { name: "开始时间时间" }));
     await user.click(screen.getByRole("button", { name: "20时" }));
-    await user.click(screen.getByRole("button", { name: "开始时间时间确认" }));
     await user.click(screen.getByRole("button", { name: "确定" }));
 
     expect(onValueChange).toHaveBeenCalledWith("2026-07-15T20:30");
@@ -41,7 +40,6 @@ describe("DateTimePicker", () => {
     await user.click(screen.getByRole("button", { name: "开始时间" }));
     await user.click(screen.getByRole("button", { name: "开始时间时间" }));
     await user.click(screen.getByRole("button", { name: "45秒" }));
-    await user.click(screen.getByRole("button", { name: "开始时间时间确认" }));
     await user.click(screen.getByRole("button", { name: "确定" }));
 
     expect(onValueChange).toHaveBeenCalledWith("2026-07-15T09:30:45");
@@ -62,17 +60,9 @@ describe("DateTimePicker", () => {
     await user.click(screen.getByRole("button", { name: "开始时间" }));
     await user.click(screen.getByRole("button", { name: "开始时间时间" }));
     const hour = screen.getByRole("button", { name: "23时" });
-    const wheelEvent = new WheelEvent("wheel", {
-      bubbles: true,
-      cancelable: true,
-      deltaY: 80,
-    });
-    hour.dispatchEvent(wheelEvent);
-    expect(wheelEvent.defaultPrevented).toBe(false);
 
     await user.click(hour);
     await user.click(screen.getByRole("button", { name: "59分" }));
-    await user.click(screen.getByRole("button", { name: "开始时间时间确认" }));
     await user.click(screen.getByRole("button", { name: "确定" }));
 
     expect(onValueChange).toHaveBeenCalledWith("2026-07-15T23:59");

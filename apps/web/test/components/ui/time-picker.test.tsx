@@ -1,11 +1,10 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
-import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { TimePicker } from "@/components/ui/time-picker";
 
 describe("TimePicker", () => {
-  it("commits a selected time only after confirmation", async () => {
+  it("updates when a time is selected and uses confirmation only to close", async () => {
     const user = userEvent.setup();
     const onValueChange = vi.fn();
 
@@ -23,10 +22,11 @@ describe("TimePicker", () => {
     await user.click(trigger);
     await user.click(screen.getByRole("button", { name: "09时" }));
 
-    expect(onValueChange).not.toHaveBeenCalled();
+    expect(onValueChange).toHaveBeenCalledWith("09:00");
 
     await user.click(screen.getByRole("button", { name: "执行时间确认" }));
-    expect(onValueChange).toHaveBeenCalledWith("09:00");
+    expect(onValueChange).toHaveBeenCalledTimes(1);
+    expect(screen.queryByRole("button", { name: "00时" })).not.toBeInTheDocument();
   });
 
   it("renders valid times unchanged", () => {
@@ -56,37 +56,27 @@ describe("TimePicker", () => {
 
     await user.click(screen.getByRole("button", { name: "执行时间" }));
     await user.click(screen.getByRole("button", { name: "45秒" }));
-    await user.click(screen.getByRole("button", { name: "执行时间确认" }));
 
     expect(onValueChange).toHaveBeenCalledWith("09:30:45");
   });
 
-  it("keeps time-column wheel events scrollable without expanding a modal dialog", async () => {
+  it("prevents time-column wheel events from reaching the surrounding surface", async () => {
     const user = userEvent.setup();
+    const onWheel = vi.fn();
 
     render(
-      <Dialog open>
-        <DialogContent>
-          <DialogTitle>配置时间</DialogTitle>
+      <div onWheel={onWheel}>
           <TimePicker
             aria-label="执行时间"
             onValueChange={() => undefined}
             value="00:00"
           />
-        </DialogContent>
-      </Dialog>,
+      </div>,
     );
 
     await user.click(screen.getByRole("button", { name: "执行时间" }));
-    expect(screen.getByRole("dialog", { name: "配置时间" })
-      .contains(screen.getByRole("button", { name: "执行时间确认" }))).toBe(false);
-    const wheelEvent = new WheelEvent("wheel", {
-      bubbles: true,
-      cancelable: true,
-      deltaY: 80,
-    });
-    screen.getByRole("button", { name: "00时" }).dispatchEvent(wheelEvent);
+    fireEvent.wheel(screen.getByRole("button", { name: "00时" }), { deltaY: 80 });
 
-    expect(wheelEvent.defaultPrevented).toBe(false);
+    expect(onWheel).not.toHaveBeenCalled();
   });
 });

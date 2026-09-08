@@ -303,18 +303,18 @@ describe("workflow node contracts", () => {
       limit: 10,
       take: "latest",
       timeRange: {
-        endAt: "2026-08-15T09:00",
+        endAt: "2026-08-15T09:00:00",
         mode: "fixed",
-        startAt: "2026-08-15T10:00",
+        startAt: "2026-08-15T10:00:00",
       },
     })).toBe(false);
     expect(isWorkflowNodeExecutionConfig("message-query", {
       limit: 10,
       take: "latest",
       timeRange: {
-        endAt: "2026-08-15T10:00",
+        endAt: "2026-08-15T10:00:00",
         mode: "fixed",
-        startAt: "2026-08-15T10:00",
+        startAt: "2026-08-15T10:00:00",
       },
     })).toBe(true);
     expect(isWorkflowDynamicTimeRangeProvablyInvalid(

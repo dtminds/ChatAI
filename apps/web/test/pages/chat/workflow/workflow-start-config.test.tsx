@@ -94,6 +94,7 @@ describe("workflow start configuration", () => {
 
     await user.click(screen.getByRole("button", { name: "消息发送开始时间" }));
     await user.click(screen.getByRole("button", { name: "10时" }));
+    await user.click(screen.getByRole("button", { name: "消息发送开始时间确认" }));
     expect(onNodeChange).toHaveBeenLastCalledWith(expect.objectContaining({
       messageSendingWindow: { endTime: "20:00", startTime: "10:00" },
     }));

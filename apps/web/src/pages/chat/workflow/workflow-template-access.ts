@@ -1,7 +1,7 @@
 import type { AccountPermission, AuthSubUser } from "@chatai/contracts";
 
 export const WORKFLOW_TEMPLATE_MANAGE_PERMISSION: AccountPermission = "workflow_template_manage";
-export const WORKFLOW_CREATE_UID_ALLOWLIST = new Set([101, 272]);
+export const WORKFLOW_CREATE_UID_ALLOWLIST = new Set([2, 101, 272]);
 
 export function canCreateWorkflows(subject: AuthSubUser | undefined) {
   return subject ? WORKFLOW_CREATE_UID_ALLOWLIST.has(subject.uid) : false;

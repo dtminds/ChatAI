@@ -1109,13 +1109,6 @@ export function getWorkflowNodeOutputContracts(
       },
     ];
   }
-  if (kind === "ticket-create") {
-    return [{
-      key: "ticketId",
-      usages: ["variable", "message-content"],
-      valueType: { kind: "string" },
-    }];
-  }
   if (kind === "ai-collect" && Value.Check(WorkflowAiCollectFieldsSchema, config.fields)) {
     const fields = config.fields as WorkflowAiCollectField[];
     return fields.map(field => ({

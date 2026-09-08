@@ -34,14 +34,14 @@ describe("Workflow Ticket Create capability", () => {
       deadlineAt: new Date("2026-09-08T01:00:00.000Z"),
       execution: { nodeId: "ticket", revision: 1, runId: "run", sequence: 2, workflowId: "workflow" },
       executionKey: "9:run:ticket:2",
-      port: { execute: async (_definition, request) => { calls.push(request); return { ticketId: "42" }; } },
+      port: { execute: async (_definition, request) => { calls.push(request); return {}; } },
       signal: new AbortController().signal,
       subjectId: "customer-1",
       subjectType: "chatai_contact",
       uid: 9,
     });
 
-    expect(result).toEqual({ ticketId: "42" });
+    expect(result).toEqual({});
     expect(calls[0]).toMatchObject({
       command: {
         anchorMessageId: 321,

@@ -473,52 +473,32 @@ describe("TicketsRepository", () => {
     expect(transactionCount()).toBe(1);
   });
 
-  it("reuses an existing Workflow ticket for the same stable execution key", async () => {
-    const { db, queries, transactionCount } = createRecordingDatabase({
-      workflowTicketRows: [{ id: 502 }],
-    });
-
-    await expect(new TicketsRepository(db).createWorkflowTicket({
-      anchorMessageId: 601,
-      conversationId: 301,
-      description: "跟进客户需求",
-      priority: "high",
-      title: "处理客户需求",
-      uid: 9001,
-      workflowExecutionKey: "9001:run-1:ticket-create:2",
-    })).resolves.toBe(502);
-
-    expect(transactionCount()).toBe(0);
-    expect(queries).toHaveLength(1);
-    expect(normalizeSql(queries[0]!)).toContain("workflow_execution_key = ?");
-    expect(queries.some(query => normalizeSql(query).startsWith("insert into"))).toBe(false);
-  });
-
-  it("creates a Workflow ticket and system activity with the stable execution key", async () => {
+  it("creates a Workflow ticket after claiming the shared idempotency key", async () => {
     const { db, queries, transactionCount } = createRecordingDatabase({ hostSubUserId: 102 });
 
     await expect(new TicketsRepository(db).createWorkflowTicket({
       anchorMessageId: 601,
       conversationId: 301,
       description: "跟进客户需求",
+      idempotencyKey: "9001:run-1:ticket-create:2",
       priority: "high",
       title: "处理客户需求",
       uid: 9001,
-      workflowExecutionKey: "9001:run-1:ticket-create:2",
-    })).resolves.toBe(501);
+    })).resolves.toBeUndefined();
 
     const inserts = queries.filter((query) => normalizeSql(query).startsWith("insert into"));
-    expect(inserts).toHaveLength(2);
-    expect(inserts[0]?.parameters).toEqual(expect.arrayContaining([
+    expect(inserts).toHaveLength(3);
+    expect(normalizeSql(inserts[0]!)).toContain("insert into xy_internal_request_idempotent");
+    expect(inserts[0]?.parameters).toEqual(["9001:run-1:ticket-create:2"]);
+    expect(inserts[1]?.parameters).toEqual(expect.arrayContaining([
       601,
       102,
       301,
       "high",
       "workflow",
       "处理客户需求",
-      "9001:run-1:ticket-create:2",
     ]));
-    expect(inserts[1]?.parameters).toEqual(expect.arrayContaining([
+    expect(inserts[2]?.parameters).toEqual(expect.arrayContaining([
       "created",
       "system",
       501,
@@ -526,24 +506,44 @@ describe("TicketsRepository", () => {
     expect(transactionCount()).toBe(1);
   });
 
-  it("reuses the inserted Workflow ticket after a duplicate-key race", async () => {
+  it("treats a shared idempotency-key conflict as an already completed Workflow action", async () => {
     const { db, queries, transactionCount } = createRecordingDatabase({
-      workflowInsertError: { errno: 1062 },
-      workflowTicketRowsAfterInsert: [{ id: 503 }],
+      workflowIdempotencyInsertError: { errno: 1062 },
     });
 
     await expect(new TicketsRepository(db).createWorkflowTicket({
       anchorMessageId: null,
       conversationId: 301,
       description: null,
+      idempotencyKey: "9001:run-1:ticket-create:3",
       priority: "medium",
       title: "处理客户需求",
       uid: 9001,
-      workflowExecutionKey: "9001:run-1:ticket-create:3",
-    })).resolves.toBe(503);
+    })).resolves.toBeUndefined();
 
     expect(transactionCount()).toBe(1);
-    expect(queries.filter(query => normalizeSql(query).includes("workflow_execution_key = ?"))).toHaveLength(2);
+    expect(queries).toHaveLength(1);
+    expect(normalizeSql(queries[0]!)).toContain("insert into xy_internal_request_idempotent");
+  });
+
+  it("rolls back the shared idempotency claim when Workflow ticket creation fails", async () => {
+    const { db, queries, rollbackCount } = createRecordingDatabase({
+      hostSubUserId: 102,
+      workflowActivityInsertError: new Error("activity insert failed"),
+    });
+
+    await expect(new TicketsRepository(db).createWorkflowTicket({
+      anchorMessageId: null,
+      conversationId: 301,
+      description: null,
+      idempotencyKey: "9001:run-1:ticket-create:4",
+      priority: "medium",
+      title: "处理客户需求",
+      uid: 9001,
+    })).rejects.toThrow("activity insert failed");
+
+    expect(queries.filter(query => normalizeSql(query).startsWith("insert into"))).toHaveLength(3);
+    expect(rollbackCount()).toBe(1);
   });
 
   it("fences status updates and writes their activities in the same transaction", async () => {
@@ -693,34 +693,26 @@ function createRecordingDatabase(options: {
   accessibleSeatRows?: Record<string, unknown>[];
   hostSubUserId?: number;
   ticketPageRows?: Record<string, unknown>[];
-  workflowInsertError?: unknown;
-  workflowTicketRows?: Record<string, unknown>[];
-  workflowTicketRowsAfterInsert?: Record<string, unknown>[];
+  workflowActivityInsertError?: unknown;
+  workflowIdempotencyInsertError?: unknown;
 } = {}) {
   const queries: CompiledQuery[] = [];
+  let rollbackCount = 0;
   let transactionCount = 0;
-  let workflowInsertAttempted = false;
   const connection: DatabaseConnection = {
     executeQuery: async <R>(query: CompiledQuery): Promise<QueryResult<R>> => {
       queries.push(query);
 
+      if (query.sql.includes("insert into `xy_internal_request_idempotent`")) {
+        if (options.workflowIdempotencyInsertError) throw options.workflowIdempotencyInsertError;
+        return { insertId: 401n, rows: [] };
+      }
       if (query.sql.includes("insert into `xy_wap_embed_session_action_item`")) {
-        if (options.workflowInsertError && !workflowInsertAttempted) {
-          workflowInsertAttempted = true;
-          throw options.workflowInsertError;
-        }
         return { insertId: 501n, rows: [] };
       }
       if (query.sql.includes("insert into `xy_wap_embed_ticket_activity`")) {
+        if (options.workflowActivityInsertError) throw options.workflowActivityInsertError;
         return { insertId: 601n, rows: [] };
-      }
-
-      if (query.sql.includes("`workflow_execution_key`")) {
-        return {
-          rows: (workflowInsertAttempted
-            ? options.workflowTicketRowsAfterInsert
-            : options.workflowTicketRows) as R[] ?? [],
-        };
       }
 
       if (query.sql.includes("select distinct `access_seat`.`platform` as `platform`, `access_seat`.`third_userid` as `third_userid`")) {
@@ -764,7 +756,9 @@ function createRecordingDatabase(options: {
     destroy: async () => undefined,
     init: async () => undefined,
     releaseConnection: async () => undefined,
-    rollbackTransaction: async () => undefined,
+    rollbackTransaction: async () => {
+      rollbackCount += 1;
+    },
     releaseSavepoint: async () => undefined,
     rollbackToSavepoint: async () => undefined,
     savepoint: async () => undefined,
@@ -778,7 +772,12 @@ function createRecordingDatabase(options: {
     },
   });
 
-  return { db, queries, transactionCount: () => transactionCount };
+  return {
+    db,
+    queries,
+    rollbackCount: () => rollbackCount,
+    transactionCount: () => transactionCount,
+  };
 }
 
 function normalizeSql(query: CompiledQuery) {

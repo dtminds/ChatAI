@@ -26,6 +26,7 @@ import { findWorkflowSeat } from "./workflow-seat.js";
 const CHATAI_PLATFORM = 5;
 const DIRECT_CHAT_TYPE = 1;
 const ACTIVE_STATUS = 1;
+const IDEMPOTENCY_KEY_MAX_LENGTH = 128;
 const throwIfAborted = createAbortGuard(
   "WORKFLOW_TICKET_CREATE_ABORTED",
   "创建工单暂时失败",
@@ -72,6 +73,7 @@ export class MysqlWorkflowTicketCreateCapabilityPort implements WorkflowCapabili
       || !("idempotencyKey" in request)
       || typeof request.idempotencyKey !== "string"
       || !request.idempotencyKey
+      || request.idempotencyKey.length > IDEMPOTENCY_KEY_MAX_LENGTH
       || request.identities.thirdExternalUserId
         !== request.command.recipient.thirdExternalUserId
     ) {
@@ -84,22 +86,32 @@ export class MysqlWorkflowTicketCreateCapabilityPort implements WorkflowCapabili
 
     const command = structuredClone(request.command) as WorkflowTicketCreateCommand;
     throwIfAborted(request.signal);
+    try {
+      if (await this.tickets.hasRequestIdempotencyKey(request.idempotencyKey)) return {};
+    } catch (error) {
+      if (request.signal.aborted) throwIfAborted(request.signal);
+      throw retryableError(
+        "WORKFLOW_TICKET_CREATE_FAILED",
+        "创建工单暂时失败",
+        `Workflow Ticket Create idempotency query failed: ${error instanceof Error ? error.message : "unknown"}`,
+      );
+    }
+    throwIfAborted(request.signal);
     const conversationId = await this.resolveConversation({
       command,
       signal: request.signal,
       uid: request.uid,
     });
     throwIfAborted(request.signal);
-    let ticketId: number;
     try {
-      ticketId = await this.tickets.createWorkflowTicket({
+      await this.tickets.createWorkflowTicket({
         anchorMessageId: command.anchorMessageId ?? null,
         conversationId,
         description: command.description ?? null,
+        idempotencyKey: request.idempotencyKey,
         priority: command.priority,
         title: command.title,
         uid: request.uid,
-        workflowExecutionKey: request.idempotencyKey,
       });
     } catch (error) {
       if (request.signal.aborted) throwIfAborted(request.signal);
@@ -109,7 +121,7 @@ export class MysqlWorkflowTicketCreateCapabilityPort implements WorkflowCapabili
         `Workflow Ticket Create persistence failed: ${error instanceof Error ? error.message : "unknown"}`,
       );
     }
-    return { ticketId: String(ticketId) };
+    return {};
   }
 
   private async resolveConversation(input: {

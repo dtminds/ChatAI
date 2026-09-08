@@ -2118,14 +2118,9 @@ ALTER TABLE xy_wap_embed_logical_session_message
 ```
 ## 2026-09-08 Workflow 创建工单
 
-- `xy_wap_embed_session_action_item` 新增 `workflow_execution_key`，保存 Workflow Runtime 提供的稳定执行键。
-- 新增租户内唯一索引，保证节点超时重试或并发重复投递不会重复创建工单。
 - `source_type` 新增 `workflow`，用于区分工作流创建的工单。
+- 创建工单直接复用 Java 内部接口使用的 `xy_internal_request_idempotent`，原样写入 Workflow Runtime 提供的 `idempotentKey`。
+- 幂等记录、工单和工单活动在同一事务内写入；重复 `idempotentKey` 按已成功处理，不重复创建工单。
+- 不向 `xy_wap_embed_session_action_item` 增加幂等字段或索引。
 
-存量环境手工执行：
-
-```sql
-ALTER TABLE xy_wap_embed_session_action_item
-  ADD COLUMN workflow_execution_key VARCHAR(256) NULL COMMENT '工作流节点稳定执行键，用于创建幂等' AFTER source_type,
-  ADD UNIQUE KEY uk_ticket_uid_workflow_execution (uid, workflow_execution_key);
-```
+本次不需要执行工单表 DDL；运行环境需已有 `xy_internal_request_idempotent`。

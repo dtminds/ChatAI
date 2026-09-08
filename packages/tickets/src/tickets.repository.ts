@@ -551,80 +551,73 @@ export class TicketsRepository {
     anchorMessageId: number | null;
     conversationId: number;
     description: string | null;
+    idempotencyKey: string;
     priority: TicketPriority;
     title: string;
     uid: number;
-    workflowExecutionKey: string;
   }) {
-    const existingTicketId = await this.findWorkflowTicketId(input);
-    if (existingTicketId !== null) return existingTicketId;
-
-    try {
-      return await this.db.transaction().execute(async (transaction) => {
-        const assigneeSubUserId = await this.resolveAiTicketAssignee(transaction, input);
-        const insertResult = await transaction
-          .insertInto("xy_wap_embed_session_action_item")
-          .values({
-            action_type: "follow_up",
-            anchor_message_id: input.anchorMessageId,
-            assignee_sub_user_id: assigneeSubUserId,
-            canceled_at: null,
-            canceled_by_sub_user_id: null,
-            completed_at: null,
-            completed_by_sub_user_id: null,
-            conversation_id: input.conversationId,
-            created_by_sub_user_id: null,
-            description: input.description,
-            due_at: null,
-            priority: input.priority,
-            session_id: null,
-            snapshot_id: null,
-            source_type: "workflow",
-            status: "open",
-            title: input.title,
-            uid: input.uid,
-            workflow_execution_key: input.workflowExecutionKey,
-          })
-          .executeTakeFirstOrThrow();
-        const ticketId = Number(insertResult.insertId);
-        if (!Number.isSafeInteger(ticketId) || ticketId <= 0) {
-          throw new Error("TICKET_INSERT_ID_MISSING");
-        }
-
+    return this.db.transaction().execute(async (transaction) => {
+      try {
         await transaction
-          .insertInto("xy_wap_embed_ticket_activity")
-          .values({
-            activity_type: "created",
-            content: null,
-            detail_json: null,
-            operator_sub_user_id: null,
-            operator_type: "system",
-            ticket_id: ticketId,
-            uid: input.uid,
-          })
+          .insertInto("xy_internal_request_idempotent")
+          .values({ idempotent_key: input.idempotencyKey })
           .executeTakeFirstOrThrow();
-        return ticketId;
-      });
-    } catch (error) {
-      if (!isDuplicateEntryError(error)) throw error;
-      const ticketId = await this.findWorkflowTicketId(input);
-      if (ticketId !== null) return ticketId;
-      throw error;
-    }
+      } catch (error) {
+        if (isDuplicateEntryError(error)) return;
+        throw error;
+      }
+
+      const assigneeSubUserId = await this.resolveAiTicketAssignee(transaction, input);
+      const insertResult = await transaction
+        .insertInto("xy_wap_embed_session_action_item")
+        .values({
+          action_type: "follow_up",
+          anchor_message_id: input.anchorMessageId,
+          assignee_sub_user_id: assigneeSubUserId,
+          canceled_at: null,
+          canceled_by_sub_user_id: null,
+          completed_at: null,
+          completed_by_sub_user_id: null,
+          conversation_id: input.conversationId,
+          created_by_sub_user_id: null,
+          description: input.description,
+          due_at: null,
+          priority: input.priority,
+          session_id: null,
+          snapshot_id: null,
+          source_type: "workflow",
+          status: "open",
+          title: input.title,
+          uid: input.uid,
+        })
+        .executeTakeFirstOrThrow();
+      const ticketId = Number(insertResult.insertId);
+      if (!Number.isSafeInteger(ticketId) || ticketId <= 0) {
+        throw new Error("TICKET_INSERT_ID_MISSING");
+      }
+
+      await transaction
+        .insertInto("xy_wap_embed_ticket_activity")
+        .values({
+          activity_type: "created",
+          content: null,
+          detail_json: null,
+          operator_sub_user_id: null,
+          operator_type: "system",
+          ticket_id: ticketId,
+          uid: input.uid,
+        })
+        .executeTakeFirstOrThrow();
+    });
   }
 
-  private async findWorkflowTicketId(input: {
-    uid: number;
-    workflowExecutionKey: string;
-  }) {
+  async hasRequestIdempotencyKey(idempotencyKey: string) {
     const row = await this.db
-      .selectFrom("xy_wap_embed_session_action_item")
+      .selectFrom("xy_internal_request_idempotent")
       .select("id")
-      .where("uid", "=", input.uid)
-      .where("workflow_execution_key", "=", input.workflowExecutionKey)
+      .where("idempotent_key", "=", idempotencyKey)
       .executeTakeFirst();
-    const ticketId = row?.id == null ? null : Number(row.id);
-    return Number.isSafeInteger(ticketId) && (ticketId ?? 0) > 0 ? ticketId : null;
+    return row !== undefined;
   }
 
   private async resolveAiTicketAssignee(

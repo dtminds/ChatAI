@@ -66,6 +66,7 @@ describe("workflow ticket create node", () => {
     } as never);
 
     expect(sanitized?.priority).toBe("medium");
+    expect(ticketCreateNodeDefinition.getOutputVariables).toBeUndefined();
     if (ticketCreateNodeUi.body.kind !== "fields") {
       throw new Error("ticket create node body is not field-based");
     }

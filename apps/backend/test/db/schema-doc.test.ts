@@ -42,7 +42,18 @@ describe("database schema document", () => {
     expect(actionItemTable).toContain("canceled_by_sub_user_id BIGINT UNSIGNED NULL");
     expect(actionItemTable).toContain("工单类型，当前固定follow_up：跟进");
     expect(actionItemTable).not.toContain("dismissed_at");
+    expect(actionItemTable).not.toContain("workflow_execution_key");
+    expect(actionItemTable).not.toContain("uk_ticket_uid_workflow_execution");
     expect(actionItemTable).toContain("open：待处理，in_progress：处理中，done：已完成，canceled：已取消");
+  });
+
+  it("documents the shared internal request idempotency table as writable", () => {
+    const idempotencyTable = extractCreateTable(schemaSql, "xy_internal_request_idempotent");
+
+    expect(idempotencyTable).toContain("idempotent_key VARCHAR(128)");
+    expect(idempotencyTable).toContain("UNIQUE KEY uk_idempotentKey (idempotent_key)");
+    expect(idempotencyTable).toContain("KEY idx_createTime (create_time)");
+    expect(WRITABLE_TABLES).toContain("xy_internal_request_idempotent");
   });
 
   it("defines ticket activities and allows the backend to write them", () => {
@@ -390,7 +401,7 @@ describe("database schema document", () => {
 });
 
 function extractCreateTable(sql: string, tableName: string) {
-  const match = new RegExp(`CREATE TABLE IF NOT EXISTS ${tableName} \\([\\s\\S]*?\\n\\) COMMENT`).exec(sql);
+  const match = new RegExp(`CREATE TABLE IF NOT EXISTS ${tableName} \\([\\s\\S]*?\\n\\)[^\\n]*COMMENT`).exec(sql);
 
   if (!match) {
     throw new Error(`Missing CREATE TABLE for ${tableName}`);

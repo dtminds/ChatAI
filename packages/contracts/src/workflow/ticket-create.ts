@@ -15,9 +15,7 @@ export const WorkflowTicketCreateCommandSchema = Type.Object({
   title: Type.String({ maxLength: WORKFLOW_TICKET_TITLE_MAX_LENGTH, minLength: 1 }),
 }, { additionalProperties: false });
 
-export const WorkflowTicketCreateResultSchema = Type.Object({
-  ticketId: Type.String({ minLength: 1 }),
-}, { additionalProperties: false });
+export const WorkflowTicketCreateResultSchema = Type.Object({}, { additionalProperties: false });
 
 export type WorkflowTicketCreateCommand = Static<typeof WorkflowTicketCreateCommandSchema>;
 export type WorkflowTicketCreateResult = Static<typeof WorkflowTicketCreateResultSchema>;

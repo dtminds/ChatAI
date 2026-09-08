@@ -28,15 +28,6 @@ export const ticketCreateNodeDefinition: WorkflowNodeDefinition<"ticket-create">
     status: "warning",
     ticketTitle: [],
   }),
-  getOutputVariables: () => [
-    {
-      description: "创建成功的工单 ID",
-      key: "ticketId",
-      label: "工单 ID",
-      usages: ["variable", "message-content"],
-      valueType: { kind: "string" },
-    },
-  ],
   sanitizeData: data => ({
     ...data,
     description: normalizeVariableContent(data.description),

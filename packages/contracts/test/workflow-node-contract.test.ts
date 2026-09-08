@@ -1126,6 +1126,8 @@ describe("workflow node contracts", () => {
     ]);
     expect(getWorkflowNodeOutputContracts("message", {})).toBeNull();
     expect(getWorkflowNodeOutputContracts("handoff", {})).toBeNull();
+    expect(getWorkflowNodeOutputContracts("ticket-create", draftConfigs["ticket-create"]))
+      .toBeNull();
     expect(getWorkflowNodeOutputContracts("wait-event", {}))
       .toContainEqual(expect.objectContaining({
         availableOnSourceOutlets: ["triggered"],

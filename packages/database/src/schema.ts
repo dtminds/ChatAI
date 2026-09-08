@@ -23,6 +23,21 @@ export type JsonPrimitive = boolean | number | string | null;
 
 export type JsonValue = JsonArray | JsonObject | JsonPrimitive;
 
+export interface XyInternalRequestIdempotent {
+  /**
+   * 创建时间
+   */
+  create_time: Generated<Date>;
+  /**
+   * 主键ID
+   */
+  id: Generated<number>;
+  /**
+   * 幂等键
+   */
+  idempotent_key: string;
+}
+
 export interface XyWapEmbedAgent {
   /**
    * 自主学习开关: 0关 1开
@@ -2721,10 +2736,6 @@ export interface XyWapEmbedSessionActionItem {
    */
   uid: number;
   /**
-   * 工作流节点稳定执行键，用于创建幂等
-   */
-  workflow_execution_key: Generated<string | null>;
-  /**
    * 更新时间
    */
   update_time: Generated<Date>;
@@ -3595,6 +3606,7 @@ export interface XyWapEmbedUserSeatSubRelation {
 }
 
 export interface DB {
+  xy_internal_request_idempotent: XyInternalRequestIdempotent;
   xy_wap_embed_agent: XyWapEmbedAgent;
   xy_wap_embed_agent_answer_record: XyWapEmbedAgentAnswerRecord;
   xy_wap_embed_agent_history: XyWapEmbedAgentHistory;

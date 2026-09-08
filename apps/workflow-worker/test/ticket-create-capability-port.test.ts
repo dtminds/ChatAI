@@ -37,15 +37,18 @@ describe("Workflow Ticket Create capability port", () => {
     await expect(new MysqlWorkflowTicketCreateCapabilityPort(database).execute(
       WORKFLOW_TICKET_CREATE_CAPABILITY_BINDING.definition,
       request(),
-    )).resolves.toEqual({ ticketId: "501" });
+    )).resolves.toEqual({});
 
     const sql = queries.map(query => query.sql).join("\n");
     expect(sql).toContain("xy_wap_embed_user_seat");
     expect(sql).toContain("xy_wap_embed_conversation");
+    expect(sql).toContain("insert into `xy_internal_request_idempotent`");
     expect(sql).toContain("insert into `xy_wap_embed_session_action_item`");
     expect(sql).toContain("insert into `xy_wap_embed_ticket_activity`");
+    expect(queries.find(query => query.sql.includes("insert into `xy_internal_request_idempotent`"))?.parameters)
+      .toEqual(["9:run-1:ticket-create:2"]);
     expect(queries.find(query => query.sql.includes("insert into `xy_wap_embed_session_action_item`"))?.parameters)
-      .toEqual(expect.arrayContaining(["workflow", "9:run-1:ticket-create:2"]));
+      .toEqual(expect.arrayContaining(["workflow"]));
   });
 
   it("stops without creating a ticket when the active conversation is missing", async () => {
@@ -66,12 +69,40 @@ describe("Workflow Ticket Create capability port", () => {
     expect(queries.some(query => query.sql.includes("insert into"))).toBe(false);
   });
 
+  it("returns success for an existing shared idempotency key without resolving the conversation", async () => {
+    const { database, queries } = createRecordingDatabase(query =>
+      query.sql.includes("xy_internal_request_idempotent")
+        ? { rows: [{ id: 401 }] }
+        : { rows: [] });
+
+    await expect(new MysqlWorkflowTicketCreateCapabilityPort(database).execute(
+      WORKFLOW_TICKET_CREATE_CAPABILITY_BINDING.definition,
+      request(),
+    )).resolves.toEqual({});
+
+    expect(queries).toHaveLength(1);
+    expect(queries[0]?.sql).toContain("xy_internal_request_idempotent");
+  });
+
   it("rejects non-ChatAI subjects before reading the database", async () => {
     const { database, queries } = createRecordingDatabase(() => ({ rows: [] }));
 
     await expect(new MysqlWorkflowTicketCreateCapabilityPort(database).execute(
       WORKFLOW_TICKET_CREATE_CAPABILITY_BINDING.definition,
       { ...request(), subjectType: "wecom_contact" },
+    )).rejects.toMatchObject({
+      code: "WORKFLOW_TICKET_CREATE_REQUEST_INVALID",
+      failureKind: "terminal",
+    });
+    expect(queries).toHaveLength(0);
+  });
+
+  it("rejects idempotency keys that cannot fit the shared table", async () => {
+    const { database, queries } = createRecordingDatabase(() => ({ rows: [] }));
+
+    await expect(new MysqlWorkflowTicketCreateCapabilityPort(database).execute(
+      WORKFLOW_TICKET_CREATE_CAPABILITY_BINDING.definition,
+      { ...request(), idempotencyKey: "x".repeat(129) },
     )).rejects.toMatchObject({
       code: "WORKFLOW_TICKET_CREATE_REQUEST_INVALID",
       failureKind: "terminal",

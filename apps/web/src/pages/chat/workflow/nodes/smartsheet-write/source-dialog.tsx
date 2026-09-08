@@ -28,6 +28,7 @@ import {
 const fieldTypeLabels: Record<WorkflowSmartsheetFieldType, string> = {
   text: "文本",
   number: "数字",
+  currency: "货币",
   date_time: "日期时间",
   single_select: "单选",
   checkbox: "复选框",

@@ -163,6 +163,7 @@ describe("workflow Smartsheet Write node", () => {
             schema: {
               f04Gwj: { title: "姓名", type: "text" },
               fUlfaq: { title: "回款状态", type: "single_select", enum: ["已回款", "未回款"] },
+              fMoney: { title: "回款金额", type: "currency" },
             },
             add_records: [{ values: { f04Gwj: "测试文本" } }],
           }),
@@ -175,6 +176,7 @@ describe("workflow Smartsheet Write node", () => {
     await user.click(screen.getByRole("button", { name: "配置智能表格" }));
     await user.click(screen.getByRole("checkbox", { name: "姓名" }));
     await user.click(screen.getByRole("checkbox", { name: "回款状态" }));
+    await user.click(screen.getByRole("checkbox", { name: "回款金额" }));
     await user.click(screen.getByRole("button", { name: "确认" }));
     expect(onNodeChange).toHaveBeenLastCalledWith(expect.objectContaining({
       fieldMappings: [
@@ -185,6 +187,7 @@ describe("workflow Smartsheet Write node", () => {
           fieldType: "single_select",
           enumOptions: ["已回款", "未回款"],
         }),
+        expect.objectContaining({ fieldId: "fMoney", fieldTitle: "回款金额", fieldType: "currency" }),
       ],
     }));
   });
@@ -442,6 +445,8 @@ describe("workflow Smartsheet Write node", () => {
     expect(getCompatibleSmartsheetVariables("text", variables).map(item => item.key))
       .toEqual(["text"]);
     expect(getCompatibleSmartsheetVariables("number", variables).map(item => item.key))
+      .toEqual(["count"]);
+    expect(getCompatibleSmartsheetVariables("currency", variables).map(item => item.key))
       .toEqual(["count"]);
     expect(getCompatibleSmartsheetVariables("date_time", variables).map(item => item.key))
       .toEqual(["time", "count"]);

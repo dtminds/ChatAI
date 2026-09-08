@@ -160,6 +160,7 @@ function SmartsheetFieldRow({
   const variables = getCompatibleSmartsheetVariables(mapping.fieldType, availableVariables);
   const inputValue = toInputValue(mapping);
   const selectOptions = getSelectOptions(mapping);
+  const numericField = mapping.fieldType === "number" || mapping.fieldType === "currency";
   const pickerOnly = mapping.fieldType === "date_time"
     || selectOptions.length > 0;
 
@@ -175,8 +176,8 @@ function SmartsheetFieldRow({
         ariaLabel={`${mapping.fieldTitle}的值`}
         clearVariableAriaLabel="改为固定内容"
         customFieldVisibility="compatible"
-        inputMode={mapping.fieldType === "number" ? "decimal" : undefined}
-        inputType={mapping.fieldType === "number" ? "number" : "text"}
+        inputMode={numericField ? "decimal" : undefined}
+        inputType={numericField ? "number" : "text"}
         maxLength={WORKFLOW_SMARTSHEET_WRITE_VALUE_MAX_LENGTH}
         literalDisplayValue={getLiteralDisplayValue(mapping)}
         literalTriggerAriaLabel={getLiteralTriggerAriaLabel(mapping, selectOptions)}
@@ -298,7 +299,7 @@ function formatDateTimeDisplay(value: string) {
 }
 
 function getFieldPlaceholder(fieldType: WorkflowSmartsheetFieldMapping["fieldType"]) {
-  if (fieldType === "number") return "输入数字或引用变量";
+  if (fieldType === "number" || fieldType === "currency") return "输入数字或引用变量";
   if (fieldType === "date_time") return "选择日期或引用变量";
   if (fieldType === "single_select" || fieldType === "checkbox") return "选择选项或引用变量";
   if (fieldType === "url") return "输入链接或引用变量";

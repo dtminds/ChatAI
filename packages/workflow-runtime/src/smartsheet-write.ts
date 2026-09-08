@@ -58,7 +58,7 @@ export function createWorkflowSmartsheetWriteCommand(input: {
 }
 
 function convertValue(field: WorkflowSmartsheetExecutionFieldMapping, value: unknown) {
-  if (field.fieldType === "number") {
+  if (field.fieldType === "number" || field.fieldType === "currency") {
     const number = field.value.kind === "literal" ? Number(value) : value;
     return typeof number === "number" && Number.isFinite(number) ? number : undefined;
   }

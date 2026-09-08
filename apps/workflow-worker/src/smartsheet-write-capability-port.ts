@@ -42,7 +42,9 @@ export class HttpWorkflowSmartsheetWriteCapabilityPort implements WorkflowCapabi
           if (typeof field.value !== "string") return { success: false, errorCode: "INVALID_SINGLE_SELECT_VALUE" };
           values[field.fieldId] = [{ text: field.value }];
         } else {
-          const expectedType = field.fieldType === "number" ? "number" : field.fieldType === "checkbox" ? "boolean" : "string";
+          const expectedType = field.fieldType === "number" || field.fieldType === "currency"
+            ? "number"
+            : field.fieldType === "checkbox" ? "boolean" : "string";
           if (typeof field.value !== expectedType) return { success: false, errorCode: "INVALID_FIELD_VALUE" };
           values[field.fieldId] = field.value;
         }

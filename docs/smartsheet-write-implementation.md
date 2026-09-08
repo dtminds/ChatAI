@@ -22,7 +22,7 @@ Schema 原文最多 100,000 字符，完整目录从 Schema 恢复，不另存�
 
 ## 字段和输出
 
-支持 `text`、`number`、`date_time`、`single_select`、`checkbox`、`url`。URL 字段直接写入链接对象，不下载远程资源；日期和选项固定值使用相应选择器，变量按类型过滤。
+支持 `text`、`number`、`currency`、`date_time`、`single_select`、`checkbox`、`url`。`currency` 按企微 Webhook 的 `double` 语义作为数值字段写入。URL 字段直接写入链接对象，不下载远程资源；日期和选项固定值使用相应选择器，变量按类型过滤。
 
 目前注册的节点输出为 `success: boolean`，未注册 `errorMessage`。节点时间沿用公共生命周期属性。
 

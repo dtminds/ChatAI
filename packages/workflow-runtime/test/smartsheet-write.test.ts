@@ -31,6 +31,7 @@ describe("smartsheet command projection", () => {
   it("preserves zero and false, skips empty and unknown options, and converts dates", () => {
     expect(createWorkflowSmartsheetWriteCommand({ context, config: { webhookUrl, fieldMappings: [
       variable("n", "number", "zero", "number"),
+      variable("currency", "currency", "zero", "number"),
       variable("b", "checkbox", "unchecked", "boolean"),
       variable("e", "text", "empty", "string"),
       variable("nil", "text", "nil", "string"),
@@ -40,6 +41,7 @@ describe("smartsheet command projection", () => {
       { fieldId: "url", fieldType: "url", value: { kind: "literal", value: "  https://example.com/orders/123  " } },
     ] } })).toEqual({ webhookUrl, fields: [
       { fieldId: "n", fieldType: "number", value: 0 },
+      { fieldId: "currency", fieldType: "currency", value: 0 },
       { fieldId: "b", fieldType: "checkbox", value: false },
       { fieldId: "d", fieldType: "date_time", value: "1788739200000" },
       { fieldId: "local", fieldType: "date_time", value: "2026-09-07 08:00:00" },

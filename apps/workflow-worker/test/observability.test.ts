@@ -82,6 +82,7 @@ describe("workflow worker observability", () => {
     expect(logger.warn).toHaveBeenCalledTimes(2);
     expect(logger.info).toHaveBeenCalledWith({
       activeRunRejected: 0,
+      admissionFailed: 0,
       admitted: 2,
       capacityRejected: 5,
       deduplicated: 0,
@@ -94,6 +95,58 @@ describe("workflow worker observability", () => {
       role: "entry-consumer",
       runtimeRejected: 0,
     }, "workflow entry consume summary");
+  });
+
+  it("counts every admission failure while bounding samples and resetting the sampling window", () => {
+    const logger = createLogger();
+    const observer = createWorkflowEntryConsumeObserver({ logger, options: { sampleLimit: 1 } });
+    const message = { id: "message-1", redeliveryCount: 0, topic: "entry" };
+    const failure = {
+      entryEventId: "event-1", errorCode: "WORKFLOW_START_CONFIG_INVALID",
+      retryable: false, revision: 5, uid: 9, workflowId: "6",
+    };
+    try {
+      observer.recordAdmissionFailure(message, failure);
+      observer.recordAdmissionFailure(message, { ...failure, workflowId: "7" });
+      observer.record(message, { code: "admitted", disposition: "ack" });
+      expect(logger.warn).toHaveBeenCalledTimes(1);
+      observer.flush();
+      expect(logger.info).toHaveBeenCalledWith(expect.objectContaining({ admissionFailed: 2, admitted: 1 }),
+        "workflow entry consume summary");
+      observer.recordAdmissionFailure(message, failure);
+      expect(logger.warn).toHaveBeenCalledTimes(2);
+    } finally {
+      observer.close();
+    }
+    expect(logger.info).toHaveBeenLastCalledWith(expect.objectContaining({ admissionFailed: 1, received: 0 }),
+      "workflow entry consume summary");
+  });
+
+  it("logs Start config schema errors on sampled Entry failures", () => {
+    const logger = createLogger();
+    const observer = createWorkflowEntryConsumeObserver({
+      deadLetterTopic: "entry-dlq",
+      logger,
+      options: { intervalMs: 3_600_000, sampleLimit: 1 },
+    });
+
+    observer.record({ id: "message-1", redeliveryCount: 3, topic: "entry-topic" }, {
+      code: "temporary_failure",
+      disposition: "nack",
+      errorCode: "WORKFLOW_START_CONFIG_INVALID",
+      errorDetails: { reason: "schema", workflowId: "31" },
+      errorMessage: "Workflow Start 配置无效",
+      errorName: "WorkflowRuntimeError",
+      failureStage: "runtime_admission",
+    });
+
+    expect(logger.warn).toHaveBeenCalledWith(expect.objectContaining({
+      errorCode: "WORKFLOW_START_CONFIG_INVALID",
+      errorDetails: { reason: "schema", workflowId: "31" },
+      errorMessage: "Workflow Start 配置无效",
+      event: "workflow.entry.consume.failed",
+    }), "workflow entry message processing failed");
+    observer.close();
   });
 
   it("summarizes Task outcomes and limits failure samples without storing message IDs", () => {

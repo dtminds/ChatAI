@@ -11,13 +11,16 @@ import type {
   WorkflowType,
   WorkflowWaitEventConfig,
 } from "@chatai/contracts";
+import type { TSchema } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
 import {
   getWorkflowNodeContract,
   normalizeWorkflowEntryPolicy,
   WORKFLOW_INBOX_RETENTION_DAYS,
+  WorkflowChatAiStartConfigSchema,
   WorkflowStartConfigSchema,
   WorkflowWaitEventConfigSchema,
+  WorkflowWeComStartConfigSchema,
   WorkflowMessageSchema,
   WORKFLOW_DIRECT_ENTRY_EVENT_TYPE,
   isWorkflowAiCollectExecutionConfigComplete,
@@ -310,7 +313,10 @@ export class WorkflowRuntimeService {
       throw staleDefinitionError();
     }
     const entryNode = requireExecutionNode(revision.executionSpec, revision.executionSpec.entryNodeId);
-    const startConfig = requireStartConfig(entryNode);
+    const startConfig = requireStartConfig(entryNode, {
+      revision: revision.revision,
+      workflowId: input.workflowId,
+    });
     return this.createInitialRun({
       ...input,
       revision,
@@ -343,7 +349,10 @@ export class WorkflowRuntimeService {
       throw staleDefinitionError();
     }
     const entryNode = requireExecutionNode(revision.executionSpec, revision.executionSpec.entryNodeId);
-    const startConfig = requireStartConfig(entryNode);
+    const startConfig = requireStartConfig(entryNode, {
+      revision: revision.revision,
+      workflowId,
+    });
     if (startConfig.entryMode !== "direct-push") throw directEntryUnavailableError();
     const subject = resolveDirectEntrySubject(revision.subjectType, startConfig, input.payload);
     const projection: Record<string, unknown> = { ...input.payload };
@@ -2051,18 +2060,120 @@ function requireExecutionNode(spec: WorkflowExecutionSpec, nodeId: string) {
   return node;
 }
 
-function requireStartConfig(node: WorkflowExecutionNode): WorkflowStartConfig {
+function requireStartConfig(
+  node: WorkflowExecutionNode,
+  context: { revision: number; workflowId: string },
+): WorkflowStartConfig {
   if (node.kind !== "start") {
-    throw new WorkflowRuntimeError("WORKFLOW_START_CONFIG_INVALID", "Workflow Start 配置无效", 500);
+    throw new WorkflowRuntimeError(
+      "WORKFLOW_START_CONFIG_INVALID",
+      "Workflow Start 配置无效",
+      500,
+      {
+        kind: node.kind,
+        nodeId: node.id,
+        reason: "not_start_node",
+        revision: context.revision,
+        workflowId: context.workflowId,
+      },
+    );
   }
-  const normalizedConfig = {
+  const normalizedConfig = admitStartConfig({
     ...node.config,
     entryPolicy: normalizeWorkflowEntryPolicy(node.config.entryPolicy),
-  };
+  });
   if (!Value.Check(WorkflowStartConfigSchema, normalizedConfig)) {
-    throw new WorkflowRuntimeError("WORKFLOW_START_CONFIG_INVALID", "Workflow Start 配置无效", 500);
+    throw new WorkflowRuntimeError(
+      "WORKFLOW_START_CONFIG_INVALID",
+      "Workflow Start 配置无效",
+      500,
+      {
+        chatAiCheck: Value.Check(WorkflowChatAiStartConfigSchema, normalizedConfig),
+        configTypes: describeJsonTypes(normalizedConfig),
+        errors: collectSchemaErrors(WorkflowStartConfigSchema, normalizedConfig),
+        kind: node.kind,
+        nodeId: node.id,
+        reason: "schema",
+        revision: context.revision,
+        weComCheck: Value.Check(WorkflowWeComStartConfigSchema, normalizedConfig),
+        workflowId: context.workflowId,
+      },
+    );
   }
   return structuredClone(normalizedConfig) as WorkflowStartConfig;
+}
+
+function collectSchemaErrors(schema: Parameters<typeof Value.Errors>[0], value: unknown) {
+  const errors: Array<{ message: string; path: string }> = [];
+  for (const error of Value.Errors(schema, value)) {
+    errors.push({
+      message: error.message,
+      path: error.path,
+    });
+    if (errors.length >= 12) break;
+  }
+  return errors;
+}
+
+function admitStartConfig(config: Record<string, unknown>) {
+  return dropUnreadSchemaProperties(WorkflowStartConfigSchema, config);
+}
+
+function dropUnreadSchemaProperties(schema: TSchema, value: unknown): unknown {
+  const variants = getSchemaAnyOf(schema);
+  if (variants) {
+    for (const variant of variants) {
+      const dropped = dropUnreadSchemaProperties(variant, value);
+      if (Value.Check(variant, dropped)) return dropped;
+    }
+    return value;
+  }
+  if (Array.isArray(value)) {
+    const items = getSchemaArrayItems(schema);
+    return items ? value.map((item) => dropUnreadSchemaProperties(items, item)) : value;
+  }
+  if (value !== null && typeof value === "object") {
+    const properties = getSchemaObjectProperties(schema);
+    if (!properties) return value;
+    const source = value as Record<string, unknown>;
+    const next: Record<string, unknown> = {};
+    for (const key of Object.keys(properties)) {
+      if (!Object.hasOwn(source, key)) continue;
+      next[key] = dropUnreadSchemaProperties(properties[key]!, source[key]);
+    }
+    return next;
+  }
+  return value;
+}
+
+function getSchemaAnyOf(schema: TSchema) {
+  return "anyOf" in schema && Array.isArray(schema.anyOf) ? schema.anyOf as TSchema[] : null;
+}
+
+function getSchemaArrayItems(schema: TSchema) {
+  return "items" in schema && schema.items && typeof schema.items === "object"
+    ? schema.items as TSchema
+    : null;
+}
+
+function getSchemaObjectProperties(schema: TSchema) {
+  if (!("properties" in schema) || schema.properties === null || typeof schema.properties !== "object") {
+    return null;
+  }
+  return schema.properties as Record<string, TSchema>;
+}
+
+function describeJsonTypes(value: unknown): unknown {
+  if (value === null) return "null";
+  if (Array.isArray(value)) return value.slice(0, 8).map(describeJsonTypes);
+  if (typeof value === "object") {
+    return Object.fromEntries(Object.entries(value).map(([key, item]) => [
+      key,
+      describeJsonTypes(item),
+    ]));
+  }
+  if (typeof value === "number") return Number.isInteger(value) ? "integer" : "number";
+  return typeof value;
 }
 
 function requireWaitEventConfig(node: WorkflowExecutionNode): WorkflowWaitEventConfig {

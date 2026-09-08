@@ -1,6 +1,6 @@
 import type { WorkflowEntitlementDeactivationObservation } from "@chatai/workflow-runtime";
 import { isWorkflowReady, type WorkflowReadiness } from "./health.js";
-import type { WorkflowEntryConsumeResult } from "./entry-consumer.js";
+import type { WorkflowEntryAdmissionFailure, WorkflowEntryConsumeResult } from "./entry-consumer.js";
 
 export type WorkflowWorkerLogger = {
   debug(value: unknown, message?: string): void;
@@ -39,6 +39,7 @@ export function createWorkflowEntryConsumeObserver(input: {
   options?: ReporterOptions;
 }) {
   let counters = createEntryCounters();
+  let admissionFailedSamples = 0;
   let failedSamples = 0;
   let rejectedSamples = 0;
   const sampleLimit = input.options?.sampleLimit ?? MESSAGE_ERROR_SAMPLE_LIMIT;
@@ -51,6 +52,20 @@ export function createWorkflowEntryConsumeObserver(input: {
       flush();
     },
     flush,
+    recordAdmissionFailure(message: MessageMetadata, failure: WorkflowEntryAdmissionFailure) {
+      counters.admissionFailed += 1;
+      if (admissionFailedSamples >= sampleLimit) return;
+      admissionFailedSamples += 1;
+      input.logger.warn({
+        ...failure,
+        event: "workflow.entry.admission.failed",
+        failureStage: "runtime_admission",
+        messageId: message.id,
+        redeliveryCount: message.redeliveryCount,
+        role: "entry-consumer",
+        topic: message.topic,
+      }, "workflow entry admission failed");
+    },
     record(message: MessageMetadata, result: WorkflowEntryConsumeResult) {
       counters.received += 1;
       const bucket = getEntryCounterBucket(result);
@@ -68,6 +83,8 @@ export function createWorkflowEntryConsumeObserver(input: {
             ...(input.deadLetterTopic ? { deadLetterTopic: input.deadLetterTopic } : {}),
             disposition: result.disposition,
             ...(result.errorCode ? { errorCode: result.errorCode } : {}),
+            ...(result.errorDetails ? { errorDetails: result.errorDetails } : {}),
+            ...(result.errorMessage ? { errorMessage: result.errorMessage } : {}),
             ...(result.errorName ? { errorName: result.errorName } : {}),
             event: "workflow.entry.consume.failed",
             ...(result.failureStage ? { failureStage: result.failureStage } : {}),
@@ -100,13 +117,14 @@ export function createWorkflowEntryConsumeObserver(input: {
   };
 
   function flush() {
-    if (counters.received === 0) return;
+    if (counters.received === 0 && counters.admissionFailed === 0) return;
     input.logger.info({
       ...counters,
       event: "workflow.entry.consume.summary",
       role: "entry-consumer",
     }, "workflow entry consume summary");
     counters = createEntryCounters();
+    admissionFailedSamples = 0;
     failedSamples = 0;
     rejectedSamples = 0;
   }
@@ -345,6 +363,7 @@ function hasPositive(result: Record<string, unknown>, keys: string[]) {
 function createEntryCounters() {
   return {
     activeRunRejected: 0,
+    admissionFailed: 0,
     admitted: 0,
     capacityRejected: 0,
     deduplicated: 0,

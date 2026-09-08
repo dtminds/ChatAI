@@ -38,6 +38,87 @@ describe("Workflow runtime policy", () => {
     expect(harness.deactivateWorkflowForEntitlementLoss).not.toHaveBeenCalled();
   });
 
+  it.each([
+    { seatIds: [] },
+    { seatIds: "101" },
+    { seatIds: undefined },
+    { entryMode: "unknown" },
+    { triggers: [{ type: "contact.tag_added", tagIds: ["21311"], leftover: true }] },
+  ])("rejects invalid consumed Start fields despite unread fields: %j", async (invalidFields) => {
+    const spec = createExecutionSpec("chatai-workflow");
+    spec.nodes[0]!.config = {
+      ...spec.nodes[0]!.config,
+      pushAccountStrategy: "earliest-added",
+      extraField: true,
+      ...invalidFields,
+    };
+    const harness = createHarness({
+      entitlement: async () => ({ activeRunLimit: 10_000, entitled: true }),
+      executionSpec: spec,
+    });
+
+    await expect(harness.service.startRun(entryInput())).rejects.toMatchObject({
+      code: "WORKFLOW_START_CONFIG_INVALID",
+      details: expect.objectContaining({
+        chatAiCheck: false,
+        reason: "schema",
+        workflowId: "chatai-workflow",
+      }),
+    });
+  });
+
+  it("does not expose Start configuration values in admission error details", async () => {
+    const spec = createExecutionSpec("chatai-workflow");
+    spec.nodes[0]!.config.seatIds = "private-config-marker";
+    const harness = createHarness({
+      entitlement: async () => ({ activeRunLimit: 10_000, entitled: true }),
+      executionSpec: spec,
+    });
+    const error = await harness.service.startRun(entryInput()).then(
+      () => { throw new Error("Expected admission rejection"); },
+      (error: unknown) => error,
+    );
+    expect(error).toMatchObject({
+      code: "WORKFLOW_START_CONFIG_INVALID",
+      details: { nodeId: "start", reason: "schema", workflowId: "chatai-workflow" },
+    });
+    const details = (error as { details: Record<string, unknown> }).details;
+    expect(details).not.toHaveProperty("config");
+    expect(details.errors).toEqual(expect.arrayContaining([
+      expect.objectContaining({ path: expect.any(String), message: expect.any(String) }),
+    ]));
+    for (const issue of details.errors as object[]) expect(issue).not.toHaveProperty("value");
+    expect(JSON.stringify(details)).not.toContain("private-config-marker");
+  });
+
+  it("admits the published tag Start config while ignoring unread top-level and nested fields", async () => {
+    const spec = createExecutionSpec("chatai-workflow");
+    spec.nodes[0]!.config = {
+      ...spec.nodes[0]!.config,
+      extraField: true,
+      pushAccountStrategy: "earliest-added",
+      entryMode: "event",
+      entryPolicy: { mode: "lifetime_limit", maxEntries: 10, leftover: true },
+      messageSendingWindow: { endTime: "20:00", startTime: "09:00", leftover: true },
+      triggers: [{
+        leftover: true,
+        tagIds: [21311],
+        type: "contact.tag_added",
+      }],
+    };
+    const harness = createHarness({
+      entitlement: async () => ({ activeRunLimit: 10_000, entitled: true }),
+      executionSpec: spec,
+    });
+
+    const result = await harness.service.startRun(entryInput());
+    expect(result).toMatchObject({ kind: "success" });
+    if (result.kind !== "success") throw new Error("Expected admitted Run");
+    expect(result.run.context.workflow).toEqual({
+      message: { sendingWindow: { startTime: "09:00", endTime: "20:00" } },
+    });
+  });
+
   it("does not fall back to individual reads when a batched runtime snapshot is missing", async () => {
     const harness = createHarness({
       entitlement: async () => ({ activeRunLimit: 10_000, entitled: true }),

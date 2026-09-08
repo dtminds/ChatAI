@@ -120,9 +120,9 @@ function createMessageDraft(messageConfig: Record<string, unknown>): WorkflowDra
         limit: 10,
         take: "latest",
         timeRange: {
-          endAt: "2026-08-16T10:00",
+          endAt: "2026-08-16T10:00:00",
           mode: "fixed",
-          startAt: "2026-08-16T09:00",
+          startAt: "2026-08-16T09:00:00",
         },
       }),
       node("message", "message", messageConfig, 2),

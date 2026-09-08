@@ -44,9 +44,9 @@ describe("Workflow Order Query capability", () => {
           goodsName: "T恤",
           platformId: 2,
           timeRange: {
-            end: { amount: 0, time: "23:59", unit: "day" },
+            end: { amount: 0, time: "23:59:34", unit: "day" },
             mode: "relative",
-            start: { amount: 7, time: "00:00", unit: "day" },
+            start: { amount: 7, time: "00:00:12", unit: "day" },
           },
           shopIds: [11],
           timeField: "order-time",
@@ -61,6 +61,27 @@ describe("Workflow Order Query capability", () => {
       platformId: 2,
       shopIds: [11],
       timeField: "order-time",
+      timeRange: ["2026-08-28 00:00:12", "2026-09-04 23:59:34"],
+    });
+  });
+
+  it("executes legacy minute-only relative day times with their original bounds", () => {
+    expect(createWorkflowOrderQueryCommand({
+      config: {
+        conditions: {
+          amount: {},
+          shopIds: [],
+          timeField: "order-time",
+          timeRange: {
+            end: { amount: 0, time: "23:59", unit: "day" },
+            mode: "relative",
+            start: { amount: 7, time: "00:00", unit: "day" },
+          },
+        },
+        mode: "conditions",
+      },
+      context,
+    })).toMatchObject({
       timeRange: ["2026-08-28 00:00:00", "2026-09-04 23:59:59"],
     });
   });
@@ -71,9 +92,9 @@ describe("Workflow Order Query capability", () => {
         conditions: {
           amount: {},
           timeRange: {
-            endAt: "2026-09-04T23:59",
+            endAt: "2026-09-04T23:59:34",
             mode: "absolute",
-            startAt: "2026-09-01T00:00",
+            startAt: "2026-09-01T00:00:12",
           },
           shopIds: [],
           timeField: "order-time",
@@ -86,6 +107,27 @@ describe("Workflow Order Query capability", () => {
       mode: "conditions",
       shopIds: [],
       timeField: "order-time",
+      timeRange: ["2026-09-01 00:00:12", "2026-09-04 23:59:34"],
+    });
+  });
+
+  it("executes legacy minute-only absolute dates with their original bounds", () => {
+    expect(createWorkflowOrderQueryCommand({
+      config: {
+        conditions: {
+          amount: {},
+          shopIds: [],
+          timeField: "order-time",
+          timeRange: {
+            endAt: "2026-09-04T23:59",
+            mode: "absolute",
+            startAt: "2026-09-01T00:00",
+          },
+        },
+        mode: "conditions",
+      },
+      context,
+    })).toMatchObject({
       timeRange: ["2026-09-01 00:00:00", "2026-09-04 23:59:59"],
     });
   });
@@ -123,9 +165,9 @@ describe("Workflow Order Query capability", () => {
           shopIds: [],
           timeField: "order-time",
           timeRange: {
-            end: { amount: 0, time: "23:59", unit: "day" },
+            end: { amount: 0, time: "23:59:59", unit: "day" },
             mode: "relative",
-            start: { amount: 360, time: "00:00", unit: "day" },
+            start: { amount: 360, time: "00:00:00", unit: "day" },
           },
         },
         mode: "conditions",
@@ -144,9 +186,9 @@ describe("Workflow Order Query capability", () => {
           shopIds: [],
           timeField: "order-time",
           timeRange: {
-            endAt: "2025-09-09T12:30",
+            endAt: "2025-09-09T12:30:00",
             mode: "absolute",
-            startAt: "2025-09-08T12:30",
+            startAt: "2025-09-08T12:30:00",
           },
         },
         mode: "conditions",

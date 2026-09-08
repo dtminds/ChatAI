@@ -1,14 +1,58 @@
 import { describe, expect, it } from "vitest";
-import { isWorkflowNodeDraftConfig, isWorkflowNodeExecutionConfig, isMessageQueryRelativeRangeWithinBounds, isMessageQueryFixedRangeWithinBounds } from "../src/index.js";
+import {
+  isWorkflowNodeDraftConfig,
+  isWorkflowNodeExecutionConfig,
+  isMessageQueryRelativeRangeWithinBounds,
+  isMessageQueryFixedRangeWithinBounds,
+  normalizeWorkflowMessageQueryConfigTimePrecision,
+  normalizeWorkflowOrderQueryConfigTimePrecision,
+} from "../src/index.js";
 
 describe("Message Query relative time contract", () => {
+  it("upgrades legacy minute precision without changing interval bounds", () => {
+    expect(normalizeWorkflowMessageQueryConfigTimePrecision({
+      limit: 10,
+      take: "latest",
+      timeRange: {
+        endAt: "2026-09-05T23:59",
+        mode: "fixed",
+        startAt: "2026-09-01T00:00",
+      },
+    })).toMatchObject({
+      timeRange: {
+        endAt: "2026-09-05T23:59:59",
+        startAt: "2026-09-01T00:00:00",
+      },
+    });
+    expect(normalizeWorkflowOrderQueryConfigTimePrecision({
+      conditions: {
+        amount: {},
+        shopIds: [],
+        timeField: "order-time",
+        timeRange: {
+          end: { amount: 0, time: "23:59", unit: "day" },
+          mode: "relative",
+          start: { amount: 30, time: "00:00", unit: "day" },
+        },
+      },
+      mode: "conditions",
+    })).toMatchObject({
+      conditions: {
+        timeRange: {
+          end: { amount: 0, time: "23:59:59", unit: "day" },
+          start: { amount: 30, time: "00:00:00", unit: "day" },
+        },
+      },
+    });
+  });
+
   it.each([
-    [{ amount: 0, unit: "hour" }, { amount: 1, unit: "day", time: "00:00" }, false],
-    [{ amount: 0, unit: "day", time: "00:00" }, { amount: 24, unit: "hour" }, false],
-    [{ amount: 1, unit: "day", time: "00:00" }, { amount: 0, unit: "minute" }, true],
-    [{ amount: 60, unit: "minute" }, { amount: 0, unit: "day", time: "23:59" }, true],
-    [{ amount: 0, unit: "day", time: "23:59" }, { amount: 0, unit: "minute" }, true],
-    [{ amount: 0, unit: "minute" }, { amount: 0, unit: "day", time: "00:00" }, true],
+    [{ amount: 0, unit: "hour" }, { amount: 1, unit: "day", time: "00:00:00" }, false],
+    [{ amount: 0, unit: "day", time: "00:00:00" }, { amount: 24, unit: "hour" }, false],
+    [{ amount: 1, unit: "day", time: "00:00:00" }, { amount: 0, unit: "minute" }, true],
+    [{ amount: 60, unit: "minute" }, { amount: 0, unit: "day", time: "23:59:59" }, true],
+    [{ amount: 0, unit: "day", time: "23:59:59" }, { amount: 0, unit: "minute" }, true],
+    [{ amount: 0, unit: "minute" }, { amount: 0, unit: "day", time: "00:00:00" }, true],
   ])("checks mixed-unit ordering without rejecting partially valid ranges: %j → %j", (start, end, valid) => {
     const config = { limit: 10, take: "latest", timeRange: { mode: "relative", start, end } };
     expect(isWorkflowNodeDraftConfig("message-query", config)).toBe(true);
@@ -23,22 +67,25 @@ describe("Message Query relative time contract", () => {
     expect(isWorkflowNodeDraftConfig(kind, config({ ...range, start: { ...range.start, time: "23:00" } }))).toBe(false);
     expect(isWorkflowNodeDraftConfig(kind, config({ ...range, start: { amount: 1, unit: "day" } }))).toBe(false);
   });
-  it("checks fixed time lookback and inclusive end minute against 90 days", () => {
+  it("checks fixed time lookback and inclusive end second against 90 days", () => {
     const now = Date.parse("2026-09-05T10:00:00+08:00");
-    expect(isMessageQueryFixedRangeWithinBounds(now, "2026-06-07T10:00", "2026-09-05T09:59")).toBe(true);
-    expect(isMessageQueryFixedRangeWithinBounds(now, "2026-06-07T00:00", "2026-09-05T23:59")).toBe(true);
-    expect(isMessageQueryFixedRangeWithinBounds(now, "2026-06-06T10:00", "2026-09-05T09:59")).toBe(false);
-    expect(isMessageQueryFixedRangeWithinBounds(now, "2026-06-07T10:00", "2026-09-06T10:00")).toBe(false);
+    expect(isMessageQueryFixedRangeWithinBounds(now, "2026-06-07T10:00:00", "2026-09-05T09:59:59")).toBe(true);
+    expect(isMessageQueryFixedRangeWithinBounds(now, "2026-06-07T00:00:00", "2026-09-05T23:59:59")).toBe(true);
+    expect(isMessageQueryFixedRangeWithinBounds(now, "2026-06-06T10:00:00", "2026-09-05T09:59:59")).toBe(false);
+    expect(isMessageQueryFixedRangeWithinBounds(now, "2026-06-07T10:00:00", "2026-09-06T10:00:00")).toBe(false);
+    expect(isWorkflowNodeExecutionConfig("message-query", {
+      limit: 10, take: "latest", timeRange: { mode: "fixed", startAt: "2026-06-07T10:00:00", endAt: "2026-09-05T10:00:00" },
+    })).toBe(true);
     expect(isWorkflowNodeExecutionConfig("message-query", {
       limit: 10, take: "latest", timeRange: { mode: "fixed", startAt: "2026-06-07T10:00", endAt: "2026-09-05T10:00" },
-    })).toBe(true);
+    })).toBe(false);
   });
   const config = (amount = 30, unit = "day") => ({
     limit: 10, take: "latest",
     timeRange: {
       mode: "relative",
-      start: { amount, unit, ...(unit === "day" ? { time: "00:00" } : {}) },
-      end: { amount: 0, unit: "day", time: "23:59" },
+      start: { amount, unit, ...(unit === "day" ? { time: "00:00:00" } : {}) },
+      end: { amount: 0, unit: "day", time: "23:59:59" },
     },
   });
 
@@ -70,7 +117,7 @@ describe("Message Query relative time contract", () => {
     expect(isWorkflowNodeDraftConfig("message-query", config(1, "week"))).toBe(false);
     expect(isWorkflowNodeDraftConfig("message-query", config(1.5))).toBe(false);
     const value = config();
-    value.timeRange.end.time = "24:00";
+    value.timeRange.end.time = "24:00:00";
     expect(isWorkflowNodeDraftConfig("message-query", value)).toBe(false);
   });
 });

@@ -1,5 +1,6 @@
 import {
   isWorkflowNodeExecutionConfig,
+  normalizeWorkflowOrderQueryConfigTimePrecision,
   WORKFLOW_ORDER_QUERY_TIME_RANGE_REJECTION_DAYS,
   WorkflowOrderQueryCommandSchema,
   WorkflowOrderQueryResultSchema,
@@ -111,10 +112,11 @@ export function mapWorkflowOrderQueryResult(
 function requireWorkflowOrderQueryExecutionConfig(
   config: Record<string, unknown>,
 ): WorkflowOrderQueryExecutionConfig {
-  if (!isWorkflowNodeExecutionConfig("order-query", config)) {
+  const normalizedConfig = normalizeWorkflowOrderQueryConfigTimePrecision(config);
+  if (!isWorkflowNodeExecutionConfig("order-query", normalizedConfig)) {
     throw orderQueryCommandError("Order Query execution config failed schema validation");
   }
-  return structuredClone(config) as WorkflowOrderQueryExecutionConfig;
+  return structuredClone(normalizedConfig) as WorkflowOrderQueryExecutionConfig;
 }
 
 function resolveOrderTimeRange(
@@ -123,8 +125,8 @@ function resolveOrderTimeRange(
 ): [string, string] {
   if (timeRange.mode === "absolute") {
     return [
-      `${timeRange.startAt.replace("T", " ")}:00`,
-      `${timeRange.endAt.replace("T", " ")}:59`,
+      timeRange.startAt.replace("T", " "),
+      timeRange.endAt.replace("T", " "),
     ];
   }
   if (timeRange.mode === "dynamic") {
@@ -140,8 +142,8 @@ function resolveOrderTimeRange(
   if (!now || Number.isNaN(now.getTime())) {
     throw orderQueryCommandError("Order Query relative time requires current node enteredAt");
   }
-  const start = resolveRelativePoint(now, timeRange.start, 0);
-  const end = resolveRelativePoint(now, timeRange.end, 59);
+  const start = resolveRelativePoint(now, timeRange.start);
+  const end = resolveRelativePoint(now, timeRange.end);
   if (start > end) {
     throw orderQueryCommandError("Order Query relative time is reversed");
   }
@@ -169,7 +171,6 @@ function resolveRelativePoint(
     Extract<WorkflowOrderQueryExecutionConfig, { mode: "conditions" }>["conditions"]["timeRange"],
     { mode: "relative" }
   >["start"],
-  second: 0 | 59,
 ) {
   const unitMilliseconds = point.unit === "day"
     ? 86_400_000
@@ -179,9 +180,9 @@ function resolveRelativePoint(
   const shifted = new Date(now.getTime() - point.amount * unitMilliseconds);
   // Only day offsets override the clock; hours/minutes preserve elapsed time.
   if (point.unit !== "day") return shifted;
-  const [hour, minute] = point.time.split(":").map(Number);
+  const [hour, minute, second] = point.time.split(":").map(Number);
   const local = new Date(shifted.getTime() + WORKFLOW_TIMEZONE_OFFSET_MILLISECONDS);
-  local.setUTCHours(hour!, minute!, second, 0);
+  local.setUTCHours(hour!, minute!, second!, 0);
   return new Date(local.getTime() - WORKFLOW_TIMEZONE_OFFSET_MILLISECONDS);
 }
 
@@ -204,10 +205,10 @@ function assertOrderTimeRangeWithinLookback(
     || !Number.isFinite(endMilliseconds)) {
     throw orderQueryCommandError("Order Query time range could not be validated");
   }
-  const minute = 60_000;
-  const now = Math.floor(enteredAtMilliseconds / minute) * minute;
-  const start = Math.floor(startMilliseconds / minute) * minute;
-  const end = Math.floor(endMilliseconds / minute) * minute;
+  const second = 1_000;
+  const now = Math.floor(enteredAtMilliseconds / second) * second;
+  const start = Math.floor(startMilliseconds / second) * second;
+  const end = Math.floor(endMilliseconds / second) * second;
   const rejectionThreshold = WORKFLOW_ORDER_QUERY_TIME_RANGE_REJECTION_DAYS * 86_400_000;
   if (start <= now - rejectionThreshold || end <= now - rejectionThreshold) {
     throw orderQueryCommandError("Order Query time range starts before the 360-day lookback");

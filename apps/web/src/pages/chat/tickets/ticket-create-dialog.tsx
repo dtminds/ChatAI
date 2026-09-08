@@ -59,7 +59,7 @@ export function TicketCreateDialog({
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [priority, setPriority] = useState<TicketPriority>("medium");
-  const [dueAt, setDueAt] = useState<Date>();
+  const [dueAt, setDueAt] = useState("");
   const [assigneeSubUserId, setAssigneeSubUserId] = useState<string>();
   const [contextValue, setContextValue] = useState("current");
   const [assignees, setAssignees] = useState<TicketUser[]>([]);
@@ -81,7 +81,7 @@ export function TicketCreateDialog({
     setTitle("");
     setDescription("");
     setPriority("medium");
-    setDueAt(undefined);
+    setDueAt("");
     setAssigneeSubUserId(undefined);
     setContextValue("current");
     setAssignees([]);
@@ -130,7 +130,7 @@ export function TicketCreateDialog({
         context: parseContext(contextValue),
         conversationId,
         description: description.trim() || null,
-        dueAt: dueAt?.getTime() ?? null,
+        dueAt: dueAt ? new Date(dueAt).getTime() : null,
         priority,
         title: normalizedTitle,
       });
@@ -234,8 +234,8 @@ export function TicketCreateDialog({
           <div className="grid gap-5 sm:grid-cols-2">
             <Field label="截止时间">
               <DateTimePicker
-                ariaLabel="截止时间"
-                onChange={setDueAt}
+                aria-label="截止时间"
+                onValueChange={setDueAt}
                 value={dueAt}
               />
             </Field>

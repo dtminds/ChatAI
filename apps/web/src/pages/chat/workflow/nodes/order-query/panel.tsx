@@ -542,13 +542,12 @@ function createOrderQueryTimeVariableSegments(
 }
 
 function formatOrderQueryDateTime(value: string) {
-  const normalized = value.replace("T", " ");
-  return normalized.length === 16 ? `${normalized}:00` : normalized;
+  return value.replace("T", " ");
 }
 
 function formatRelativePoint(point: RelativePointValue) {
   const unit = point.unit === "day" ? "天" : point.unit === "hour" ? "小时" : "分钟";
-  return `过去 ${point.amount} ${unit}${point.unit === "day" ? ` ${point.time}:00` : ""}`;
+  return `过去 ${point.amount} ${unit}${point.unit === "day" ? ` ${point.time}` : ""}`;
 }
 
 function formatOrderQueryAmount(conditions: WorkflowOrderQueryDraftCondition) {
@@ -599,11 +598,11 @@ function OrderTimeRangeFields({ invalid, onChange, timeRange, variables }: {
       <div className="flex flex-col gap-2">
         <div className="flex items-center gap-2">
           <span className="w-8 shrink-0">开始</span>
-          <DateTimePicker aria-invalid={invalid || undefined} aria-label="订单开始时间" className="h-10 w-56" onValueChange={startAt => onChange({ endAt: timeRange.endAt, mode: "absolute", startAt })} value={timeRange.startAt} />
+          <DateTimePicker aria-invalid={invalid || undefined} aria-label="订单开始时间" className="h-10 w-56" onValueChange={startAt => onChange({ endAt: timeRange.endAt, mode: "absolute", startAt })} timePrecision="second" value={timeRange.startAt} />
         </div>
         <div className="flex items-center gap-2">
           <span className="w-8 shrink-0">结束</span>
-          <DateTimePicker aria-invalid={invalid || undefined} aria-label="订单结束时间" className="h-10 w-56" onValueChange={endAt => onChange({ endAt, mode: "absolute", startAt: timeRange.startAt })} value={timeRange.endAt} />
+          <DateTimePicker aria-invalid={invalid || undefined} aria-label="订单结束时间" className="h-10 w-56" onValueChange={endAt => onChange({ endAt, mode: "absolute", startAt: timeRange.startAt })} timePrecision="second" value={timeRange.endAt} />
         </div>
       </div>
     );
@@ -660,7 +659,7 @@ function RelativePoint({ invalid, label, onChange, value }: { invalid: boolean; 
         value={value.amount}
       />
       <Select value={value.unit} onValueChange={(unit) => {
-        if (unit === "day") onChange({ amount: value.amount, unit, time: label === "开始" ? "00:00" : "23:59" });
+        if (unit === "day") onChange({ amount: value.amount, unit, time: label === "开始" ? "00:00:00" : "23:59:59" });
         if (unit === "hour" || unit === "minute") onChange({ amount: value.amount, unit });
       }}>
         <SelectTrigger aria-label={`${label}相对单位`} className="w-24"><SelectValue /></SelectTrigger>
@@ -670,7 +669,7 @@ function RelativePoint({ invalid, label, onChange, value }: { invalid: boolean; 
           <SelectItem value="minute">分钟前</SelectItem>
         </SelectContent>
       </Select>
-      {value.unit === "day" ? <TimePicker aria-label={`${label}时间`} className="h-10" onValueChange={time => onChange({ ...value, time })} value={value.time} /> : null}
+      {value.unit === "day" ? <TimePicker aria-label={`${label}时间`} className="h-10" onValueChange={time => onChange({ ...value, time })} precision="second" value={value.time} /> : null}
     </div>
   );
 }

@@ -94,9 +94,9 @@ function createHandoffDraft(handoffConfig: Record<string, unknown>): WorkflowDra
         limit: 10,
         take: "latest",
         timeRange: {
-          endAt: "2026-08-17T10:00",
+          endAt: "2026-08-17T10:00:00",
           mode: "fixed",
-          startAt: "2026-08-17T09:00",
+          startAt: "2026-08-17T09:00:00",
         },
       }),
       node("handoff", "handoff", handoffConfig),

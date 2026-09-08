@@ -53,7 +53,7 @@ describe("workflow Order Query node", () => {
     await user.click(screen.getByRole("button", { name: "修改条件" }));
     await user.click(screen.getByRole("combobox", { name: "开始相对单位" }));
     await user.click(screen.getByRole("option", { name: "天前" }));
-    expect(screen.getByRole("button", { name: "开始时间" })).toHaveTextContent("00:00");
+    expect(screen.getByRole("button", { name: "开始时间" })).toHaveTextContent("00:00:00");
   });
   it("shows the query mode and order number variable on the node", () => {
     const data = {
@@ -106,9 +106,9 @@ describe("workflow Order Query node", () => {
         shopIds: [],
         timeField: "order-time",
         timeRange: {
-          end: { amount: 0, time: "23:59", unit: "day" },
+          end: { amount: 0, time: "23:59:59", unit: "day" },
           mode: "relative",
-          start: { amount: 30, time: "00:00", unit: "day" },
+          start: { amount: 30, time: "00:00:00", unit: "day" },
         },
       },
       mode: "conditions",
@@ -132,7 +132,7 @@ describe("workflow Order Query node", () => {
         label: "下单时间",
         value: {
           kind: "text",
-          text: "过去 30 天 00:00 至 过去 0 天 23:59",
+          text: "过去 30 天 00:00:00 至 过去 0 天 23:59:59",
         },
       },
     ]);
@@ -146,9 +146,9 @@ describe("workflow Order Query node", () => {
         shopIds: [],
         timeField: "order-time",
         timeRange: {
-          end: { amount: 0, time: "23:59", unit: "day" },
+          end: { amount: 0, time: "23:59:59", unit: "day" },
           mode: "relative",
-          start: { amount: 30, time: "00:00", unit: "day" },
+          start: { amount: 30, time: "00:00:00", unit: "day" },
         },
       },
       mode: "conditions",
@@ -436,49 +436,49 @@ describe("workflow Order Query node", () => {
     expect(validateOrderQueryConditions({
       ...base,
       timeRange: {
-        endAt: "2026-09-04T00:00",
+        endAt: "2026-09-04T00:00:00",
         mode: "absolute",
-        startAt: "2025-09-09T00:00",
+        startAt: "2025-09-09T00:00:00",
       },
     }, now).timeRange).toBeUndefined();
     expect(validateOrderQueryConditions({
       ...base,
       timeRange: {
-        endAt: "2025-09-09T21:00",
+        endAt: "2025-09-09T21:00:00",
         mode: "absolute",
-        startAt: "2025-09-08T21:00",
+        startAt: "2025-09-08T21:00:00",
       },
     }, now).timeRange).toBe("时间不能早于360天前");
     expect(validateOrderQueryConditions({
       ...base,
       timeRange: {
-        endAt: "2026-09-05T00:00",
+        endAt: "2026-09-05T00:00:00",
         mode: "absolute",
-        startAt: "2025-09-09T00:00",
+        startAt: "2025-09-09T00:00:00",
       },
     }, now).timeRange).toBe("时间跨度不能超过360天");
     expect(validateOrderQueryConditions({
       ...base,
       timeRange: {
-        end: { amount: 0, time: "00:00", unit: "day" },
+        end: { amount: 0, time: "00:00:00", unit: "day" },
         mode: "relative",
-        start: { amount: 360, time: "00:00", unit: "day" },
+        start: { amount: 360, time: "00:00:00", unit: "day" },
       },
     }, now).timeRange).toBeUndefined();
     expect(validateOrderQueryConditions({
       ...base,
       timeRange: {
-        end: { amount: 0, time: "00:00", unit: "day" },
+        end: { amount: 0, time: "00:00:00", unit: "day" },
         mode: "relative",
-        start: { amount: 361, time: "00:00", unit: "day" },
+        start: { amount: 361, time: "00:00:00", unit: "day" },
       },
     }, now).timeRange).toBe("时间不能早于360天前");
     expect(validateOrderQueryConditions({
       ...base,
       timeRange: {
-        end: { amount: 0, time: "23:59", unit: "day" },
+        end: { amount: 0, time: "23:59:59", unit: "day" },
         mode: "relative",
-        start: { amount: 360, time: "00:00", unit: "day" },
+        start: { amount: 360, time: "00:00:00", unit: "day" },
       },
     }, now).timeRange).toBeUndefined();
   });
@@ -529,7 +529,7 @@ describe("workflow Order Query node", () => {
     expect(screen.getByText("订单状态：")).toBeInTheDocument();
     expect(screen.getByText("待付款")).toBeInTheDocument();
     expect(screen.getByText("支付时间：")).toBeInTheDocument();
-    expect(screen.getByText("过去 30 天 00:00:00 - 过去 0 天 23:59:00")).toBeInTheDocument();
+    expect(screen.getByText("过去 30 天 00:00:00 - 过去 0 天 23:59:59")).toBeInTheDocument();
     expect(screen.getByText("订单金额：")).toBeInTheDocument();
     expect(screen.getByText("100 - 200")).toBeInTheDocument();
 

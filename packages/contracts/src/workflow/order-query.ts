@@ -1,4 +1,8 @@
 import { Type, type Static } from "@sinclair/typebox";
+import {
+  normalizeWorkflowLocalDateTimeToSecond,
+  normalizeWorkflowLocalTimeToSecond,
+} from "./local-date-time.js";
 
 export const WORKFLOW_ORDER_QUERY_MAX_SELECTED_SHOPS = 20;
 export const WORKFLOW_ORDER_QUERY_MAX_LOOKBACK_DAYS = 360;
@@ -39,7 +43,7 @@ const WorkflowOrderQueryRelativePointSchema = Type.Union([Type.Object({
     maximum: WORKFLOW_ORDER_QUERY_MAX_LOOKBACK_DAYS * 24 * 60,
     minimum: 0,
   }),
-  time: Type.String({ pattern: "^(?:[01]\\d|2[0-3]):[0-5]\\d$" }),
+  time: Type.String({ pattern: "^(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d$" }),
   unit: Type.Literal("day"),
 }, { additionalProperties: false }), Type.Object({
   amount: Type.Integer({ minimum: 0, maximum: WORKFLOW_ORDER_QUERY_MAX_LOOKBACK_DAYS * 24 * 60 }),
@@ -47,9 +51,9 @@ const WorkflowOrderQueryRelativePointSchema = Type.Union([Type.Object({
 }, { additionalProperties: false })]);
 
 const WorkflowOrderQueryAbsoluteTimeSchema = Type.Object({
-  endAt: Type.String({ maxLength: 16 }),
+  endAt: Type.String({ maxLength: 19 }),
   mode: Type.Literal("absolute"),
-  startAt: Type.String({ maxLength: 16 }),
+  startAt: Type.String({ maxLength: 19 }),
 }, { additionalProperties: false });
 
 const WorkflowOrderQueryRelativeTimeSchema = Type.Object({
@@ -101,8 +105,8 @@ export function isWorkflowOrderQueryRelativeRangeComplete(
   }
   const midnight = Date.parse("2000-01-01T00:00:00+08:00");
   return [midnight, midnight + 86_400_000 - 1].some(anchor =>
-    resolveWorkflowOrderQueryRelativePoint(anchor, start, false)
-      <= resolveWorkflowOrderQueryRelativePoint(anchor, end, true));
+    resolveWorkflowOrderQueryRelativePoint(anchor, start)
+      <= resolveWorkflowOrderQueryRelativePoint(anchor, end));
 }
 
 function getWorkflowOrderQueryRelativeLookbackMilliseconds(
@@ -119,7 +123,6 @@ function getWorkflowOrderQueryRelativeLookbackMilliseconds(
 function resolveWorkflowOrderQueryRelativePoint(
   enteredAt: number,
   point: Static<typeof WorkflowOrderQueryRelativePointSchema>,
-  end: boolean,
 ) {
   if (point.unit !== "day") {
     return enteredAt - getWorkflowOrderQueryRelativeLookbackMilliseconds(point);
@@ -128,8 +131,8 @@ function resolveWorkflowOrderQueryRelativePoint(
   const local = new Date(
     enteredAt - getWorkflowOrderQueryRelativeLookbackMilliseconds(point) + offsetMilliseconds,
   );
-  const [hours, minutes] = point.time.split(":").map(Number);
-  local.setUTCHours(hours!, minutes!, end ? 59 : 0, 0);
+  const [hours, minutes, seconds] = point.time.split(":").map(Number);
+  local.setUTCHours(hours!, minutes!, seconds!, 0);
   return local.getTime() - offsetMilliseconds;
 }
 
@@ -254,3 +257,45 @@ export type WorkflowOrderQueryTestRunVariableValue = Static<
 export type WorkflowOrderQueryTestRunRequest = Static<typeof WorkflowOrderQueryTestRunRequestSchema>;
 export type WorkflowOrderQueryTestRunOutput = Static<typeof WorkflowOrderQueryTestRunOutputSchema>;
 export type WorkflowOrderQueryTestRunResponse = Static<typeof WorkflowOrderQueryTestRunResponseSchema>;
+
+/**
+ * Upgrades minute-only order-query values at read boundaries. Keep malformed
+ * values intact so execution validation reports configuration errors instead of
+ * replacing the user's conditions with defaults.
+ */
+export function normalizeWorkflowOrderQueryConfigTimePrecision<T>(value: T): T {
+  if (!isRecord(value) || value.mode !== "conditions" || !isRecord(value.conditions)) return value;
+  const timeRange = normalizeWorkflowOrderQueryTimeRangeTimePrecision(value.conditions.timeRange);
+  if (timeRange === value.conditions.timeRange) return value;
+  return {
+    ...value,
+    conditions: { ...value.conditions, timeRange },
+  } as T;
+}
+
+export function normalizeWorkflowOrderQueryTimeRangeTimePrecision<T>(value: T): T {
+  if (!isRecord(value)) return value;
+  if (value.mode === "absolute") {
+    return {
+      ...value,
+      endAt: normalizeWorkflowLocalDateTimeToSecond(value.endAt, true) ?? value.endAt,
+      startAt: normalizeWorkflowLocalDateTimeToSecond(value.startAt, false) ?? value.startAt,
+    } as T;
+  }
+  if (value.mode !== "relative") return value;
+  return {
+    ...value,
+    end: normalizeOrderQueryRelativePointTimePrecision(value.end, true),
+    start: normalizeOrderQueryRelativePointTimePrecision(value.start, false),
+  } as T;
+}
+
+function normalizeOrderQueryRelativePointTimePrecision(value: unknown, end: boolean) {
+  if (!isRecord(value) || value.unit !== "day") return value;
+  const time = normalizeWorkflowLocalTimeToSecond(value.time, end);
+  return time === undefined ? value : { ...value, time };
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}

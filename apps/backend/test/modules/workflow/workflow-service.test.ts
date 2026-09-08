@@ -1414,9 +1414,9 @@ describe("WorkflowService", () => {
     const created = await createConfigured(service);
     const expired = await service.saveDraft(operator, created.id, {
       draft: withMessageQueryNode(created.draft, {
-        endAt: "2026-06-07T11:59",
+        endAt: "2026-06-07T11:59:59",
         mode: "fixed",
-        startAt: "2026-06-07T10:00",
+        startAt: "2026-06-07T10:00:00",
       }),
       expectedDraftVersion: created.draftVersion,
     });
@@ -1427,9 +1427,9 @@ describe("WorkflowService", () => {
 
     const fresh = await service.saveDraft(operator, expired.id, {
       draft: withMessageQueryNode(expired.draft, {
-        endAt: "2026-09-07T11:59",
+        endAt: "2026-09-07T11:59:59",
         mode: "fixed",
-        startAt: "2026-06-09T00:00",
+        startAt: "2026-06-09T00:00:00",
       }),
       expectedDraftVersion: expired.draftVersion,
     });

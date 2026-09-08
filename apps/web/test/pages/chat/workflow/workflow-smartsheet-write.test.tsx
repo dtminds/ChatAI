@@ -401,6 +401,7 @@ describe("workflow Smartsheet Write node", () => {
     await user.click(screen.getByRole("button", { name: "选择下单时间日期" }));
     await user.click(screen.getByRole("button", { name: "下单时间时间" }));
     await user.click(screen.getByRole("button", { name: "20时" }));
+    await user.click(screen.getByRole("button", { name: "下单时间时间确认" }));
     await user.click(screen.getByRole("button", { name: "确定" }));
     expect(onNodeChange).toHaveBeenCalledWith(expect.objectContaining({
       fieldMappings: expect.arrayContaining([

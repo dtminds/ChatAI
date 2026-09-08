@@ -15,13 +15,30 @@ describe("Workflow Message Query binding", () => {
     });
   });
   it("keeps published fixed dates executable after the lookback window expires", () => {
-    const timeRange = { mode: "fixed", startAt: "2026-01-01T10:00", endAt: "2026-01-02T10:00" };
+    const timeRange = { mode: "fixed", startAt: "2026-01-01T10:00:12", endAt: "2026-01-02T10:00:34" };
     expect(isMessageQueryFixedRangeWithinBounds(Date.parse("2026-01-03T10:00:00+08:00"), timeRange.startAt, timeRange.endAt)).toBe(true);
     expect(createWorkflowMessageQueryCommand({
       config: { limit: 10, take: "latest", timeRange }, context: context(),
     })).toMatchObject({
-      rangeStart: Date.parse("2026-01-01T10:00:00+08:00"),
+      rangeStart: Date.parse("2026-01-01T10:00:12+08:00"),
+      rangeEnd: Date.parse("2026-01-02T10:00:34.999+08:00"),
+    });
+  });
+  it("executes legacy minute-only fixed dates with their original bounds", () => {
+    expect(createWorkflowMessageQueryCommand({
+      config: {
+        limit: 10,
+        take: "latest",
+        timeRange: {
+          endAt: "2026-01-02T10:00",
+          mode: "fixed",
+          startAt: "2026-01-01T10:00",
+        },
+      },
+      context: context(),
+    })).toMatchObject({
       rangeEnd: Date.parse("2026-01-02T10:00:59.999+08:00"),
+      rangeStart: Date.parse("2026-01-01T10:00:00.000+08:00"),
     });
   });
   it("does not reapply publication offset limits at runtime", () => {
@@ -30,8 +47,8 @@ describe("Workflow Message Query binding", () => {
       limit: 10, take: "latest",
       timeRange: {
         mode: "relative",
-        start: { amount: 90, unit: "day", time: "00:00" },
-        end: { amount: 0, unit: "day", time: "23:59" },
+        start: { amount: 90, unit: "day", time: "00:00:00" },
+        end: { amount: 0, unit: "day", time: "23:59:59" },
       },
     };
     expect(() => createWorkflowMessageQueryCommand({ config, context: commandContext })).not.toThrow();
@@ -40,31 +57,49 @@ describe("Workflow Message Query binding", () => {
   });
   it("does not reapply fixed span limits but still rejects reversed fixed ranges", () => {
     const config = { limit: 10, take: "latest", timeRange: {
-      mode: "fixed", startAt: "2026-01-01T10:00", endAt: "2026-08-01T10:00",
+      mode: "fixed", startAt: "2026-01-01T10:00:00", endAt: "2026-08-01T10:00:00",
     } };
     expect(() => createWorkflowMessageQueryCommand({ config, context: context() })).not.toThrow();
-    config.timeRange.endAt = "2025-12-31T10:00";
+    config.timeRange.endAt = "2025-12-31T10:00:00";
     expect(() => createWorkflowMessageQueryCommand({ config, context: context() }))
       .toThrow(expect.objectContaining({ code: "WORKFLOW_MESSAGE_QUERY_COMMAND_INVALID" }));
   });
-  it("anchors relative dates to node entry in UTC+8 and includes the last minute", () => {
+  it("anchors relative dates to node entry in UTC+8 and includes the selected end second", () => {
     const input = {
       config: {
         limit: 10, take: "latest",
         timeRange: {
           mode: "relative",
-          start: { amount: 30, unit: "day", time: "00:00" },
-          end: { amount: 0, unit: "day", time: "23:59" },
+          start: { amount: 30, unit: "day", time: "00:00:12" },
+          end: { amount: 0, unit: "day", time: "23:59:34" },
         },
       },
       context: context(),
     };
     const command = createWorkflowMessageQueryCommand(input);
     expect(command).toMatchObject({
-      rangeStart: Date.parse("2026-07-15T16:00:00.000Z"),
-      rangeEnd: Date.parse("2026-08-15T15:59:59.999Z"),
+      rangeStart: Date.parse("2026-07-15T16:00:12.000Z"),
+      rangeEnd: Date.parse("2026-08-15T15:59:34.999Z"),
     });
     expect(createWorkflowMessageQueryCommand(input)).toEqual(command);
+  });
+
+  it("executes legacy minute-only relative day times with their original bounds", () => {
+    expect(createWorkflowMessageQueryCommand({
+      config: {
+        limit: 10,
+        take: "latest",
+        timeRange: {
+          end: { amount: 0, time: "23:59", unit: "day" },
+          mode: "relative",
+          start: { amount: 30, time: "00:00", unit: "day" },
+        },
+      },
+      context: context(),
+    })).toMatchObject({
+      rangeEnd: Date.parse("2026-08-15T15:59:59.999Z"),
+      rangeStart: Date.parse("2026-07-15T16:00:00.000Z"),
+    });
   });
 
   it.each(["hour", "minute"])("handles relative %s offsets across local midnight", unit => {
@@ -76,13 +111,13 @@ describe("Workflow Message Query binding", () => {
         timeRange: {
           mode: "relative",
           start: { amount: unit === "hour" ? 1 : 60, unit },
-          end: { amount: 0, unit: "day", time: "00:30" },
+          end: { amount: 0, unit: "day", time: "00:30:45" },
         },
       },
       context: commandContext,
     })).toMatchObject({
       rangeStart: Date.parse("2026-08-14T15:30:00.000Z"),
-      rangeEnd: Date.parse("2026-08-14T16:30:59.999Z"),
+      rangeEnd: Date.parse("2026-08-14T16:30:45.999Z"),
     });
   });
 
@@ -92,7 +127,7 @@ describe("Workflow Message Query binding", () => {
       timeRange: {
         mode: "relative",
         start: { amount: 1, unit: "hour" },
-        end: { amount: 0, unit: "day", time: "00:00" },
+        end: { amount: 0, unit: "day", time: "00:00:00" },
       },
     };
     expect(() => createWorkflowMessageQueryCommand({ config, context: context() }))
@@ -123,22 +158,22 @@ describe("Workflow Message Query binding", () => {
     });
   });
 
-  it("allows one fixed UTC+8 minute and includes the complete end minute", () => {
+  it("allows one fixed UTC+8 second and includes the complete end second", () => {
     expect(createWorkflowMessageQueryCommand({
       config: {
         limit: 5,
         take: "earliest",
         timeRange: {
-          endAt: "2026-08-15T10:00",
+          endAt: "2026-08-15T10:00:34",
           mode: "fixed",
-          startAt: "2026-08-15T10:00",
+          startAt: "2026-08-15T10:00:34",
         },
       },
       context: context(),
     })).toEqual({
       limit: 5,
-      rangeEnd: Date.parse("2026-08-15T02:00:59.999Z"),
-      rangeStart: Date.parse("2026-08-15T02:00:00.000Z"),
+      rangeEnd: Date.parse("2026-08-15T02:00:34.999Z"),
+      rangeStart: Date.parse("2026-08-15T02:00:34.000Z"),
       seatId: 101,
       take: "earliest",
     });

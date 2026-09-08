@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { getMessageQueryRelativeAmountMax, isMessageQueryFixedRangeWithinBounds, isValidWorkflowLocalDateTime, WORKFLOW_MESSAGE_QUERY_TIME_RANGE_REJECTION_DAYS, type WorkflowMessageQueryRelativePoint } from "@chatai/contracts";
+import { getMessageQueryRelativeAmountMax, isMessageQueryFixedRangeWithinBounds, isValidWorkflowLocalDateTimeToSecond, WORKFLOW_MESSAGE_QUERY_TIME_RANGE_REJECTION_DAYS, type WorkflowMessageQueryRelativePoint } from "@chatai/contracts";
 import { DateTimePicker } from "@/components/ui/date-time-picker";
 import { TimePicker } from "@/components/ui/time-picker";
 import { Input } from "@/components/ui/input";
@@ -166,7 +166,7 @@ function RelativeTimeField({ label, value, onChange }: {
         <Select value={value.unit} onValueChange={unit => {
           if (unit !== "day" && unit !== "hour" && unit !== "minute") return;
           const amount = Math.min(value.amount, getMessageQueryRelativeAmountMax(unit));
-          onChange(unit === "day" ? { amount, unit, time: label === "开始时间" ? "00:00" : "23:59" } : { amount, unit });
+          onChange(unit === "day" ? { amount, unit, time: label === "开始时间" ? "00:00:00" : "23:59:59" } : { amount, unit });
         }}>
           <SelectTrigger aria-label={`${label}相对单位`} className="h-9 w-full min-w-0 px-2 text-[13px]"><SelectValue /></SelectTrigger>
           <SelectContent>
@@ -175,7 +175,7 @@ function RelativeTimeField({ label, value, onChange }: {
             <SelectItem value="minute">分钟前</SelectItem>
           </SelectContent>
         </Select>
-        {value.unit === "day" ? <TimePicker aria-label={`${label}时间点`} className="w-full min-w-0 px-2 text-[13px]" value={value.time} onValueChange={time => onChange({ ...value, time })} /> : null}
+        {value.unit === "day" ? <TimePicker aria-label={`${label}时间点`} className="w-full min-w-0 px-2 text-[13px]" onValueChange={time => onChange({ ...value, time })} precision="second" value={value.time} /> : null}
       </div>
     </div>
   );
@@ -187,8 +187,8 @@ function FixedTimeRangeFields({ onChange, value }: {
 }) {
   const validate = (field: "startAt" | "endAt", selected: string) => {
     const next = { ...value, [field]: selected };
-    if (selected && (!isValidWorkflowLocalDateTime(selected)
-      || Date.parse(`${selected}:00+08:00`) <= Date.now() - WORKFLOW_MESSAGE_QUERY_TIME_RANGE_REJECTION_DAYS * 86_400_000)) {
+    if (selected && (!isValidWorkflowLocalDateTimeToSecond(selected)
+      || Date.parse(`${selected}+08:00`) <= Date.now() - WORKFLOW_MESSAGE_QUERY_TIME_RANGE_REJECTION_DAYS * 86_400_000)) {
       return "时间不能早于90天前";
     }
     if (next.startAt && next.endAt
@@ -228,6 +228,7 @@ function DateTimeField({ label, onChange, value, validateValue }: {
         aria-label={label}
         className="text-[13px]"
         onValueChange={onChange}
+        timePrecision="second"
         validateValue={validateValue}
         value={value}
       />

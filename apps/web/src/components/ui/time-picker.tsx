@@ -11,12 +11,16 @@ import { cn } from "@/lib/utils";
 
 const hours = Array.from({ length: 24 }, (_, index) => String(index).padStart(2, "0"));
 const minutes = Array.from({ length: 60 }, (_, index) => String(index).padStart(2, "0"));
+const seconds = Array.from({ length: 60 }, (_, index) => String(index).padStart(2, "0"));
+
+export type TimePickerPrecision = "minute" | "second";
 
 export function TimePicker({
   "aria-label": ariaLabel,
   className,
   disabled = false,
   onValueChange,
+  precision = "minute",
   value,
   variant = "outline",
 }: {
@@ -24,35 +28,69 @@ export function TimePicker({
   className?: string;
   disabled?: boolean;
   onValueChange(value: string): void;
+  precision?: TimePickerPrecision;
   value: string;
   variant?: "outline" | "secondary";
 }) {
   const [open, setOpen] = useState(false);
-  const parsedTime = parseTime(value);
-  const [hour, minute] = parsedTime ?? ["00", "00"];
-  const triggerRef = useRef<HTMLButtonElement>(null);
+  const parsedTime = parseTime(value, precision);
+  const [hour, minute, second] = parsedTime ?? ["00", "00", "00"];
+  const [draftHour, setDraftHour] = useState(hour);
+  const [draftMinute, setDraftMinute] = useState(minute);
+  const [draftSecond, setDraftSecond] = useState(second);
   const selectedHourRef = useRef<HTMLButtonElement>(null);
   const selectedMinuteRef = useRef<HTMLButtonElement>(null);
+  const selectedSecondRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
     if (!open) return;
-    selectedHourRef.current?.scrollIntoView?.({ block: "center" });
-    selectedMinuteRef.current?.scrollIntoView?.({ block: "center" });
+    const frame = requestAnimationFrame(() => {
+      selectedHourRef.current?.scrollIntoView?.({ block: "center" });
+      selectedMinuteRef.current?.scrollIntoView?.({ block: "center" });
+      selectedSecondRef.current?.scrollIntoView?.({ block: "center" });
+    });
+    return () => cancelAnimationFrame(frame);
   }, [open]);
 
+  const handleOpenChange = (nextOpen: boolean) => {
+    if (nextOpen) {
+      setDraftHour(hour);
+      setDraftMinute(minute);
+      setDraftSecond(second);
+    }
+    setOpen(nextOpen);
+  };
+
+  const updateDraftTime = (next: Partial<{
+    hour: string;
+    minute: string;
+    second: string;
+  }>) => {
+    const nextHour = next.hour ?? draftHour;
+    const nextMinute = next.minute ?? draftMinute;
+    const nextSecond = next.second ?? draftSecond;
+    if (next.hour !== undefined) setDraftHour(next.hour);
+    if (next.minute !== undefined) setDraftMinute(next.minute);
+    if (next.second !== undefined) setDraftSecond(next.second);
+    onValueChange(formatTime(nextHour, nextMinute, nextSecond, precision));
+  };
+
   return (
-    <Popover onOpenChange={setOpen} open={open}>
+    <Popover onOpenChange={handleOpenChange} open={open}>
       <PopoverTrigger asChild>
         <Button
           aria-label={ariaLabel}
-          className={cn("h-9 w-28 justify-between rounded-[10px] px-2.5 font-normal", className)}
+          className={cn(
+            "h-9 justify-between rounded-[10px] px-2.5 font-normal",
+            precision === "second" ? "w-36" : "w-28",
+            className,
+          )}
           disabled={disabled}
-          ref={triggerRef}
           type="button"
           variant={variant}
         >
           <span className={cn(!parsedTime && "text-muted-foreground")}>
-            {parsedTime ? `${hour}:${minute}` : "未配置"}
+            {parsedTime ? formatTime(hour, minute, second, precision) : "未配置"}
           </span>
           <HugeiconsIcon
             aria-hidden="true"
@@ -65,25 +103,52 @@ export function TimePicker({
       </PopoverTrigger>
       <PopoverContent
         align="start"
-        className="flex h-56 max-h-[var(--radix-popover-content-available-height)] w-44 p-2"
-        portalContainer={triggerRef.current?.closest<HTMLElement>("[role='dialog']")}
+        className={cn(
+          "flex h-60 max-h-[var(--radix-popover-content-available-height)] flex-col p-2",
+          precision === "second" ? "w-60" : "w-44",
+        )}
       >
-        <div className="grid min-h-0 flex-1 grid-cols-2 divide-x divide-border">
+        <div className={cn(
+          "grid min-h-0 flex-1 divide-x divide-border",
+          precision === "second" ? "grid-cols-3" : "grid-cols-2",
+        )}
+        >
           <TimeColumn
             label="时"
-            onSelect={(nextHour) => onValueChange(`${nextHour}:${minute}`)}
+            onSelect={hour => updateDraftTime({ hour })}
             options={hours}
             selectedRef={selectedHourRef}
-            value={hour}
+            value={draftHour}
           />
           <TimeColumn
             label="分"
-            onSelect={(nextMinute) => onValueChange(`${hour}:${nextMinute}`)}
+            onSelect={minute => updateDraftTime({ minute })}
             options={minutes}
             selectedRef={selectedMinuteRef}
-            value={minute}
+            value={draftMinute}
           />
+          {precision === "second" ? (
+            <TimeColumn
+              label="秒"
+              onSelect={second => updateDraftTime({ second })}
+              options={seconds}
+              selectedRef={selectedSecondRef}
+              value={draftSecond}
+            />
+          ) : null}
         </div>
+        <Button
+          aria-label={`${ariaLabel}确认`}
+          className="shrink-0 self-end"
+          onClick={() => {
+            setOpen(false);
+          }}
+          size="sm"
+          type="button"
+          variant="secondary"
+        >
+          确定
+        </Button>
       </PopoverContent>
     </Popover>
   );
@@ -105,8 +170,11 @@ function TimeColumn({
   return (
     <div className="flex min-h-0 min-w-0 flex-col px-1.5">
       <div className="shrink-0 pb-1.5 text-center text-xs text-muted-foreground">{label}</div>
-      <div className="min-h-0 flex-1 overflow-y-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-        <div className="space-y-0.5 pr-1">
+      <div
+        className="-mr-1.5 min-h-0 flex-1 overflow-y-auto overscroll-contain [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+        onWheel={event => event.stopPropagation()}
+      >
+        <div className="space-y-0.5 pr-1.5">
           {options.map((option) => {
             const selected = option === value;
             return (
@@ -134,7 +202,18 @@ function TimeColumn({
   );
 }
 
-function parseTime(value: string): [string, string] | undefined {
-  const match = /^(?:[01]\d|2[0-3]):[0-5]\d$/.exec(value);
-  return match ? [value.slice(0, 2), value.slice(3, 5)] : undefined;
+function parseTime(value: string, precision: TimePickerPrecision): [string, string, string] | undefined {
+  const match = /^(?:[01]\d|2[0-3]):[0-5]\d(?::[0-5]\d)?$/.exec(value);
+  if (!match) return undefined;
+  if (precision === "minute") return [value.slice(0, 2), value.slice(3, 5), "00"];
+  return [value.slice(0, 2), value.slice(3, 5), value.slice(6, 8) || "00"];
+}
+
+function formatTime(
+  hour: string,
+  minute: string,
+  second: string,
+  precision: TimePickerPrecision,
+) {
+  return precision === "second" ? `${hour}:${minute}:${second}` : `${hour}:${minute}`;
 }

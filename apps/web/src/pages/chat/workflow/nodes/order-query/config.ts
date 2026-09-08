@@ -1,6 +1,7 @@
 import {
   hasValidWorkflowOrderQueryAmountPrecision,
   isWorkflowNodeExecutionConfig,
+  normalizeWorkflowOrderQueryConfigTimePrecision,
   WORKFLOW_ORDER_QUERY_MAX_AMOUNT,
   WORKFLOW_ORDER_QUERY_MAX_LOOKBACK_DAYS,
   WORKFLOW_ORDER_QUERY_MAX_SELECTED_SHOPS,
@@ -36,6 +37,15 @@ export function createDefaultOrderQueryConditions(): WorkflowOrderQueryDraftCond
   };
 }
 
+export function normalizeOrderQueryConditions(
+  conditions: WorkflowOrderQueryDraftCondition,
+): WorkflowOrderQueryDraftCondition {
+  return normalizeWorkflowOrderQueryConfigTimePrecision({
+    conditions,
+    mode: "conditions" as const,
+  }).conditions;
+}
+
 export function createDefaultOrderQueryDynamicTimeRange() {
   return {
     end: ["current-node-lifecycle", "enteredAt"] as WorkflowVariableSelector,
@@ -46,9 +56,9 @@ export function createDefaultOrderQueryDynamicTimeRange() {
 
 export function createDefaultOrderQueryRelativeTimeRange() {
   return {
-    end: { amount: 0, time: "23:59", unit: "day" as const },
+    end: { amount: 0, time: "23:59:59", unit: "day" as const },
     mode: "relative" as const,
-    start: { amount: 30, time: "00:00", unit: "day" as const },
+    start: { amount: 30, time: "00:00:00", unit: "day" as const },
   };
 }
 
@@ -104,7 +114,7 @@ function validateOrderQueryTimeRange(
   now: Date,
 ) {
   if (timeRange.mode === "dynamic") return undefined;
-  const nowMilliseconds = Math.floor(now.getTime() / 60_000) * 60_000;
+  const nowMilliseconds = Math.floor(now.getTime() / 1_000) * 1_000;
   let startMilliseconds: number | undefined;
   let endMilliseconds: number | undefined;
   if (timeRange.mode === "absolute") {
@@ -133,20 +143,22 @@ function validateOrderQueryTimeRange(
 }
 
 function parseOrderQueryLocalDateTime(value: string) {
-  const match = /^(\d{4})-(\d{2})-(\d{2})T((?:[01]\d|2[0-3])):([0-5]\d)$/.exec(value);
+  const match = /^(\d{4})-(\d{2})-(\d{2})T((?:[01]\d|2[0-3])):([0-5]\d):([0-5]\d)$/.exec(value);
   if (!match) return undefined;
   const year = Number(match[1]);
   const month = Number(match[2]);
   const day = Number(match[3]);
   const hour = Number(match[4]);
   const minute = Number(match[5]);
-  const localMilliseconds = Date.UTC(year, month - 1, day, hour, minute);
+  const second = Number(match[6]);
+  const localMilliseconds = Date.UTC(year, month - 1, day, hour, minute, second);
   const normalized = new Date(localMilliseconds);
   if (normalized.getUTCFullYear() !== year
     || normalized.getUTCMonth() !== month - 1
     || normalized.getUTCDate() !== day
     || normalized.getUTCHours() !== hour
-    || normalized.getUTCMinutes() !== minute) {
+    || normalized.getUTCMinutes() !== minute
+    || normalized.getUTCSeconds() !== second) {
     return undefined;
   }
   return localMilliseconds - WORKFLOW_TIMEZONE_OFFSET_MILLISECONDS;
@@ -155,9 +167,9 @@ function parseOrderQueryLocalDateTime(value: string) {
 function resolveRelativePoint(now: Date, point: RelativePoint) {
   const shifted = new Date(now.getTime() - getRelativeLookbackMilliseconds(point));
   if (point.unit !== "day") return shifted.getTime();
-  const [hour, minute] = point.time.split(":").map(Number);
+  const [hour, minute, second] = point.time.split(":").map(Number);
   const local = new Date(shifted.getTime() + WORKFLOW_TIMEZONE_OFFSET_MILLISECONDS);
-  local.setUTCHours(hour!, minute!, 0, 0);
+  local.setUTCHours(hour!, minute!, second!, 0);
   return local.getTime() - WORKFLOW_TIMEZONE_OFFSET_MILLISECONDS;
 }
 

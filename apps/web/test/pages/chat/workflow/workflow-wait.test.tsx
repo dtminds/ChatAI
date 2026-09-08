@@ -23,6 +23,7 @@ describe("workflow wait node", () => {
     await user.click(screen.getByRole("button", { name: "执行时间" }));
     await user.click(screen.getByRole("button", { name: /20\s*时/ }));
     await user.click(screen.getByRole("button", { name: /00\s*分/ }));
+    await user.click(screen.getByRole("button", { name: "执行时间确认" }));
 
     expect(onNodeChange).toHaveBeenLastCalledWith(expect.objectContaining({
       dayOffset: 2,

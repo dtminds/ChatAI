@@ -645,12 +645,12 @@ export function TicketDetailContent({
               <div className="grid gap-5 sm:grid-cols-2">
                 <Field label="截止时间">
                   <DateTimePicker
-                    ariaLabel="截止时间"
-                    onChange={(value) => setForm((current) => ({
+                    aria-label="截止时间"
+                    onValueChange={(value) => setForm((current) => ({
                       ...current,
-                      dueAt: value ? toDateTimeLocal(value.getTime()) : "",
+                      dueAt: value,
                     }))}
-                    value={form.dueAt ? new Date(form.dueAt) : undefined}
+                    value={form.dueAt}
                   />
                 </Field>
               </div>

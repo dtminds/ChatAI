@@ -8,6 +8,7 @@ import {
   getOrderQueryMetric,
   isOrderNumberVariable,
   isOrderQueryReady,
+  normalizeOrderQueryConditions,
   normalizeOrderQuerySelector,
 } from "./config";
 
@@ -37,7 +38,11 @@ export const orderQueryNodeDefinition: WorkflowNodeDefinition<"order-query"> = {
   ],
   sanitizeData: (data) => {
     if (data.mode === "conditions") {
-      const next = { ...data, conditions: data.conditions ?? createDefaultOrderQueryConditions(), mode: "conditions" as const };
+      const next = {
+        ...data,
+        conditions: normalizeOrderQueryConditions(data.conditions ?? createDefaultOrderQueryConditions()),
+        mode: "conditions" as const,
+      };
       delete (next as Record<string, unknown>).orderNumberSelector;
       return { ...next, metric: getOrderQueryMetric(next), status: isOrderQueryReady(next) ? "ready" : "warning" };
     }

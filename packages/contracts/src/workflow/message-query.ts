@@ -1,7 +1,11 @@
 import { Type, type Static } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
 import { WorkflowMessagesV1Schema } from "./messages.js";
-import { isValidWorkflowLocalDateTime } from "./local-date-time.js";
+import {
+  isValidWorkflowLocalDateTimeToSecond,
+  normalizeWorkflowLocalDateTimeToSecond,
+  normalizeWorkflowLocalTimeToSecond,
+} from "./local-date-time.js";
 
 export const WORKFLOW_MESSAGE_QUERY_MAX_LOOKBACK_DAYS = 90;
 export const WORKFLOW_MESSAGE_QUERY_TIME_RANGE_REJECTION_DAYS =
@@ -9,7 +13,7 @@ export const WORKFLOW_MESSAGE_QUERY_TIME_RANGE_REJECTION_DAYS =
 
 const WorkflowMessageQueryRelativePointSchema = Type.Union([Type.Object({
   amount: Type.Integer({ minimum: 0, maximum: WORKFLOW_MESSAGE_QUERY_MAX_LOOKBACK_DAYS * 24 * 60 }),
-  time: Type.String({ pattern: "^(?:[01]\\d|2[0-3]):[0-5]\\d$" }),
+  time: Type.String({ pattern: "^(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d$" }),
   unit: Type.Literal("day"),
 }, { additionalProperties: false }), Type.Object({
   amount: Type.Integer({ minimum: 0, maximum: WORKFLOW_MESSAGE_QUERY_MAX_LOOKBACK_DAYS * 24 * 60 }),
@@ -24,8 +28,46 @@ export const WorkflowMessageQueryRelativeTimeRangeSchema = Type.Object({
 
 export type WorkflowMessageQueryRelativePoint = Static<typeof WorkflowMessageQueryRelativePointSchema>;
 
+/**
+ * Upgrades legacy minute-only message-query values at read boundaries. Invalid
+ * values are intentionally left untouched so normal draft/execution validation
+ * can reject them instead of silently replacing user configuration.
+ */
+export function normalizeWorkflowMessageQueryConfigTimePrecision<T>(value: T): T {
+  if (!isRecord(value) || !isRecord(value.timeRange)) return value;
+  const timeRange = normalizeWorkflowMessageQueryTimeRangeTimePrecision(value.timeRange);
+  return timeRange === value.timeRange ? value : { ...value, timeRange } as T;
+}
+
+export function normalizeWorkflowMessageQueryTimeRangeTimePrecision<T>(value: T): T {
+  if (!isRecord(value)) return value;
+  if (value.mode === "fixed") {
+    return {
+      ...value,
+      endAt: normalizeWorkflowLocalDateTimeToSecond(value.endAt, true) ?? value.endAt,
+      startAt: normalizeWorkflowLocalDateTimeToSecond(value.startAt, false) ?? value.startAt,
+    } as T;
+  }
+  if (value.mode !== "relative") return value;
+  return {
+    ...value,
+    end: normalizeRelativePointTimePrecision(value.end, true),
+    start: normalizeRelativePointTimePrecision(value.start, false),
+  } as T;
+}
+
 export function isMessageQueryRelativeTimeRange(value: unknown): value is Static<typeof WorkflowMessageQueryRelativeTimeRangeSchema> {
   return Value.Check(WorkflowMessageQueryRelativeTimeRangeSchema, value);
+}
+
+function normalizeRelativePointTimePrecision(value: unknown, end: boolean) {
+  if (!isRecord(value) || value.unit !== "day") return value;
+  const time = normalizeWorkflowLocalTimeToSecond(value.time, end);
+  return time === undefined ? value : { ...value, time };
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }
 
 export function getMessageQueryRelativeAmountMax(unit: WorkflowMessageQueryRelativePoint["unit"]) {
@@ -63,8 +105,8 @@ export function resolveMessageQueryRelativePoint(
   if (point.unit !== "day") return enteredAt - point.amount * unitMs;
   const offsetMs = 8 * 3_600_000;
   const local = new Date(enteredAt - point.amount * unitMs + offsetMs);
-  const [hours, minutes] = point.time.split(":").map(Number);
-  local.setUTCHours(hours!, minutes!, end ? 59 : 0, end ? 999 : 0);
+  const [hours, minutes, seconds] = point.time.split(":").map(Number);
+  local.setUTCHours(hours!, minutes!, seconds!, end ? 999 : 0);
   return local.getTime() - offsetMs;
 }
 
@@ -86,12 +128,12 @@ export function isMessageQueryFixedRangeWithinBounds(
   startAt: string,
   endAt: string,
 ) {
-  return isValidWorkflowLocalDateTime(startAt)
-    && isValidWorkflowLocalDateTime(endAt)
+  return isValidWorkflowLocalDateTimeToSecond(startAt)
+    && isValidWorkflowLocalDateTimeToSecond(endAt)
     && isMessageQueryRelativeRangeWithinBounds(
       now,
-      Date.parse(`${startAt}:00+08:00`),
-      Date.parse(`${endAt}:59.999+08:00`),
+      Date.parse(`${startAt}+08:00`),
+      Date.parse(`${endAt}.999+08:00`),
     );
 }
 

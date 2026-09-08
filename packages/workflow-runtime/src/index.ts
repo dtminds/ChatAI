@@ -33,5 +33,6 @@ export * from "./runtime-value-limits.js";
 export * from "./service.js";
 export * from "./tag.js";
 export * from "./tag-query.js";
+export * from "./ticket-create.js";
 export * from "./test-attempt-repository.js";
 export * from "./types.js";

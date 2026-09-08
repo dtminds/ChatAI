@@ -88,6 +88,7 @@ describe("createWorkflowRenderElements", () => {
       "message-query",
       "handoff",
       "agent",
+      "ticket-create",
       "coupon",
       "order-conversion",
       "smartsheet-write",

@@ -54,7 +54,7 @@ import { adaptInsightMessages } from "@/pages/chat/insights/insight-detail-panel
 import { formatInsightTime } from "@/pages/chat/insights/insights-utils";
 import { addTicketComment, claimTicket, deleteTicket, getTicketActivities, getTicketAssigneeOptions, getTicketContext, getTicketDetail, updateTicket } from "./api/tickets-service";
 import { refreshTicketCounts } from "./ticket-count-store";
-import { TicketOverdueBadge, TicketPriority, TicketStatusBadge, ticketPriorityText, ticketStatusText } from "./ticket-display";
+import { TicketOverdueBadge, TicketPriority, TicketStatusBadge, ticketCreatorText, ticketPriorityText, ticketStatusText } from "./ticket-display";
 import "./tickets.css";
 
 const ticketActivityPageSize = 20;
@@ -478,7 +478,7 @@ export function TicketDetailContent({
                   <Metadata label="优先级" value={<TicketPriority priority={ticket.priority} size="default" />} />
                   <Metadata label="工单 ID" value={`#${ticket.ticketId}`} />
                   <Metadata label="负责人" value={ticket.assignee?.displayName || "未分配"} />
-                  <Metadata label="创建人" value={ticket.createdBy?.displayName || (ticket.sourceType === "ai" ? "AI" : "-")} />
+                  <Metadata label="创建人" value={ticketCreatorText(ticket.sourceType, ticket.createdBy?.displayName)} />
                 </div>
                 <Metadata align="start" className="sm:col-span-2" label="描述" value={ticket.description || "暂无描述"} />
               </dl>

@@ -24,6 +24,7 @@ import {
   WORKFLOW_ORDER_QUERY_CAPABILITY_BINDING,
   WORKFLOW_TAG_CAPABILITY_BINDING,
   WORKFLOW_TAG_QUERY_CAPABILITY_BINDING,
+  WORKFLOW_TICKET_CREATE_CAPABILITY_BINDING,
 } from "@chatai/workflow-runtime";
 import { WorkflowCapabilityRouter } from "./capability-router.js";
 import { loadWorkflowWorkerConfig } from "./config.js";
@@ -64,6 +65,7 @@ import { MysqlWorkflowAiCollectConversationPort } from "./ai-collect-conversatio
 import { HttpWorkflowConversationDirectivePort } from "./conversation-directive-port.js";
 import { processWorkflowConversationDirectiveDisableBatch } from "./conversation-directive-worker.js";
 import type { WorkflowLlmTestAdapter } from "./llm-test-adapter.js";
+import { MysqlWorkflowTicketCreateCapabilityPort } from "./ticket-create-capability-port.js";
 
 export async function startWorkflowWorkerProcess(env: NodeJS.ProcessEnv = process.env) {
   const config = loadWorkflowWorkerConfig(env);
@@ -172,6 +174,10 @@ export async function startWorkflowWorkerProcess(env: NodeJS.ProcessEnv = proces
     },
     { binding: WORKFLOW_TAG_CAPABILITY_BINDING, port: tagCapabilityPort },
     { binding: WORKFLOW_TAG_QUERY_CAPABILITY_BINDING, port: tagQueryCapabilityPort },
+    {
+      binding: WORKFLOW_TICKET_CREATE_CAPABILITY_BINDING,
+      port: new MysqlWorkflowTicketCreateCapabilityPort(database),
+    },
   ]);
   const aiCollectConversationPort = new MysqlWorkflowAiCollectConversationPort(database, {
     baseUrl: config.javaInternalApi.baseUrl,

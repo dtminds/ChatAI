@@ -18,6 +18,7 @@ import {
   WORKFLOW_ORDER_QUERY_CAPABILITY_BINDING,
   WORKFLOW_TAG_CAPABILITY_BINDING,
   WORKFLOW_TAG_QUERY_CAPABILITY_BINDING,
+  WORKFLOW_TICKET_CREATE_CAPABILITY_BINDING,
   WorkflowRuntimeService,
   type WorkflowCapabilityExecutionBinding,
   type WorkflowRuntimeDefinitionRecord,
@@ -620,6 +621,7 @@ function createHarness(options: {
               WORKFLOW_ORDER_QUERY_CAPABILITY_BINDING,
               WORKFLOW_TAG_CAPABILITY_BINDING,
               WORKFLOW_TAG_QUERY_CAPABILITY_BINDING,
+              WORKFLOW_TICKET_CREATE_CAPABILITY_BINDING,
             ],
           }
         : {}),

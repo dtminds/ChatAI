@@ -2116,3 +2116,16 @@ ALTER TABLE xy_wap_embed_logical_session_message
     source_message_id
   );
 ```
+## 2026-09-08 Workflow 创建工单
+
+- `xy_wap_embed_session_action_item` 新增 `workflow_execution_key`，保存 Workflow Runtime 提供的稳定执行键。
+- 新增租户内唯一索引，保证节点超时重试或并发重复投递不会重复创建工单。
+- `source_type` 新增 `workflow`，用于区分工作流创建的工单。
+
+存量环境手工执行：
+
+```sql
+ALTER TABLE xy_wap_embed_session_action_item
+  ADD COLUMN workflow_execution_key VARCHAR(256) NULL COMMENT '工作流节点稳定执行键，用于创建幂等' AFTER source_type,
+  ADD UNIQUE KEY uk_ticket_uid_workflow_execution (uid, workflow_execution_key);
+```

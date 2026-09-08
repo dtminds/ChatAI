@@ -90,6 +90,7 @@ const CHATAI_NODE_KINDS = [
   "order-bind",
   "coupon",
   "smartsheet-write",
+  "ticket-create",
   "end",
 ] as const satisfies readonly WorkflowNodeKind[];
 

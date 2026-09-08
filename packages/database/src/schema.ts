@@ -2705,7 +2705,7 @@ export interface XyWapEmbedSessionActionItem {
    */
   snapshot_id: number | null;
   /**
-   * 来源，ai：AI生成，manual：人工创建
+   * 来源，ai：AI生成，manual：人工创建，workflow：工作流创建
    */
   source_type: Generated<string>;
   /**
@@ -2720,6 +2720,10 @@ export interface XyWapEmbedSessionActionItem {
    * 租户UID
    */
   uid: number;
+  /**
+   * 工作流节点稳定执行键，用于创建幂等
+   */
+  workflow_execution_key: Generated<string | null>;
   /**
    * 更新时间
    */

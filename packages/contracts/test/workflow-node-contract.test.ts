@@ -123,6 +123,11 @@ const draftConfigs = {
     schema: "",
     fieldMappings: [],
   },
+  "ticket-create": {
+    description: [],
+    priority: "medium",
+    ticketTitle: [{ type: "text", value: "处理客户需求" }],
+  },
 } as const satisfies Record<WorkflowNodeKind, Record<string, unknown>>;
 
 describe("workflow node contracts", () => {
@@ -174,7 +179,7 @@ describe("workflow node contracts", () => {
   it("registers every production kind with an explicit maturity", () => {
     const entries = Object.entries(workflowNodeContractRegistry);
 
-    expect(entries).toHaveLength(22);
+    expect(entries).toHaveLength(23);
     for (const [kind, contract] of entries) {
       expect(Value.Check(WorkflowNodeKindSchema, kind)).toBe(true);
       expect(["action", "composite", "core", "inference", "query"])
@@ -188,7 +193,7 @@ describe("workflow node contracts", () => {
       .toEqual(["ratio-split"]);
 
     expect(entries.filter(([, contract]) => contract.maturity === "runtime-ready").map(([kind]) => kind))
-      .toEqual(["ai-collect", "ai-intent", "audience-filter", "branch", "ratio-split", "coupon", "customer-update", "end", "handoff", "llm", "message", "message-query", "order-bind", "order-query", "order-conversion", "start", "tag", "tag-query", "wait", "wait-event", "smartsheet-write"]);
+      .toEqual(["ai-collect", "ai-intent", "audience-filter", "branch", "ratio-split", "coupon", "customer-update", "end", "handoff", "llm", "message", "message-query", "order-bind", "order-query", "order-conversion", "start", "tag", "tag-query", "wait", "wait-event", "smartsheet-write", "ticket-create"]);
     expect(entries.filter(([, contract]) => contract.maturity === "draft-ready").map(([kind]) => kind))
       .toEqual([]);
     expect(entries.filter(([, contract]) => contract.maturity === "placeholder").map(([kind]) => kind))
@@ -531,6 +536,7 @@ describe("workflow node contracts", () => {
       "order-conversion": "action",
       "ratio-split": "core",
       "smartsheet-write": "action",
+      "ticket-create": "action",
       start: "core",
       tag: "action",
       "tag-query": "query",
@@ -561,6 +567,7 @@ describe("workflow node contracts", () => {
       "order-conversion": ["mallUserId"],
       "ratio-split": [],
       "smartsheet-write": [],
+      "ticket-create": ["thirdExternalUserId"],
       start: [],
       tag: ["externalUserId"],
       "tag-query": ["externalUserId"],

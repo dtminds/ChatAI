@@ -20,6 +20,7 @@ import { smartsheetWriteDefinition } from "./smartsheet-write/definition";
 import { startNodeDefinition } from "./start/definition";
 import { tagNodeDefinition } from "./tag/definition";
 import { tagQueryNodeDefinition } from "./tag-query/definition";
+import { ticketCreateNodeDefinition } from "./ticket-create/definition";
 import { waitNodeDefinition } from "./wait/definition";
 import { waitEventNodeDefinition } from "./wait-event/definition";
 
@@ -44,6 +45,7 @@ export const workflowNodeDefinitions = {
   start: startNodeDefinition,
   tag: tagNodeDefinition,
   "tag-query": tagQueryNodeDefinition,
+  "ticket-create": ticketCreateNodeDefinition,
   wait: waitNodeDefinition,
   "wait-event": waitEventNodeDefinition,
 } satisfies {

@@ -19,6 +19,8 @@
   },
   "dependencies": {
     "@chatai/contracts": "workspace:*",
+    "@chatai/database": "workspace:*",
+    "@chatai/tickets": "workspace:*",
     "@chatai/workflow-engine": "workspace:*",
     "@chatai/workflow-runtime": "workspace:*",
     "@sinclair/typebox": "^0.34.41",

@@ -59,6 +59,11 @@ import {
   WorkflowSmartsheetWriteDraftConfigSchema,
   WorkflowSmartsheetWriteExecutionConfigSchema,
 } from "./smartsheet-write.js";
+import { TicketPrioritySchema } from "../tickets/dto.js";
+import {
+  WORKFLOW_TICKET_DESCRIPTION_MAX_LENGTH,
+  WORKFLOW_TICKET_TITLE_MAX_LENGTH,
+} from "./ticket-create.js";
 
 export const WorkflowNodeMaturitySchema = Type.Union([
   Type.Literal("placeholder"),
@@ -222,6 +227,14 @@ export const WorkflowHandoffExecutionConfigSchema = Type.Object({
   customerMessage: WorkflowVariableContentSchema,
   operatorMessage: WorkflowVariableContentSchema,
 }, { additionalProperties: false });
+
+export const WorkflowTicketCreateDraftConfigSchema = Type.Object({
+  description: WorkflowVariableContentSchema,
+  priority: TicketPrioritySchema,
+  ticketTitle: WorkflowVariableContentSchema,
+}, { additionalProperties: false });
+
+export const WorkflowTicketCreateExecutionConfigSchema = WorkflowTicketCreateDraftConfigSchema;
 
 export const WORKFLOW_TAG_MAX_COUNT = 5;
 
@@ -585,6 +598,12 @@ export type WorkflowTimeRange = Static<typeof WorkflowTimeRangeSchema>;
 export type WorkflowMessageQueryConfig = Static<typeof WorkflowMessageQueryConfigSchema>;
 export type WorkflowHandoffDraftConfig = Static<typeof WorkflowHandoffDraftConfigSchema>;
 export type WorkflowHandoffExecutionConfig = Static<typeof WorkflowHandoffExecutionConfigSchema>;
+export type WorkflowTicketCreateDraftConfig = Static<
+  typeof WorkflowTicketCreateDraftConfigSchema
+>;
+export type WorkflowTicketCreateExecutionConfig = Static<
+  typeof WorkflowTicketCreateExecutionConfigSchema
+>;
 export type WorkflowTagOperation = Static<typeof WorkflowTagOperationSchema>;
 export type WorkflowTagDraftConfig = Static<typeof WorkflowTagDraftConfigSchema>;
 export type WorkflowTagExecutionConfig = Static<typeof WorkflowTagExecutionConfigSchema>;
@@ -777,6 +796,13 @@ export const workflowNodeContractRegistry = {
     WorkflowSmartsheetWriteDraftConfigSchema,
     WorkflowSmartsheetWriteExecutionConfigSchema,
   ),
+  "ticket-create": runtimeReadyContract(
+    "action",
+    1,
+    WorkflowTicketCreateDraftConfigSchema,
+    WorkflowTicketCreateExecutionConfigSchema,
+    ["thirdExternalUserId"],
+  ),
 } satisfies Record<WorkflowNodeKind, WorkflowNodeContractDefinition>;
 
 export type WorkflowNodeExecutionClassFor<TKind extends WorkflowNodeKind> =
@@ -849,6 +875,7 @@ export function isWorkflowNodeExecutionConfig(
   if (kind === "customer-update") return isWorkflowCustomerUpdateExecutionConfigComplete(value);
   if (kind === "order-query") return isWorkflowOrderQueryExecutionConfigComplete(value);
   if (kind === "smartsheet-write") return isWorkflowSmartsheetWriteExecutionConfigComplete(value);
+  if (kind === "ticket-create") return isWorkflowTicketCreateExecutionConfigComplete(value);
   const schema = getWorkflowNodeContract(kind).executionConfigSchema;
   return schema !== null
     && Value.Check(schema, value)
@@ -964,6 +991,21 @@ export function isWorkflowHandoffExecutionConfigComplete(
   );
 }
 
+export function isWorkflowTicketCreateExecutionConfigComplete(
+  value: unknown,
+): value is WorkflowTicketCreateExecutionConfig {
+  if (!Value.Check(WorkflowTicketCreateExecutionConfigSchema, value)) return false;
+  return isWorkflowVariableContentWithinLimit(
+    value.ticketTitle,
+    WORKFLOW_TICKET_TITLE_MAX_LENGTH,
+    true,
+  ) && isWorkflowVariableContentWithinLimit(
+    value.description,
+    WORKFLOW_TICKET_DESCRIPTION_MAX_LENGTH,
+    false,
+  );
+}
+
 export function isWorkflowMessageExecutionConfigComplete(
   value: unknown,
 ): value is WorkflowMessageExecutionConfig {
@@ -1066,6 +1108,13 @@ export function getWorkflowNodeOutputContracts(
         valueType: { kind: "string" },
       },
     ];
+  }
+  if (kind === "ticket-create") {
+    return [{
+      key: "ticketId",
+      usages: ["variable", "message-content"],
+      valueType: { kind: "string" },
+    }];
   }
   if (kind === "ai-collect" && Value.Check(WorkflowAiCollectFieldsSchema, config.fields)) {
     const fields = config.fields as WorkflowAiCollectField[];

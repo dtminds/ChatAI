@@ -49,10 +49,12 @@ export function SmartsheetSourceDialog({
   const [options, setOptions] = useState(() => getSmartsheetFieldOptions(value.schema, value.fieldMappings));
   const [selectedIds, setSelectedIds] = useState(() => value.fieldMappings.map(field => field.fieldId));
   const [editingSchema, setEditingSchema] = useState(() => !getSmartsheetFieldOptions(value.schema));
+  const [schemaBeforeEditing, setSchemaBeforeEditing] = useState(value.schema);
   const [schemaError, setSchemaError] = useState<string | null>(null);
   const selectedOptions = (options ?? []).filter(option => option.mapping && selectedIds.includes(option.fieldId));
   const tableUrlValid = !tableUrl.trim() || isValidSmartsheetTableUrl(tableUrl.trim());
   const webhookValid = isValidSmartsheetWebhookUrl(webhookUrl);
+  const canReturnToFieldSelection = options !== null;
   const canConfirm = !editingSchema && webhookValid && tableUrlValid
     && selectedOptions.length > 0 && selectedOptions.length <= WORKFLOW_SMARTSHEET_WRITE_FIELD_MAX_COUNT;
   const optionById = new Map((options ?? []).map(option => [option.fieldId, option]));
@@ -70,6 +72,19 @@ export function SmartsheetSourceDialog({
     }
     setOptions(nextOptions);
     setSelectedIds(selectedIds.filter(id => nextOptions.some(option => option.fieldId === id && option.mapping)));
+    setSchemaBeforeEditing(schema);
+    setSchemaError(null);
+    setEditingSchema(false);
+  }
+
+  function startSchemaEditing() {
+    setSchemaBeforeEditing(schema);
+    setSchemaError(null);
+    setEditingSchema(true);
+  }
+
+  function cancelSchemaEditing() {
+    setSchema(schemaBeforeEditing);
     setSchemaError(null);
     setEditingSchema(false);
   }
@@ -126,15 +141,25 @@ export function SmartsheetSourceDialog({
 
           <div className="space-y-3">
             <div className="flex items-center justify-between gap-2">
-              <span className="text-sm font-medium">字段选择</span>
               {!editingSchema ? (
-                <Button type="button" variant="ghost" size="sm" onClick={() => setEditingSchema(true)}>同步schema</Button>
+                <>
+                  <span className="text-sm font-medium">字段选择</span>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="h-6 px-2 text-xs"
+                    onClick={startSchemaEditing}
+                  >
+                    同步字段
+                  </Button>
+                </>
               ) : null}
             </div>
             {editingSchema ? (
               <div className="space-y-4">
                 <div className="space-y-2">
-                  <Label htmlFor="smartsheet-schema">Schema JSON</Label>
+                  <Label htmlFor="smartsheet-schema">示例数据</Label>
                   <Textarea
                     id="smartsheet-schema"
                     aria-invalid={Boolean(schemaError) || undefined}
@@ -150,7 +175,6 @@ export function SmartsheetSourceDialog({
                   />
                   {schemaError ? <p className="text-xs text-destructive">{schemaError}</p> : null}
                 </div>
-                <Button type="button" disabled={!schema.trim()} onClick={parseSchema}>解析</Button>
               </div>
             ) : (
               <div className="space-y-3">
@@ -190,22 +214,45 @@ export function SmartsheetSourceDialog({
           </div>
         </div>
         <DialogFooter className="shrink-0 flex-row flex-wrap items-center justify-between gap-3 border-t px-6 py-4 sm:justify-between">
-          <span className="text-xs text-muted-foreground">已选 {selectedOptions.length} / {WORKFLOW_SMARTSHEET_WRITE_FIELD_MAX_COUNT}</span>
+          {editingSchema ? (
+            <Button asChild variant="link" className="h-auto p-0 text-xs text-muted-foreground hover:text-foreground">
+              <a
+                href="https://developer.work.weixin.qq.com/document/path/101239"
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                了解如何通过 Webhook 地址推送数据
+              </a>
+            </Button>
+          ) : (
+            <span className="text-xs text-muted-foreground">已选 {selectedOptions.length} / {WORKFLOW_SMARTSHEET_WRITE_FIELD_MAX_COUNT}</span>
+          )}
           <div className="flex items-center gap-2">
-            <Button type="button" variant="outline" onClick={onClose}>取消</Button>
-            <Button
-              type="button"
-              disabled={!canConfirm}
-              onClick={() => {
-                if (!canConfirm) return;
-                onConfirm({
-                  webhookUrl: webhookUrl.trim(),
-                  tableUrl: tableUrl.trim(),
-                  schema,
-                  fieldMappings: selectedOptions.flatMap(option => option.mapping ? [option.mapping] : []),
-                });
-              }}
-            >确认</Button>
+            {editingSchema ? (
+              <>
+                {canReturnToFieldSelection ? (
+                  <Button type="button" variant="outline" onClick={cancelSchemaEditing}>返回</Button>
+                ) : null}
+                <Button type="button" disabled={!schema.trim()} onClick={parseSchema}>解析</Button>
+              </>
+            ) : (
+              <>
+                <Button type="button" variant="outline" onClick={onClose}>取消</Button>
+                <Button
+                  type="button"
+                  disabled={!canConfirm}
+                  onClick={() => {
+                    if (!canConfirm) return;
+                    onConfirm({
+                      webhookUrl: webhookUrl.trim(),
+                      tableUrl: tableUrl.trim(),
+                      schema,
+                      fieldMappings: selectedOptions.flatMap(option => option.mapping ? [option.mapping] : []),
+                    });
+                  }}
+                >确认</Button>
+              </>
+            )}
           </div>
         </DialogFooter>
       </DialogContent>

@@ -59,19 +59,33 @@ describe("workflow Smartsheet Write node", () => {
     const onNodeChange = vi.fn();
     render(<StatefulSmartsheetWriteConfig onNodeChange={onNodeChange} />);
 
-    expect(screen.queryByLabelText("Schema JSON")).not.toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "配置智能表格" }));
+    const webhookGuideLink = screen.getByRole("link", { name: "了解如何通过 Webhook 地址推送数据" });
+    expect(webhookGuideLink)
+      .toHaveAttribute("href", "https://developer.work.weixin.qq.com/document/path/101239");
+    expect(webhookGuideLink)
+      .toHaveAttribute("target", "_blank");
+    expect(webhookGuideLink)
+      .toHaveAttribute("rel", "noopener noreferrer");
+    expect(screen.queryByText(/已选 \d+ \/ 20/)).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "确认" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "返回" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "解析" })).toBeDisabled();
     fireEvent.change(screen.getByLabelText("Webhook 地址"), {
       target: { value: COMPLETE_WEBHOOK_URL },
     });
     fireEvent.change(screen.getByLabelText("智能表格URL"), {
       target: { value: "https://doc.weixin.qq.com/sheet/example" },
     });
-    fireEvent.change(screen.getByLabelText("Schema JSON"), {
+    fireEvent.change(screen.getByLabelText("示例数据"), {
       target: { value: COMPLETE_SCHEMA },
     });
     await user.click(screen.getByRole("button", { name: "解析" }));
-    expect(screen.queryByLabelText("Schema JSON")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("示例数据")).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "了解如何通过 Webhook 地址推送数据" })).not.toBeInTheDocument();
+    expect(screen.getByText(/已选 \d+ \/ 20/)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "返回" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "确认" })).toBeDisabled();
     expect(screen.getByLabelText("Webhook 地址")).toHaveValue(COMPLETE_WEBHOOK_URL);
     expect(screen.getByLabelText("智能表格URL")).toHaveValue("https://doc.weixin.qq.com/sheet/example");
     expect(screen.queryByRole("textbox", { name: "搜索字段" })).not.toBeInTheDocument();
@@ -188,9 +202,9 @@ describe("workflow Smartsheet Write node", () => {
     await user.click(screen.getByRole("button", { name: "编辑" }));
     await user.click(screen.getByRole("checkbox", { name: "姓名" }));
     fireEvent.change(screen.getByLabelText("智能表格URL"), { target: { value: "https://doc.weixin.qq.com/sheet/changed" } });
-    await user.click(screen.getByRole("button", { name: "同步schema" }));
+    await user.click(screen.getByRole("button", { name: "同步字段" }));
     fireEvent.change(screen.getByLabelText("Webhook 地址"), { target: { value: `${COMPLETE_WEBHOOK_URL}-new` } });
-    fireEvent.change(screen.getByLabelText("Schema JSON"), { target: { value: '{"f3":{"title":"新增","type":"text"}}' } });
+    fireEvent.change(screen.getByLabelText("示例数据"), { target: { value: '{"f3":{"title":"新增","type":"text"}}' } });
     await user.click(screen.getByRole("button", { name: "解析" }));
     await user.click(screen.getByRole("checkbox", { name: "新增" }));
     if (closeAction === "Escape") await user.keyboard("{Escape}");
@@ -203,9 +217,9 @@ describe("workflow Smartsheet Write node", () => {
     await user.click(screen.getByRole("button", { name: "编辑" }));
     expect(screen.getByRole("checkbox", { name: "姓名" })).toBeChecked();
     expect(screen.queryByRole("checkbox", { name: "新增" })).not.toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "同步schema" }));
+    await user.click(screen.getByRole("button", { name: "同步字段" }));
     expect(screen.getByLabelText("Webhook 地址")).toHaveValue(COMPLETE_WEBHOOK_URL);
-    expect(screen.getByLabelText("Schema JSON")).toHaveValue(COMPLETE_SCHEMA);
+    expect(screen.getByLabelText("示例数据")).toHaveValue(COMPLETE_SCHEMA);
   });
 
   it("selects any 20 fields from the complete catalog without search", async () => {
@@ -257,22 +271,35 @@ describe("workflow Smartsheet Write node", () => {
       ],
     })} onNodeChange={onNodeChange} />);
     await user.click(screen.getByRole("button", { name: "编辑" }));
-    await user.click(screen.getByRole("button", { name: "同步schema" }));
+    await user.click(screen.getByRole("button", { name: "同步字段" }));
     expect(screen.queryByRole("checkbox")).not.toBeInTheDocument();
     expect(screen.getByLabelText("Webhook 地址")).toHaveValue(COMPLETE_WEBHOOK_URL);
     expect(screen.getByLabelText("智能表格URL")).toBeInTheDocument();
-    fireEvent.change(screen.getByLabelText("Schema JSON"), { target: { value: "{" } });
+    fireEvent.change(screen.getByLabelText("示例数据"), { target: { value: "{" } });
+    await user.click(screen.getByRole("button", { name: "返回" }));
+    expect(screen.getByRole("checkbox", { name: "姓名" })).toBeChecked();
+    expect(screen.getByRole("checkbox", { name: "金额" })).toBeChecked();
+    expect(screen.queryByRole("checkbox", { name: "新字段" })).not.toBeInTheDocument();
+    expect(screen.getByText(/已选 3 \/ 20/)).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "同步字段" }));
+    expect(screen.getByLabelText("示例数据")).toHaveValue(JSON.stringify({
+      f1: { title: "姓名", type: "text" },
+      f2: { title: "金额", type: "number" },
+      f3: { title: "旧字段", type: "text" },
+    }));
+    fireEvent.change(screen.getByLabelText("示例数据"), { target: { value: "{" } });
     await user.click(screen.getByRole("button", { name: "解析" }));
     expect(screen.getByText("Schema 格式不正确")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "确认" })).toBeDisabled();
+    expect(screen.queryByRole("button", { name: "确认" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "解析" })).not.toBeDisabled();
     expect(onNodeChange).not.toHaveBeenCalled();
-    fireEvent.change(screen.getByLabelText("Schema JSON"), { target: { value: JSON.stringify({
+    fireEvent.change(screen.getByLabelText("示例数据"), { target: { value: JSON.stringify({
       f1: { title: "客户姓名", type: "text" },
       f2: { title: "金额", type: "text" },
       f4: { title: "新字段", type: "text" },
     }) } });
     expect(screen.queryByText("Schema 格式不正确")).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "确认" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "解析" })).not.toBeDisabled();
     await user.click(screen.getByRole("button", { name: "解析" }));
     expect(screen.getByRole("checkbox", { name: "客户姓名" })).toBeChecked();
     expect(screen.getByRole("checkbox", { name: "金额" })).toBeChecked();

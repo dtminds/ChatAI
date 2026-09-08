@@ -97,6 +97,7 @@ export function hasPermission(
 const WORKFLOW_TEMPLATE_MANAGER_SUBJECTS: ReadonlySet<string> = new Set([
   "101:2",
   "101:3",
+  "2:139",
   "272:1",
   "272:4",
 ]);

@@ -1143,20 +1143,26 @@ describe("WorkflowService", () => {
     })).resolves.toMatchObject({ draftVersion: created.draftVersion + 1 });
   });
 
-  it("rejects undeclared node draft fields", async () => {
+  it("saves known draft fields while dropping unread fields", async () => {
     const service = createService();
     const created = await service.create(operator, { workflowType: "chatai_sop" });
     const draft = {
       ...created.draft,
       nodes: created.draft.nodes.map(node => node.id === "start"
-        ? { ...node, data: { ...node.data, unexpectedField: true } }
+        ? { ...node, data: { ...node.data, seatIds: [101], pushAccountStrategy: "earliest-added", unexpectedField: true } }
         : node),
     };
 
-    await expect(service.saveDraft(operator, created.id, {
+    const saved = await service.saveDraft(operator, created.id, {
       draft,
       expectedDraftVersion: created.draftVersion,
-    })).rejects.toMatchObject({ code: "WORKFLOW_DRAFT_NODE_CONFIG_INVALID", statusCode: 400 });
+    });
+    const reloaded = await service.get(operator, created.id);
+    expect(reloaded.draft).toEqual(saved.draft);
+    const start = reloaded.draft.nodes.find(node => node.id === "start")!;
+    expect(start.data).toMatchObject({ seatIds: [101], kind: "start" });
+    expect(start.data).not.toHaveProperty("unexpectedField");
+    expect(start.data).not.toHaveProperty("pushAccountStrategy");
   });
 
   it("rejects stale node draft schema versions", async () => {

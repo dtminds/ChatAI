@@ -142,6 +142,24 @@ export type WorkflowEntryConsumeResult = {
   failureStage?: WorkflowEntryFailureStage;
 };
 
+export type WorkflowEntryAdmissionFailure = {
+  entryEventId: string;
+  errorCode: string;
+  errorMessage?: string;
+  nodeId?: string;
+  reason?: string;
+  retryable: boolean;
+  revision: number;
+  schemaErrors?: Array<{ message: string; path: string }>;
+  uid: number;
+  workflowId: string;
+};
+
+type AdmissionFailureObserver = (
+  message: WorkflowBrokerMessage,
+  failure: WorkflowEntryAdmissionFailure,
+) => void;
+
 export type WorkflowEntryFailureStage =
   | "ack"
   | "dlq_publish"
@@ -157,6 +175,7 @@ export function createEntryConsumerHandler(input: {
   inboxRepository: WorkflowInboxRepository;
   messageReader?: WorkflowEntryMessageReader;
   now?: () => Date;
+  onAdmissionFailure?: AdmissionFailureObserver;
   publishToDeadLetter?: (
     message: WorkflowBrokerMessage,
     code: WorkflowEntryConsumeResultCode,
@@ -316,6 +335,8 @@ export function createEntryConsumerHandler(input: {
               || result.kind === "not-found") deduplicated += 1;
             else if (result.kind !== "not-matched") runtimeRejected += 1;
           } catch (error) {
+            observeAdmissionFailure(input.onAdmissionFailure, message, parsed.event,
+              candidate.kind === "start" ? candidate.binding : candidate.subscription, error);
             if (classifyEntryError(error) === "nack") {
               admissionNack ??= error;
               continue;
@@ -418,6 +439,7 @@ async function consumeDirectEntry(
     bindingReader: WorkflowTriggerBindingReader;
     inboxRepository: WorkflowInboxRepository;
     now?: () => Date;
+    onAdmissionFailure?: AdmissionFailureObserver;
     runtimeService: WorkflowEntryRuntimeService;
   },
 ): Promise<WorkflowEntryConsumeResult> {
@@ -466,6 +488,7 @@ async function consumeDirectEntry(
             ? "deduplicated"
             : "admitted";
       } catch (error) {
+        observeAdmissionFailure(input.onAdmissionFailure, message, event, matchedBinding, error);
         if (classifyEntryError(error) === "nack") throw error;
         code = "runtime_rejected";
       }
@@ -535,6 +558,7 @@ export async function startEntryConsumer(input: {
     inboxRepository: input.inboxRepository,
     messageReader: input.messageReader,
     now: input.now,
+    onAdmissionFailure: observer?.recordAdmissionFailure,
     publishToDeadLetter: deadLetterTopic
       ? async (message, code) => {
           await input.broker.publish({
@@ -767,6 +791,41 @@ async function rejectPermanentEntry(
   } catch (error) {
     message.negativeAck();
     return createTemporaryFailure(error, failureStage);
+  }
+}
+
+function observeAdmissionFailure(
+  observe: AdmissionFailureObserver | undefined,
+  message: WorkflowBrokerMessage,
+  event: Pick<WorkflowEntryEvent, "uid" | "eventId">,
+  target: { revision: number; workflowId: string },
+  error: unknown,
+) {
+  if (!observe) return;
+  // Observability must not interrupt fan-out or change the broker decision.
+  try {
+    const details = error instanceof WorkflowRuntimeError ? error.details : undefined;
+    const schemaErrors = Array.isArray(details?.errors)
+      ? details.errors.slice(0, 12).flatMap(item => {
+          if (item === null || typeof item !== "object"
+            || typeof item.path !== "string" || typeof item.message !== "string") return [];
+          return [{ path: item.path.slice(0, 256), message: item.message.slice(0, 512) }];
+        })
+      : undefined;
+    observe(message, {
+      revision: target.revision,
+      workflowId: target.workflowId,
+      entryEventId: event.eventId,
+      errorCode: getStableErrorCode(error),
+      ...(error instanceof Error ? { errorMessage: error.message.slice(0, 512) } : {}),
+      ...(typeof details?.nodeId === "string" ? { nodeId: details.nodeId.slice(0, 128) } : {}),
+      ...(typeof details?.reason === "string" ? { reason: details.reason.slice(0, 128) } : {}),
+      retryable: classifyEntryError(error) === "nack",
+      ...(schemaErrors ? { schemaErrors } : {}),
+      uid: event.uid,
+    });
+  } catch {
+    // A failed logger cannot turn an isolated admission error into an event failure.
   }
 }
 

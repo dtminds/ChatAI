@@ -2089,7 +2089,6 @@ function requireStartConfig(
       500,
       {
         chatAiCheck: Value.Check(WorkflowChatAiStartConfigSchema, normalizedConfig),
-        config: normalizedConfig,
         configTypes: describeJsonTypes(normalizedConfig),
         errors: collectSchemaErrors(WorkflowStartConfigSchema, normalizedConfig),
         kind: node.kind,
@@ -2105,12 +2104,11 @@ function requireStartConfig(
 }
 
 function collectSchemaErrors(schema: Parameters<typeof Value.Errors>[0], value: unknown) {
-  const errors: Array<{ message: string; path: string; value: unknown }> = [];
+  const errors: Array<{ message: string; path: string }> = [];
   for (const error of Value.Errors(schema, value)) {
     errors.push({
       message: error.message,
       path: error.path,
-      value: error.value,
     });
     if (errors.length >= 12) break;
   }

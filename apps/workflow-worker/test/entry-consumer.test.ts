@@ -861,7 +861,43 @@ describe("workflow entry consumer", () => {
     );
   });
 
+  it("logs a rejected workflow through the production observer even when another binding succeeds", async () => {
+    const broker = new FakeWorkflowBroker();
+    const logger = { debug: vi.fn(), error: vi.fn(), info: vi.fn(), warn: vi.fn() };
+    const startRun = vi.fn()
+      .mockRejectedValueOnce(new WorkflowRuntimeError(
+        "WORKFLOW_START_CONFIG_INVALID", "Workflow Start 配置无效", 500,
+        { reason: "schema", nodeId: "start", config: { secret: "not-for-logs" },
+          errors: [{ path: "/seatIds", message: "Expected array", value: "not-for-logs" }] },
+      ))
+      .mockResolvedValueOnce({ deduplicated: false, kind: "success" });
+    const consumer = await startEntryConsumer({
+      bindingReader: { listActiveTriggerBindings: vi.fn(async () => [binding("6"), binding("67")]) },
+      broker, eventCatalog, inboxRepository: createInboxRepository(), logger,
+      maxInFlight: 10, messageReader: createMessageReader(), runtimeService: { startRun },
+      subscriptionReader: createSubscriptionReader(), subscription: "entry-sub", topic: "entry",
+    });
+    try {
+      await broker.publish({ data: Buffer.from(JSON.stringify(event())), topic: "entry" });
+      await broker.drain();
+      expect(startRun).toHaveBeenCalledTimes(2);
+      expect(startRun).toHaveBeenNthCalledWith(2, expect.objectContaining({ workflowId: "67" }));
+      expect(logger.warn).toHaveBeenCalledWith(expect.objectContaining({
+        event: "workflow.entry.admission.failed", workflowId: "6", revision: 2, uid: 9,
+        entryEventId: "event-1", errorCode: "WORKFLOW_START_CONFIG_INVALID", retryable: false,
+        nodeId: "start", reason: "schema", schemaErrors: [{ path: "/seatIds", message: "Expected array" }],
+      }), "workflow entry admission failed");
+      expect(JSON.stringify(logger.warn.mock.calls)).not.toContain("not-for-logs");
+    } finally {
+      await consumer.close();
+      await broker.close();
+    }
+    expect(logger.info).toHaveBeenCalledWith(expect.objectContaining({ admitted: 1, nacked: 0, admissionFailed: 1 }),
+      "workflow entry consume summary");
+  });
+
   it("continues fan-out after one matched workflow has invalid Start config", async () => {
+    const onAdmissionFailure = vi.fn(() => { throw new Error("logger unavailable"); });
     const startRun = vi.fn()
       .mockRejectedValueOnce(new WorkflowRuntimeError(
         "WORKFLOW_START_CONFIG_INVALID",
@@ -874,6 +910,7 @@ describe("workflow entry consumer", () => {
       bindingReader: { listActiveTriggerBindings: vi.fn(async () => [binding("6"), binding("67")]) },
       eventCatalog,
       inboxRepository: createInboxRepository(),
+      onAdmissionFailure,
       runtimeService: { startRun },
       subscriptionReader: createSubscriptionReader(),
     });
@@ -885,9 +922,11 @@ describe("workflow entry consumer", () => {
     expect(startRun).toHaveBeenNthCalledWith(2, expect.objectContaining({ workflowId: "67" }));
     expect(message.ack).toHaveBeenCalledTimes(1);
     expect(message.negativeAck).not.toHaveBeenCalled();
+    expect(onAdmissionFailure).toHaveBeenCalledOnce();
   });
 
   it("still admits later workflows when an earlier matched workflow hits a transient failure", async () => {
+    const onAdmissionFailure = vi.fn();
     const startRun = vi.fn()
       .mockRejectedValueOnce(new Error("database unavailable"))
       .mockResolvedValueOnce({ deduplicated: false, kind: "success" });
@@ -896,6 +935,7 @@ describe("workflow entry consumer", () => {
       bindingReader: { listActiveTriggerBindings: vi.fn(async () => [binding("6"), binding("67")]) },
       eventCatalog,
       inboxRepository: createInboxRepository(),
+      onAdmissionFailure,
       runtimeService: { startRun },
       subscriptionReader: createSubscriptionReader(),
     });
@@ -913,6 +953,9 @@ describe("workflow entry consumer", () => {
     expect(startRun).toHaveBeenNthCalledWith(2, expect.objectContaining({ workflowId: "67" }));
     expect(message.ack).not.toHaveBeenCalled();
     expect(message.negativeAck).toHaveBeenCalledTimes(1);
+    expect(onAdmissionFailure).toHaveBeenCalledWith(message, expect.objectContaining({
+      workflowId: "6", revision: 2, retryable: true, errorCode: "UNEXPECTED_ERROR",
+    }));
   });
 
   it("continues fan-out after one matched workflow becomes paused", async () => {
@@ -1167,25 +1210,23 @@ describe("workflow entry consumer", () => {
     });
   });
 
-  it("ACKs a lone Start config failure instead of retrying the entry message", async () => {
-    const message = createBrokerMessage(event());
+  it.each(["event", "direct"])("observes and ACKs a lone Start config failure for %s entry", async (mode) => {
+    const message = createBrokerMessage(mode === "direct" ? directEvent() : event());
+    const onAdmissionFailure = vi.fn();
+    const rejectStart = vi.fn(async () => {
+      throw new WorkflowRuntimeError(
+        "WORKFLOW_START_CONFIG_INVALID", "Workflow Start 配置无效", 500,
+        { reason: "schema", workflowId: "31" },
+      );
+    });
     const handler = createEntryConsumerHandler({
-      bindingReader: { listActiveTriggerBindings: vi.fn(async () => [binding("31")]) },
+      bindingReader: { listActiveTriggerBindings: vi.fn(async () => [
+        mode === "direct" ? directBinding("31") : binding("31"),
+      ]) },
       eventCatalog,
       inboxRepository: createInboxRepository(),
-      runtimeService: {
-        startRun: vi.fn(async () => {
-          throw new WorkflowRuntimeError(
-            "WORKFLOW_START_CONFIG_INVALID",
-            "Workflow Start 配置无效",
-            500,
-            {
-              reason: "schema",
-              workflowId: "31",
-            },
-          );
-        }),
-      },
+      onAdmissionFailure,
+      runtimeService: { startRun: rejectStart, startDirectRun: rejectStart },
       subscriptionReader: createSubscriptionReader(),
     });
 
@@ -1195,6 +1236,10 @@ describe("workflow entry consumer", () => {
     });
     expect(message.ack).toHaveBeenCalledTimes(1);
     expect(message.negativeAck).not.toHaveBeenCalled();
+    expect(onAdmissionFailure).toHaveBeenCalledWith(message, expect.objectContaining({
+      workflowId: "31", errorCode: "WORKFLOW_START_CONFIG_INVALID", retryable: false,
+      revision: mode === "direct" ? 1 : 2,
+    }));
   });
 });
 

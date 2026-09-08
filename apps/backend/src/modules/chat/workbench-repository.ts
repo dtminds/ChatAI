@@ -57,7 +57,9 @@ import {
   mapConversationRow,
   mapMessageRow,
   mapSeatRow,
+  getUnreadLookbackStartMs,
   readDownloadStatus,
+  readUnreadCountInLookback,
   type ConversationRow,
   type MessageHydrationSources,
   type MessageRow,
@@ -3593,7 +3595,12 @@ export class WorkbenchRepository {
           .onRef("conversation.third_userid", "=", "seat.third_userid")
           .onRef("conversation.uid", "=", "seat.uid")
           .onRef("conversation.platform", "=", "seat.platform")
-          .on("conversation.biz_status", "=", BIZ_STATUS_ACTIVE),
+          .on("conversation.biz_status", "=", BIZ_STATUS_ACTIVE)
+          .on(
+            "conversation.last_msgtime",
+            ">=",
+            getUnreadLookbackStartMs(),
+          ),
       )
       .select((expressionBuilder) => [
         "seat.id as id",
@@ -3780,7 +3787,13 @@ export class WorkbenchRepository {
     }
 
     if (options?.unreadOnly) {
-      query = query.where("conversation.unread_cnt", ">", 0);
+      query = query
+        .where("conversation.unread_cnt", ">", 0)
+        .where(
+          "conversation.last_msgtime",
+          ">=",
+          getUnreadLookbackStartMs(),
+        );
     }
 
     if (cursor) {
@@ -3880,6 +3893,7 @@ export class WorkbenchRepository {
       .where("platform", "=", seat.platform)
       .where("third_userid", "=", seat.third_userid)
       .where("biz_status", "=", BIZ_STATUS_ACTIVE)
+      .where("last_msgtime", ">=", getUnreadLookbackStartMs())
       .executeTakeFirst();
 
     return {
@@ -4011,6 +4025,7 @@ export class WorkbenchRepository {
         "conversation.third_group_origin_userid as third_group_origin_userid",
         "conversation.third_userid as third_userid",
         "conversation.unread_cnt as unread_cnt",
+        "conversation.last_msgtime as last_msgtime",
         "conversation.uid as uid",
         "group_seat.name as group_name",
         "group_seat.remark as group_remark",
@@ -4032,6 +4047,11 @@ export class WorkbenchRepository {
           .whereRef("unread_conversation.platform", "=", "conversation.platform")
           .whereRef("unread_conversation.third_userid", "=", "conversation.third_userid")
           .where("unread_conversation.biz_status", "=", BIZ_STATUS_ACTIVE)
+          .where(
+            "unread_conversation.last_msgtime",
+            ">=",
+            getUnreadLookbackStartMs(),
+          )
           .as("seat_unread_count"),
       ])
       .where("conversation.id", "=", conversationNumericId);
@@ -4070,7 +4090,7 @@ export class WorkbenchRepository {
             : undefined,
           thirdUserId: row.third_userid,
           uid: row.uid,
-          unreadCount: Number(row.unread_cnt ?? 0),
+          unreadCount: readUnreadCountInLookback(row.unread_cnt, row.last_msgtime),
         }
       : undefined;
   }
@@ -4197,6 +4217,7 @@ export class WorkbenchRepository {
       .where("platform", "=", input.platform)
       .where("biz_status", "=", BIZ_STATUS_ACTIVE)
       .where("id", "!=", conversationNumericId)
+      .where("last_msgtime", ">=", getUnreadLookbackStartMs())
       .where("third_userid", "=", (expressionBuilder) =>
         expressionBuilder
           .selectFrom("xy_wap_embed_user_seat")
@@ -5268,6 +5289,7 @@ export class WorkbenchRepository {
                 .where("platform", "=", platform)
                 .where("third_userid", "in", batchThirdUserIds)
                 .where("biz_status", "=", BIZ_STATUS_ACTIVE)
+                .where("last_msgtime", ">=", getUnreadLookbackStartMs())
                 .groupBy(["uid", "platform", "third_userid", "chat_type"])
                 .execute() as Promise<SeatConversationAggregateRow[]>,
           );

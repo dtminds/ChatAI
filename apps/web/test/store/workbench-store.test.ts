@@ -93,6 +93,8 @@ function createConversationSummaryDto(
   conversationId: string,
   overrides: Partial<WorkbenchConversationSummaryDto> = {},
 ): WorkbenchConversationSummaryDto {
+  const unreadCount = overrides.unreadCount ?? 0;
+
   return {
     conversationAIHostingSwitch: false,
     conversationId,
@@ -108,8 +110,9 @@ function createConversationSummaryDto(
     seatId: "drc",
     thirdExternalUserId: `external-${conversationId}`,
     thirdUserId: "third-user-drc",
-    unreadCount: 0,
+    unreadCount,
     ...overrides,
+    hasStoredUnread: overrides.hasStoredUnread ?? unreadCount > 0,
   };
 }
 
@@ -361,6 +364,42 @@ describe("useWorkbenchStore", () => {
     expect(markConversationRead).not.toHaveBeenCalled();
   });
 
+  it("marks a conversation read when opening it with stored unread outside the lookback", async () => {
+    const baseService = createMockWorkbenchService();
+    const markConversationRead = vi.fn(baseService.markConversationRead);
+
+    setWorkbenchService({
+      ...baseService,
+      markConversationRead,
+    });
+    await useWorkbenchStore.getState().initializeWorkbench();
+    markConversationRead.mockClear();
+    useWorkbenchStore.setState((state) => ({
+      conversationListsByScope: {
+        ...state.conversationListsByScope,
+        drc: (state.conversationListsByScope.drc ?? []).map((conversation) =>
+          conversation.id === "conv-002"
+            ? { ...conversation, hasStoredUnread: true, unread: 0 }
+            : conversation,
+        ),
+      },
+    }));
+
+    await useWorkbenchStore.getState().setActiveConversation("conv-002");
+
+    expect(markConversationRead).toHaveBeenCalledWith("conv-002");
+    expect(
+      useWorkbenchStore
+        .getState()
+        .conversationListsByScope.drc.find(
+          (conversation) => conversation.id === "conv-002",
+        ),
+    ).toMatchObject({
+      hasStoredUnread: false,
+      unread: 0,
+    });
+  });
+
   it("deduplicates concurrent mark-read requests for the same conversation", async () => {
     const baseService = createMockWorkbenchService();
 
@@ -410,8 +449,11 @@ describe("useWorkbenchStore", () => {
         .getState()
         .conversationListsByScope.drc.find(
           (conversation) => conversation.id === "conv-001",
-        )?.unread,
-    ).toBe(0);
+        ),
+    ).toMatchObject({
+      hasStoredUnread: false,
+      unread: 0,
+    });
   });
 
   it("refreshes profile fields when opening an unverified conversation", async () => {
@@ -1868,6 +1910,7 @@ describe("useWorkbenchStore", () => {
     expect(state.messagesByConversationId["conv-001"].length).toBeGreaterThan(0);
     expect(state.conversationListsByScope.drc[0]).toMatchObject({
       id: "conv-001",
+      hasStoredUnread: false,
       unread: 0,
     });
     expect(state.accounts.find((account) => account.id === "drc")?.unreadCount).toBe(11);
@@ -6736,6 +6779,7 @@ describe("useWorkbenchStore", () => {
               replied: false,
               seatId: "drc",
               unreadCount: 9,
+              hasStoredUnread: true,
             },
             {
               conversationAIHostingSwitch: false,
@@ -6751,6 +6795,7 @@ describe("useWorkbenchStore", () => {
               replied: false,
               seatId: "drc",
               unreadCount: 5,
+              hasStoredUnread: true,
             },
           ],
           unreadSummary: {
@@ -11071,6 +11116,7 @@ describe("useWorkbenchStore", () => {
 
     expect(observedConversationIds).toEqual(["conv-002"]);
     expect(state.conversationListsByScope.drc.find((conversation) => conversation.id === "conv-002")).toMatchObject({
+      hasStoredUnread: true,
       unread: 1,
     });
     expect(state.accounts.find((account) => account.id === "drc")?.unreadCount).toBe(12);
@@ -11518,6 +11564,7 @@ describe("useWorkbenchStore", () => {
       thirdExternalUserId: "external-search-001",
       thirdUserId: "third-user-drc",
       conversationAIHostingSwitch: false,
+      hasStoredUnread: false,
     };
     const observedPayloads: unknown[] = [];
 
@@ -11684,6 +11731,7 @@ describe("useWorkbenchStore", () => {
       thirdUserId: "third-user-drc",
       unreadCount: 0,
       conversationAIHostingSwitch: false,
+      hasStoredUnread: false,
     });
     await selectPromise;
 
@@ -11873,6 +11921,7 @@ describe("useWorkbenchStore", () => {
       thirdGroupId: "group-search-001",
       thirdUserId: "third-user-drc",
       unreadCount: 0,
+      hasStoredUnread: false,
       conversationAIHostingSwitch: false,
     };
 

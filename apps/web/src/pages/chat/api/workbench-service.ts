@@ -1644,6 +1644,7 @@ export function createMockWorkbenchService(): WorkbenchService {
 
       const nextConversation = {
         ...conversation,
+        hasStoredUnread: false,
         unreadCount: 0,
       };
 
@@ -1672,6 +1673,7 @@ export function createMockWorkbenchService(): WorkbenchService {
 
       const nextConversation = {
         ...conversation,
+        hasStoredUnread: true,
         unreadCount: 1,
       };
 
@@ -2039,6 +2041,7 @@ export function createMockWorkbenchService(): WorkbenchService {
           thirdGroupId: existingConversation.thirdGroupId,
           thirdUserId: existingConversation.thirdUserId,
           unreadCount: existingConversation.unreadCount,
+          hasStoredUnread: existingConversation.hasStoredUnread,
         };
       }
 
@@ -2064,6 +2067,7 @@ export function createMockWorkbenchService(): WorkbenchService {
         thirdGroupId: payload.thirdGroupId,
         thirdUserId: `third-user-${payload.seatId}`,
         unreadCount: 0,
+        hasStoredUnread: false,
       };
     },
   };
@@ -2850,6 +2854,7 @@ function buildInitialState(): MockState {
           priority: conversation.priority,
           replied: conversation.replied ?? true,
           unreadCount: conversation.unread,
+          hasStoredUnread: conversation.hasStoredUnread ?? conversation.unread > 0,
           thirdUserId: `third-user-${seatId}`,
           ...(conversation.mode === "group"
             ? { thirdGroupId: `third-group-${conversation.id}` }

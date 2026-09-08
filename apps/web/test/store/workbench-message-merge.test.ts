@@ -1912,6 +1912,7 @@ function createPolledConversation({
     lastMessage,
     lastMessageTime,
     unreadCount,
+    hasStoredUnread: unreadCount > 0,
     mode: "single",
     priority: "medium",
     replied,

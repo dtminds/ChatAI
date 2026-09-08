@@ -1,6 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
 import { MATERIAL_COLLECTION_BIZ_TYPE } from "@chatai/contracts";
-import type { MessageRow } from "../../../src/modules/chat/workbench-mappers.js";
+import {
+  UNREAD_LOOKBACK_MS,
+  type MessageRow,
+} from "../../../src/modules/chat/workbench-mappers.js";
 import {
   decodeConversationListCursor,
   WorkbenchRepository,
@@ -643,6 +646,14 @@ function matchesWhereFilters<T extends Record<string, unknown>>(
 
     const rowValue = row[rowKey];
 
+    if (operator === ">=") {
+      if (typeof rowValue !== "number" || rowValue < Number(value)) {
+        return false;
+      }
+
+      continue;
+    }
+
     if (operator === "=" && rowValue !== value) {
       return false;
     }
@@ -653,6 +664,21 @@ function matchesWhereFilters<T extends Record<string, unknown>>(
   }
 
   return true;
+}
+
+function expectUnreadLookbackWhere(
+  wheres: Array<[string, string, unknown]>,
+  column: string,
+) {
+  const cutoffWhere = wheres.find(
+    (where) => where[0] === column && where[1] === ">=",
+  );
+  const cutoff = Number(cutoffWhere?.[2]);
+  const expected = Date.now() - UNREAD_LOOKBACK_MS;
+
+  expect(cutoffWhere).toBeDefined();
+  expect(cutoff).toBeGreaterThan(expected - 5_000);
+  expect(cutoff).toBeLessThan(expected + 5_000);
 }
 
 function createCacheMock(initial: Record<string, string> = {}) {
@@ -2800,6 +2826,7 @@ describe("WorkbenchRepository", () => {
     expect(queries[1]?.query.wheres).toContainEqual(["platform", "=", 5]);
     expect(queries[1]?.query.wheres).not.toContainEqual(["uid", "in", [9001]]);
     expect(queries[1]?.query.wheres).not.toContainEqual(["platform", "in", [5]]);
+    expectUnreadLookbackWhere(queries[1]?.query.wheres ?? [], "last_msgtime");
     expect(queries[1]?.query.aggregateFns).toEqual(["sum", "max"]);
     expect(queries[1]?.query.groupBys).toEqual([
       "uid",
@@ -2950,6 +2977,67 @@ describe("WorkbenchRepository", () => {
 
     await expect(listPromise).resolves.toHaveLength(seatCount);
     expect(maxInFlight).toBe(3);
+  });
+
+  it("counts seat unread only inside the seven-day lookback", async () => {
+    const now = Date.now();
+    const seat = createSeatListRow(1);
+    const queries: Array<{ query: ReturnType<typeof createQueryBuilder>; table: string }> =
+      [];
+    const repository = new WorkbenchRepository(
+      {
+        selectFrom(table: string) {
+          if (table === "xy_wap_embed_user_seat_sub_relation as relation") {
+            return createQueryBuilder([seat]);
+          }
+
+          if (table === "xy_wap_embed_conversation") {
+            const query = createFilteredRowsQueryBuilder(
+              [
+                {
+                  chat_type: 1,
+                  last_msgtime: now - 60_000,
+                  platform: 5,
+                  third_userid: seat.third_userid,
+                  uid: 9001,
+                  unread_cnt: 4,
+                },
+                {
+                  chat_type: 1,
+                  last_msgtime: now - UNREAD_LOOKBACK_MS - 60_000,
+                  platform: 5,
+                  third_userid: seat.third_userid,
+                  uid: 9001,
+                  unread_cnt: 9,
+                },
+              ],
+              {
+                last_msgtime: "last_msgtime",
+                third_userid: "third_userid",
+              },
+            );
+            queries.push({ query, table });
+            return query;
+          }
+
+          throw new Error(`unexpected table ${table}`);
+        },
+      } as never,
+    );
+
+    await expect(
+      repository.listSeats({
+        platform: 5,
+        subUserId: "11",
+        uid: 9001,
+      } as never),
+    ).resolves.toEqual([
+      expect.objectContaining({
+        seatId: String(seat.id),
+        unreadCount: 4,
+      }),
+    ]);
+    expectUnreadLookbackWhere(queries[0]?.query.wheres ?? [], "last_msgtime");
   });
 
   it("loads seat details without joining conversations", async () => {
@@ -4827,6 +4915,13 @@ describe("WorkbenchRepository", () => {
     expect(seatQueryBuilders).toHaveLength(1);
     expect(seatQueryBuilders[0]?.wheres).toContainEqual(["seat.id", "in", ["13", "12"]]);
     expect(seatQueryBuilders[0]?.wheres).not.toContainEqual(["seat.biz_status", "=", 1]);
+    const conversationJoin = seatQueryBuilders[0]?.joinConditions.find(
+      (join) => join.table === "xy_wap_embed_conversation as conversation",
+    );
+    expectUnreadLookbackWhere(
+      conversationJoin?.conditions ?? [],
+      "conversation.last_msgtime",
+    );
   });
 
   it("loads seat operate scope with agent mode auth flags", async () => {
@@ -5009,12 +5104,19 @@ describe("WorkbenchRepository", () => {
       ">",
       0,
     ]);
-    expect(summaryQueryBuilders[0].wheres).toEqual([
-      ["uid", "=", 9001],
-      ["platform", "=", 5],
-      ["third_userid", "=", "seat-user-001"],
-      ["biz_status", "=", 1],
-    ]);
+    expectUnreadLookbackWhere(
+      conversationQueryBuilders[0].wheres,
+      "conversation.last_msgtime",
+    );
+    expect(summaryQueryBuilders[0].wheres).toEqual(
+      expect.arrayContaining([
+        ["uid", "=", 9001],
+        ["platform", "=", 5],
+        ["third_userid", "=", "seat-user-001"],
+        ["biz_status", "=", 1],
+      ]),
+    );
+    expectUnreadLookbackWhere(summaryQueryBuilders[0].wheres, "last_msgtime");
     expect(page.unreadSummary).toEqual({
       group: 2,
       single: 3,
@@ -5041,7 +5143,7 @@ describe("WorkbenchRepository", () => {
               createConversationRow({
                 chat_type: 2,
                 id: 165,
-                last_msgtime: null,
+                last_msgtime: Date.now() - 60_000,
                 third_external_userid: "",
                 third_group_id: "group-001",
                 unread_cnt: 4,
@@ -6727,6 +6829,7 @@ describe("WorkbenchRepository", () => {
             third_group_origin_userid: "opening-seat-001",
             third_userid: "seat-user-001",
             uid: 9001,
+            last_msgtime: Date.now() - 60_000,
             unread_cnt: 1,
           });
         },

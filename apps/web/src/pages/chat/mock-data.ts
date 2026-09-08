@@ -17,6 +17,7 @@ function withDefaultAIHostingSwitch(conversations: SeedConversation[]): Conversa
     ...conversation,
     conversationAIHostingSwitch: conversation.conversationAIHostingSwitch ?? false,
     handoffMsgId: conversation.handoffMsgId ?? 0,
+    hasStoredUnread: conversation.hasStoredUnread ?? conversation.unread > 0,
     replied: conversation.replied ?? true,
     customerBindType:
       conversation.mode === "single"

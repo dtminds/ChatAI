@@ -1160,6 +1160,7 @@ export function createMemoryWorkbenchService() {
 
       const nextConversation = {
         ...conversation,
+        hasStoredUnread: false,
         unreadCount: 0,
       };
 
@@ -1191,6 +1192,7 @@ export function createMemoryWorkbenchService() {
 
       const nextConversation = {
         ...conversation,
+        hasStoredUnread: true,
         unreadCount: 1,
       };
 
@@ -1735,6 +1737,7 @@ function conversation(
     priority,
     replied: options.replied ?? true,
     unreadCount,
+    hasStoredUnread: unreadCount > 0,
   };
 }
 

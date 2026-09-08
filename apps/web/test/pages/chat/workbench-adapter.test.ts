@@ -69,6 +69,19 @@ describe("workbench adapter", () => {
     });
   });
 
+  it("maps stored unread independently from the badge count", () => {
+    expect(
+      adaptConversation({
+        ...conversationDto,
+        hasStoredUnread: true,
+        unreadCount: 0,
+      }),
+    ).toMatchObject({
+      hasStoredUnread: true,
+      unread: 0,
+    });
+  });
+
   it("maps shadow group member account identities", () => {
     expect(
       adaptGroupMember({
@@ -1156,6 +1169,7 @@ const conversationDto: WorkbenchConversationSummaryDto = {
   thirdGroupId: "group-1",
   thirdUserId: "third-user-1",
   unreadCount: 0,
+  hasStoredUnread: false,
 };
 
 const messageDto = {

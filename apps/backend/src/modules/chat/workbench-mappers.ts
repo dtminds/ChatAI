@@ -127,6 +127,34 @@ const UNSUPPORTED_MESSAGE_DISPLAY_TEXT = "[暂不支持显示该消息]";
 const UNSUPPORTED_CHAT_RECORD_DISPLAY_TEXT = "[暂不支持展示该聊天记录]";
 const CHAT_RECORD_LOADING_WINDOW_MS = 15_000;
 const APPLICATION_MESSAGE_AVATAR_URL = "https://b5.bokr.com.cn/dist/app-avatar.png";
+export const UNREAD_LOOKBACK_MS = 7 * 24 * 60 * 60 * 1000;
+
+export function getUnreadLookbackStartMs(now = Date.now()) {
+  return now - UNREAD_LOOKBACK_MS;
+}
+
+export function readUnreadCountInLookback(
+  unreadCount: number | string | null | undefined,
+  lastMsgTime: Date | number | string | null | undefined,
+  now = Date.now(),
+) {
+  const lastMessageTime = toOptionalTimestamp(lastMsgTime);
+
+  if (
+    lastMessageTime == null ||
+    lastMessageTime < getUnreadLookbackStartMs(now)
+  ) {
+    return 0;
+  }
+
+  return toNumber(unreadCount);
+}
+
+export function readHasStoredUnread(
+  unreadCount: number | string | null | undefined,
+) {
+  return toNumber(unreadCount) > 0;
+}
 
 export function mapSeatRow(row: SeatRow): WorkbenchSeatDto {
   const seatName = row.third_user_name || "未命名席位";
@@ -236,7 +264,8 @@ export function mapConversationRow(
     thirdExternalUserId: row.third_external_userid || undefined,
     thirdGroupId: row.third_group_id || undefined,
     thirdUserId: row.third_userid,
-    unreadCount: toNumber(row.unread_cnt),
+    unreadCount: readUnreadCountInLookback(row.unread_cnt, row.last_msgtime),
+    hasStoredUnread: readHasStoredUnread(row.unread_cnt),
     verified: row.verified == null ? undefined : toNumber(row.verified) === 1,
   };
 }

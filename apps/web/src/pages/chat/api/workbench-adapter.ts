@@ -103,6 +103,7 @@ export function adaptConversation(dto: WorkbenchConversationSummaryDto): Convers
     thirdGroupId: dto.thirdGroupId,
     thirdUserId: dto.thirdUserId,
     unread: dto.unreadCount,
+    hasStoredUnread: dto.hasStoredUnread,
     updatedAt: formatWorkbenchTimestamp(lastMessageTime),
     updatedAtMs: lastMessageTime,
   };

@@ -125,6 +125,8 @@ export type Conversation = {
   updatedAt: string;
   quietFor: string;
   unread: number;
+  /** 库中仍有未读库存；超窗时 unread 为 0，打开会话仍应打已读 */
+  hasStoredUnread?: boolean;
   mode: ChatMode;
   priority: "high" | "medium" | "low";
   /** 三方用户 ID（侧栏 iframe 密文由服务端按会话签发） */

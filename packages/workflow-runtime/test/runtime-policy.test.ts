@@ -119,6 +119,29 @@ describe("Workflow runtime policy", () => {
     });
   });
 
+  it("uses the WeCom Start schema before ignoring stale ChatAI fields", async () => {
+    const spec = createExecutionSpec("wecom-workflow");
+    spec.nodes[0]!.config = {
+      ...spec.nodes[0]!.config,
+      messageSendingWindow: { endTime: "20:00", startTime: "09:00" },
+      seatIds: [101],
+    };
+    const harness = createHarness({
+      entitlement: async () => ({ activeRunLimit: 10_000, entitled: true }),
+      executionSpec: spec,
+    });
+
+    const result = await harness.service.startRun(entryInput({
+      entryEventId: "event-wecom",
+      subjectType: "wecom_contact",
+      workflowId: "wecom-workflow",
+    }));
+
+    expect(result).toMatchObject({ kind: "success" });
+    if (result.kind !== "success") throw new Error("Expected admitted Run");
+    expect(result.run.context.workflow).toEqual({});
+  });
+
   it("does not fall back to individual reads when a batched runtime snapshot is missing", async () => {
     const harness = createHarness({
       entitlement: async () => ({ activeRunLimit: 10_000, entitled: true }),

@@ -237,6 +237,7 @@ function normalizeValueType(value: unknown): WorkflowSmartsheetValueType | undef
 function isSmartsheetFieldType(value: unknown): value is WorkflowSmartsheetFieldType {
   return value === "text"
     || value === "number"
+    || value === "currency"
     || value === "date_time"
     || value === "single_select"
     || value === "checkbox"

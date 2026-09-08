@@ -10,6 +10,7 @@ function request() {
   return {
     command: { webhookUrl, fields: [
       { fieldId: "n", fieldType: "number" as const, value: 0 },
+      { fieldId: "currency", fieldType: "currency" as const, value: 199.99 },
       { fieldId: "b", fieldType: "checkbox" as const, value: false },
       { fieldId: "s", fieldType: "single_select" as const, value: "known" },
       { fieldId: "i", fieldType: "url" as const, value: urlValue },
@@ -38,7 +39,7 @@ describe("WeCom smartsheet adapter", () => {
       .resolves.toEqual({ success: true });
     expect(http).toHaveBeenCalledTimes(1);
     expect(JSON.parse(String(http.mock.calls[0]![1]?.body))).toEqual({ add_records: [{ values: {
-      n: 0, b: false, s: [{ text: "known" }],
+      n: 0, currency: 199.99, b: false, s: [{ text: "known" }],
       i: [{ link: urlValue, text: urlValue }],
       i2: [{ link: urlValue, text: urlValue }],
     } }] });

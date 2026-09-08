@@ -11,6 +11,7 @@ export const WORKFLOW_SMARTSHEET_WRITE_VALUE_MAX_LENGTH = 10_000;
 export const WorkflowSmartsheetFieldTypeSchema = Type.Union([
   Type.Literal("text"),
   Type.Literal("number"),
+  Type.Literal("currency"),
   Type.Literal("date_time"),
   Type.Literal("single_select"),
   Type.Literal("checkbox"),
@@ -197,7 +198,7 @@ export type WorkflowSmartsheetValueType = Static<typeof WorkflowSmartsheetValueT
 export function getWorkflowSmartsheetFieldValueType(
   fieldType: WorkflowSmartsheetFieldType,
 ): WorkflowSmartsheetValueType {
-  if (fieldType === "number") return { kind: "number" };
+  if (isSmartsheetNumberFieldType(fieldType)) return { kind: "number" };
   if (fieldType === "date_time") return { kind: "datetime" };
   if (fieldType === "checkbox") return { kind: "boolean" };
   return { kind: "string" };
@@ -207,7 +208,7 @@ export function isWorkflowSmartsheetFieldValueTypeCompatible(
   fieldType: WorkflowSmartsheetFieldType,
   valueType: { kind: string },
 ) {
-  if (fieldType === "number") return valueType.kind === "number";
+  if (isSmartsheetNumberFieldType(fieldType)) return valueType.kind === "number";
   if (fieldType === "date_time") return valueType.kind === "datetime" || valueType.kind === "number";
   if (fieldType === "checkbox") return valueType.kind === "boolean";
   return valueType.kind === "string";
@@ -223,7 +224,7 @@ export function isSmartsheetFieldMappingComplete(
 
   const literal = mapping.value.value.trim();
   if (!literal) return false;
-  if (mapping.fieldType === "number") {
+  if (isSmartsheetNumberFieldType(mapping.fieldType)) {
     return Number.isFinite(Number(literal));
   }
   if (mapping.fieldType === "date_time") {
@@ -239,6 +240,10 @@ export function isSmartsheetFieldMappingComplete(
     return mapping.enumOptions.includes(literal);
   }
   return true;
+}
+
+function isSmartsheetNumberFieldType(fieldType: WorkflowSmartsheetFieldType) {
+  return fieldType === "number" || fieldType === "currency";
 }
 
 export function isValidSmartsheetDateTimeLiteral(value: string): boolean {

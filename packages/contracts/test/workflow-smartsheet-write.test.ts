@@ -28,13 +28,18 @@ describe("Smartsheet Write draft metadata and schema", () => {
   it("retains unsupported fields for selection display without treating them as writable", () => {
     const schema = JSON.stringify({ schema: {
       f1: { title: "姓名", type: "text" },
+      fCurrency: { title: "回款金额", type: "currency" },
       f2: { title: "附件", type: "attachment" },
     }, add_records: [] });
     expect(parseSmartsheetSchemaFields(schema)).toEqual({
       f1: { title: "姓名", type: "text" },
+      fCurrency: { title: "回款金额", type: "currency" },
       f2: { title: "附件", type: "attachment" },
     });
-    expect(parseSmartsheetSchema(schema)).toEqual({ f1: { title: "姓名", type: "text" } });
+    expect(parseSmartsheetSchema(schema)).toEqual({
+      f1: { title: "姓名", type: "text" },
+      fCurrency: { title: "回款金额", type: "currency" },
+    });
     expect(parseSmartsheetSchemaFields('{"f2":{"title":"附件","type":"attachment"}}')).not.toBeNull();
   });
 

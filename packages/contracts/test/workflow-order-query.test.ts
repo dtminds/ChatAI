@@ -78,14 +78,14 @@ describe("Workflow Order Query contract", () => {
       start: ["trigger", "occurredAt"],
     }))).toBe(true);
     expect(isWorkflowNodeExecutionConfig("order-query", conditions({}, {
-      endAt: "2026-09-04T23:59",
+      endAt: "2026-09-04T23:59:59",
       mode: "absolute",
-      startAt: "2025-09-09T00:00",
+      startAt: "2025-09-09T00:00:00",
     }))).toBe(true);
     expect(isWorkflowNodeExecutionConfig("order-query", conditions({}, {
-      end: { amount: 0, time: "23:59", unit: "day" },
+      end: { amount: 0, time: "23:59:59", unit: "day" },
       mode: "relative",
-      start: { amount: 30, time: "00:00", unit: "day" },
+      start: { amount: 30, time: "00:00:00", unit: "day" },
     }))).toBe(true);
     expect(isWorkflowNodeExecutionConfig("order-query", conditions({}))).toBe(true);
   });
@@ -106,9 +106,9 @@ describe("Workflow Order Query contract", () => {
       conditions: {
         ...conditions({}).conditions,
         timeRange: {
-          endAt: "2026-09-01T00:00",
+          endAt: "2026-09-01T00:00:00",
           mode: "absolute",
-          startAt: "2026-09-02T00:00",
+          startAt: "2026-09-02T00:00:00",
         },
       },
     })).toBe(false);
@@ -123,19 +123,19 @@ describe("Workflow Order Query contract", () => {
       start: ["trigger", "occurredAt"],
     }))).toBe(false);
     expect(isWorkflowNodeExecutionConfig("order-query", conditions({}, {
-      endAt: "2026-09-05T12:00",
+      endAt: "2026-09-05T12:00:00",
       mode: "absolute",
-      startAt: "2025-09-09T12:00",
+      startAt: "2025-09-09T12:00:00",
     }))).toBe(false);
     expect(isWorkflowNodeExecutionConfig("order-query", conditions({}, {
-      end: { amount: 0, time: "23:59", unit: "day" },
+      end: { amount: 0, time: "23:59:59", unit: "day" },
       mode: "relative",
-      start: { amount: 361, time: "00:00", unit: "day" },
+      start: { amount: 361, time: "00:00:00", unit: "day" },
     }))).toBe(false);
     expect(isWorkflowNodeExecutionConfig("order-query", conditions({}, {
-      end: { amount: 1, time: "00:00", unit: "day" },
+      end: { amount: 1, time: "00:00:00", unit: "day" },
       mode: "relative",
-      start: { amount: 0, time: "23:59", unit: "day" },
+      start: { amount: 0, time: "23:59:59", unit: "day" },
     }))).toBe(false);
   });
 
@@ -178,9 +178,9 @@ describe("Workflow Order Query contract", () => {
 function conditions(
   amount: Record<string, unknown>,
   timeRange: Record<string, unknown> = {
-    endAt: "2026-09-04T23:59",
+    endAt: "2026-09-04T23:59:59",
     mode: "absolute",
-    startAt: "2026-09-01T00:00",
+    startAt: "2026-09-01T00:00:00",
   },
 ) {
   return {

@@ -2,7 +2,7 @@ import {
   WorkflowMessageQueryCommandSchema,
   WorkflowMessageQueryConfigSchema,
   WorkflowMessageQueryResultSchema,
-  isValidWorkflowLocalDateTime,
+  isValidWorkflowLocalDateTimeToSecond,
   resolveMessageQueryRelativePoint,
   type WorkflowContactIdentity,
   type WorkflowMessageQueryCommand,
@@ -37,9 +37,9 @@ export interface WorkflowMessageQueryPort {
 }
 
 const WORKFLOW_TIMEZONE_OFFSET_MILLISECONDS = 8 * 60 * 60 * 1_000;
-const ONE_MINUTE_MILLISECONDS = 60 * 1_000;
+const ONE_SECOND_MILLISECONDS = 1_000;
 const FIXED_LOCAL_DATE_TIME_PATTERN =
-  /^(\d{4})-(\d{2})-(\d{2})T([01]\d|2[0-3]):([0-5]\d)$/;
+  /^(\d{4})-(\d{2})-(\d{2})T([01]\d|2[0-3]):([0-5]\d):([0-5]\d)$/;
 
 export function createWorkflowMessageQueryCommand(input: {
   config: Record<string, unknown>;
@@ -112,7 +112,9 @@ function resolveMessageQueryRange(
 ) {
   if (timeRange.mode === "fixed") {
     return {
-      rangeEnd: parseFixedLocalDateTime(timeRange.endAt) + ONE_MINUTE_MILLISECONDS - 1,
+      // The picker has second precision. Include only the selected end second's
+      // millisecond tail because message timestamps carry milliseconds.
+      rangeEnd: parseFixedLocalDateTime(timeRange.endAt) + ONE_SECOND_MILLISECONDS - 1,
       rangeStart: parseFixedLocalDateTime(timeRange.startAt),
     };
   }
@@ -163,18 +165,19 @@ function resolveSelector(
 }
 
 function parseFixedLocalDateTime(value: string) {
-  if (!isValidWorkflowLocalDateTime(value)) {
+  if (!isValidWorkflowLocalDateTimeToSecond(value)) {
     throw invalidMessageQueryCommand("Message Query fixed time is invalid");
   }
   const match = FIXED_LOCAL_DATE_TIME_PATTERN.exec(value);
   if (!match) throw invalidMessageQueryCommand("Message Query fixed time is invalid");
-  const [, year, month, day, hour, minute] = match;
+  const [, year, month, day, hour, minute, second] = match;
   const timestamp = Date.UTC(
     Number(year),
     Number(month) - 1,
     Number(day),
     Number(hour),
     Number(minute),
+    Number(second),
   ) - WORKFLOW_TIMEZONE_OFFSET_MILLISECONDS;
   return timestamp;
 }

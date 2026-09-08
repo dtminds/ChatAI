@@ -97,9 +97,9 @@ describe("Order Query compiler validation", () => {
         conditions: { ...customerConditions().conditions, amount: { min: 100000.01 } },
       },
       customerConditions({
-        end: { amount: 1, time: "00:00", unit: "day" },
+        end: { amount: 1, time: "00:00:00", unit: "day" },
         mode: "relative",
-        start: { amount: 0, time: "23:59", unit: "day" },
+        start: { amount: 0, time: "23:59:59", unit: "day" },
       }),
     ]) {
       expect(() => compileWorkflowDraft({
@@ -161,9 +161,9 @@ function expectCompilationIssue(
 }
 
 function customerConditions(timeRange: Record<string, unknown> = {
-  endAt: "2026-09-04T23:59",
+  endAt: "2026-09-04T23:59:59",
   mode: "absolute",
-  startAt: "2026-09-01T00:00",
+  startAt: "2026-09-01T00:00:00",
 }) {
   return {
     conditions: {

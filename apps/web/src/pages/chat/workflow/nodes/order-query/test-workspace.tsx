@@ -228,6 +228,7 @@ function OrderQueryTestWorkspaceContent({
                         setRawValues(current => ({ ...current, [key]: value }));
                         setErrors(current => ({ ...current, [key]: undefined }));
                       }}
+                      timePrecision="second"
                       value={rawValues[key] ?? ""}
                     />
                     {errors[key] ? <p className="text-xs text-destructive" role="alert">{errors[key]}</p> : null}
@@ -387,8 +388,8 @@ function parseTestInput(
 }
 
 function toUtc8Instant(value: string) {
-  if (!/^\d{4}-\d{2}-\d{2}T(?:[01]\d|2[0-3]):[0-5]\d$/.test(value)) return null;
-  const timestamp = Date.parse(`${value}:00+08:00`);
+  if (!/^\d{4}-\d{2}-\d{2}T(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d$/.test(value)) return null;
+  const timestamp = Date.parse(`${value}+08:00`);
   return Number.isFinite(timestamp) ? new Date(timestamp).toISOString() : null;
 }
 

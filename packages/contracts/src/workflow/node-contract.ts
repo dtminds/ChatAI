@@ -16,7 +16,11 @@ import { WorkflowCouponDraftConfigSchema, WorkflowCouponExecutionConfigSchema } 
 import { getWorkflowCustomFieldVariableId } from "./custom-field-variable.js";
 import type { WorkflowNodeKind } from "./dto.js";
 import { WORKFLOW_HANDOFF_MESSAGE_MAX_LENGTH } from "./handoff.js";
-import { isValidWorkflowLocalDate, isValidWorkflowLocalDateTime } from "./local-date-time.js";
+import {
+  isValidWorkflowLocalDate,
+  isValidWorkflowLocalDateTime,
+  isValidWorkflowLocalDateTimeToSecond,
+} from "./local-date-time.js";
 import {
   isMessageQueryRelativeRangeComplete,
   WORKFLOW_MESSAGE_QUERY_TIME_RANGE_REJECTION_DAYS,
@@ -201,9 +205,9 @@ export const WorkflowMessageExecutionConfigSchema = Type.Union([
 export const WorkflowTimeRangeSchema = Type.Union([
   WorkflowMessageQueryRelativeTimeRangeSchema,
   Type.Object({
-    endAt: Type.String({ maxLength: 32 }),
+    endAt: Type.String({ maxLength: 19 }),
     mode: Type.Literal("fixed"),
-    startAt: Type.String({ maxLength: 32 }),
+    startAt: Type.String({ maxLength: 19 }),
   }, { additionalProperties: false }),
   Type.Object({
     end: WorkflowVariableSelectorSchema,
@@ -916,8 +920,8 @@ export function isWorkflowOrderQueryExecutionConfigComplete(
   if (value.mode === "order-number") return true;
   const timeRange = value.conditions.timeRange;
   if (timeRange.mode === "absolute"
-    && (!isValidWorkflowLocalDateTime(timeRange.startAt)
-      || !isValidWorkflowLocalDateTime(timeRange.endAt)
+    && (!isValidWorkflowLocalDateTimeToSecond(timeRange.startAt)
+      || !isValidWorkflowLocalDateTimeToSecond(timeRange.endAt)
       || timeRange.startAt > timeRange.endAt
       || getWorkflowLocalDateTimeDifference(timeRange.startAt, timeRange.endAt)
         >= WORKFLOW_ORDER_QUERY_TIME_RANGE_REJECTION_DAYS * 86_400_000)) {
@@ -937,7 +941,7 @@ export function isWorkflowOrderQueryExecutionConfigComplete(
 }
 
 function getWorkflowLocalDateTimeDifference(start: string, end: string) {
-  return Date.parse(`${end}:00Z`) - Date.parse(`${start}:00Z`);
+  return Date.parse(`${end}Z`) - Date.parse(`${start}Z`);
 }
 
 export function isWorkflowCustomerFieldTypeSupported(
@@ -1031,11 +1035,11 @@ export function isWorkflowMessageQueryExecutionConfigComplete(
 ): value is WorkflowMessageQueryConfig {
   if (!Value.Check(WorkflowMessageQueryConfigSchema, value)) return false;
   if (value.timeRange.mode === "fixed") {
-    return isValidWorkflowLocalDateTime(value.timeRange.startAt)
-      && isValidWorkflowLocalDateTime(value.timeRange.endAt)
+    return isValidWorkflowLocalDateTimeToSecond(value.timeRange.startAt)
+      && isValidWorkflowLocalDateTimeToSecond(value.timeRange.endAt)
       && value.timeRange.startAt <= value.timeRange.endAt
-      && Date.parse(`${value.timeRange.endAt}:59.999+08:00`)
-        - Date.parse(`${value.timeRange.startAt}:00+08:00`)
+      && Date.parse(`${value.timeRange.endAt}.999+08:00`)
+        - Date.parse(`${value.timeRange.startAt}+08:00`)
         < WORKFLOW_MESSAGE_QUERY_TIME_RANGE_REJECTION_DAYS * 86_400_000;
   }
   if (value.timeRange.mode === "relative") {

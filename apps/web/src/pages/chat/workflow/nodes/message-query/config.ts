@@ -14,8 +14,8 @@ export const MESSAGE_QUERY_LIMIT_MAX = 50;
 export function createDefaultMessageQueryRelativeTimeRange(): Extract<WorkflowTimeRange, { mode: "relative" }> {
   return {
     mode: "relative",
-    start: { amount: 30, unit: "day", time: "00:00" },
-    end: { amount: 0, unit: "day", time: "23:59" },
+    start: { amount: 30, unit: "day", time: "00:00:00" },
+    end: { amount: 0, unit: "day", time: "23:59:59" },
   };
 }
 export function createDefaultMessageQueryTimeRange(): WorkflowTimeRange {

@@ -1,5 +1,5 @@
 import { ChatSearchIcon } from "@hugeicons/core-free-icons";
-import { isValidWorkflowLocalDateTime, WORKFLOW_MESSAGES_SCHEMA_REF } from "@chatai/contracts";
+import { isValidWorkflowLocalDateTimeToSecond, WORKFLOW_MESSAGES_SCHEMA_REF } from "@chatai/contracts";
 import type { WorkflowNodeDefinition } from "../definition-types";
 import {
   compactNodeLayout,
@@ -105,7 +105,7 @@ export const messageQueryNodeDefinition: WorkflowNodeDefinition<"message-query">
         ["start", timeRange.startAt],
         ["end", timeRange.endAt],
       ] as const) {
-        if (isValidWorkflowLocalDateTime(value)) continue;
+        if (isValidWorkflowLocalDateTimeToSecond(value)) continue;
         issues.push(createCatalogIssue(
           `message-query-${field}-time-required`,
           `${field === "start" ? "开始" : "结束"}时间未选择`,

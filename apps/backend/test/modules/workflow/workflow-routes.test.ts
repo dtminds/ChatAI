@@ -1025,9 +1025,9 @@ describe("workflow routes", () => {
           shopIds: [],
           timeField: "order-time",
           timeRange: {
-            end: { amount: 0, time: "23:59", unit: "day" },
+            end: { amount: 0, time: "23:59:59", unit: "day" },
             mode: "relative",
-            start: { amount: 30, time: "00:00", unit: "day" },
+            start: { amount: 30, time: "00:00:00", unit: "day" },
           },
         },
         kind: "order-query",

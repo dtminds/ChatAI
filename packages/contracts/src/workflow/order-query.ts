@@ -39,7 +39,7 @@ const WorkflowOrderQueryRelativePointSchema = Type.Union([Type.Object({
     maximum: WORKFLOW_ORDER_QUERY_MAX_LOOKBACK_DAYS * 24 * 60,
     minimum: 0,
   }),
-  time: Type.String({ pattern: "^(?:[01]\\d|2[0-3]):[0-5]\\d$" }),
+  time: Type.String({ pattern: "^(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d$" }),
   unit: Type.Literal("day"),
 }, { additionalProperties: false }), Type.Object({
   amount: Type.Integer({ minimum: 0, maximum: WORKFLOW_ORDER_QUERY_MAX_LOOKBACK_DAYS * 24 * 60 }),
@@ -47,9 +47,9 @@ const WorkflowOrderQueryRelativePointSchema = Type.Union([Type.Object({
 }, { additionalProperties: false })]);
 
 const WorkflowOrderQueryAbsoluteTimeSchema = Type.Object({
-  endAt: Type.String({ maxLength: 16 }),
+  endAt: Type.String({ maxLength: 19 }),
   mode: Type.Literal("absolute"),
-  startAt: Type.String({ maxLength: 16 }),
+  startAt: Type.String({ maxLength: 19 }),
 }, { additionalProperties: false });
 
 const WorkflowOrderQueryRelativeTimeSchema = Type.Object({
@@ -101,8 +101,8 @@ export function isWorkflowOrderQueryRelativeRangeComplete(
   }
   const midnight = Date.parse("2000-01-01T00:00:00+08:00");
   return [midnight, midnight + 86_400_000 - 1].some(anchor =>
-    resolveWorkflowOrderQueryRelativePoint(anchor, start, false)
-      <= resolveWorkflowOrderQueryRelativePoint(anchor, end, true));
+    resolveWorkflowOrderQueryRelativePoint(anchor, start)
+      <= resolveWorkflowOrderQueryRelativePoint(anchor, end));
 }
 
 function getWorkflowOrderQueryRelativeLookbackMilliseconds(
@@ -119,7 +119,6 @@ function getWorkflowOrderQueryRelativeLookbackMilliseconds(
 function resolveWorkflowOrderQueryRelativePoint(
   enteredAt: number,
   point: Static<typeof WorkflowOrderQueryRelativePointSchema>,
-  end: boolean,
 ) {
   if (point.unit !== "day") {
     return enteredAt - getWorkflowOrderQueryRelativeLookbackMilliseconds(point);
@@ -128,8 +127,8 @@ function resolveWorkflowOrderQueryRelativePoint(
   const local = new Date(
     enteredAt - getWorkflowOrderQueryRelativeLookbackMilliseconds(point) + offsetMilliseconds,
   );
-  const [hours, minutes] = point.time.split(":").map(Number);
-  local.setUTCHours(hours!, minutes!, end ? 59 : 0, 0);
+  const [hours, minutes, seconds] = point.time.split(":").map(Number);
+  local.setUTCHours(hours!, minutes!, seconds!, 0);
   return local.getTime() - offsetMilliseconds;
 }
 

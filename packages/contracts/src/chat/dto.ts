@@ -877,10 +877,16 @@ export type WorkbenchGroupMembersResponse = {
 export const WORKBENCH_PULL_GROUP_MEMBERS_MAX_ITEMS = 40;
 
 export const WorkbenchPullGroupMembersRequestSchema = Type.Object({
-  contactThirdUserIds: Type.Array(Type.String({ minLength: 1 }), {
-    maxItems: WORKBENCH_PULL_GROUP_MEMBERS_MAX_ITEMS,
-    minItems: 1,
-  }),
+  contactThirdUserIds: Type.Optional(
+    Type.Array(Type.String({ minLength: 1 }), {
+      maxItems: WORKBENCH_PULL_GROUP_MEMBERS_MAX_ITEMS,
+    }),
+  ),
+  thirdUserIds: Type.Optional(
+    Type.Array(Type.String({ minLength: 1 }), {
+      maxItems: WORKBENCH_PULL_GROUP_MEMBERS_MAX_ITEMS,
+    }),
+  ),
 });
 
 export type WorkbenchPullGroupMembersRequest = Static<

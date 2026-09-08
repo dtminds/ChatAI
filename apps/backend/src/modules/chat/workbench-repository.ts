@@ -2804,6 +2804,49 @@ export class WorkbenchRepository {
     });
   }
 
+  async listOwnedCustomerExternalUserIds(input: {
+    platform: number;
+    seatThirdUserId: string;
+    thirdExternalUserIds: string[];
+    uid: number;
+  }) {
+    if (input.thirdExternalUserIds.length === 0) {
+      return [];
+    }
+
+    const rows = await this.db
+      .selectFrom("xy_wap_embed_customer_bind_relation as bind")
+      .select("bind.third_external_userid as third_external_userid")
+      .where("bind.uid", "=", input.uid)
+      .where("bind.platform", "=", input.platform)
+      .where("bind.third_userid", "=", input.seatThirdUserId)
+      .where("bind.third_external_userid", "in", input.thirdExternalUserIds)
+      .execute();
+
+    return uniqueNonEmpty(rows.map((row) => row.third_external_userid));
+  }
+
+  async listOwnedEmployeeThirdUserIds(input: {
+    platform: number;
+    thirdUserIds: string[];
+    uid: number;
+  }) {
+    if (input.thirdUserIds.length === 0) {
+      return [];
+    }
+
+    const rows = await this.db
+      .selectFrom("xy_wap_embed_user_seat as seat")
+      .select("seat.third_userid as third_userid")
+      .where("seat.uid", "=", input.uid)
+      .where("seat.platform", "=", input.platform)
+      .where("seat.biz_status", "=", BIZ_STATUS_ACTIVE)
+      .where("seat.third_userid", "in", input.thirdUserIds)
+      .execute();
+
+    return uniqueNonEmpty(rows.map((row) => row.third_userid));
+  }
+
   async listCustomers(input: CustomerListScope): Promise<WorkbenchCustomerListResponse> {
     const subUserNumericId =
       input.scope === "mine" ? parseMySqlId(input.subUserId) : undefined;

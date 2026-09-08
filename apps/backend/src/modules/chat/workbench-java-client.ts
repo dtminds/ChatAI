@@ -325,10 +325,11 @@ export type WorkbenchJavaClient = {
     uid: number;
   }): Promise<void>;
   pullFriendsInGroup(input: {
-    contactThirdUserids: string[];
+    contactThirdUserids?: string[];
     groupSeatId: number;
     platform: number;
     subUserId: number;
+    thirdUserids?: string[];
     uid: number;
   }): Promise<void>;
   kickOutOfGroup(input: {
@@ -844,10 +845,13 @@ export function createWorkbenchJavaClient(
         token,
         "/third-internal/wap-embed/group-seat/pull-fre-in-group",
         {
-          contactThirdUserids: input.contactThirdUserids,
+          ...(input.contactThirdUserids?.length
+            ? { contactThirdUserids: input.contactThirdUserids }
+            : {}),
           groupSeatId: input.groupSeatId,
           platform: input.platform,
           subUserId: input.subUserId,
+          ...(input.thirdUserids?.length ? { thirdUserids: input.thirdUserids } : {}),
           uid: input.uid,
         },
         logger,

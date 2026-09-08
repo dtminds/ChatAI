@@ -51,7 +51,7 @@ export function RemoveGroupMemberDialog({
       await getWorkbenchService().kickGroupMember(conversationId, {
         kickOutThirdUserId: member.id,
       });
-      toast.success("已移出");
+      toast.success("已移出，请稍后刷新查看");
       onRemoved?.();
       setIsSubmitting(false);
       onOpenChange(false);

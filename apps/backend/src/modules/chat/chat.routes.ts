@@ -1183,6 +1183,7 @@ export async function registerChatRoutes(app: FastifyInstance) {
         request.params.conversationId,
         {
           contactThirdUserIds: request.body.contactThirdUserIds,
+          thirdUserIds: request.body.thirdUserIds,
         } satisfies WorkbenchPullGroupMembersRequest,
       );
     },

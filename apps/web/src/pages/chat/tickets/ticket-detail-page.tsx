@@ -414,7 +414,7 @@ export function TicketDetailContent({
   return (
     <div className="h-full min-h-0 overflow-y-auto xl:overflow-hidden">
       <div className={`${presentation === "drawer" ? "w-full" : "mx-auto w-full max-w-[1180px]"} xl:grid xl:h-full xl:min-h-0 xl:grid-cols-[minmax(0,1fr)_380px]`}>
-        <ScrollArea className="xl:min-h-0" viewportProps={{ className: "overflow-x-hidden" }}>
+        <ScrollArea className="min-w-0 xl:min-h-0" viewportProps={{ className: "overflow-x-hidden" }}>
         <div className="space-y-6 px-8 py-6 xl:pr-6">
         <header>
           <div>
@@ -430,7 +430,7 @@ export function TicketDetailContent({
                 </Link>
               </Button>
             ) : null}
-            <h1 className={`${backTo ? "mt-1" : "pr-10"} text-[22px] font-semibold`}>{ticket.title}</h1>
+            <h1 className={`${backTo ? "mt-1" : "pr-10"} [overflow-wrap:anywhere] text-[22px] font-semibold`}>{ticket.title}</h1>
             <div className="mt-3 flex flex-wrap gap-2">
               {ticket.canEdit ? (
                 <Button

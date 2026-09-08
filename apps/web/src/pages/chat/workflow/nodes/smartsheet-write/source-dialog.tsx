@@ -68,7 +68,7 @@ export function SmartsheetSourceDialog({
   function parseSchema() {
     const nextOptions = getSmartsheetFieldOptions(schema, value.fieldMappings);
     if (!nextOptions) {
-      setSchemaError("Schema 格式不正确");
+      setSchemaError("示例数据格式不正确");
       return;
     }
     setOptions(nextOptions);
@@ -141,22 +141,20 @@ export function SmartsheetSourceDialog({
           </div>
 
           <div className="space-y-3">
-            <div className="flex items-center justify-between gap-2">
-              {!editingSchema ? (
-                <>
-                  <span className="text-sm font-medium">字段选择</span>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    className="h-6 px-2 text-xs"
-                    onClick={startSchemaEditing}
-                  >
-                    同步字段
-                  </Button>
-                </>
-              ) : null}
-            </div>
+            {!editingSchema ? (
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-sm font-medium">字段选择</span>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="h-6 px-2 text-xs"
+                  onClick={startSchemaEditing}
+                >
+                  同步字段
+                </Button>
+              </div>
+            ) : null}
             {editingSchema ? (
               <div className="space-y-4">
                 <div className="space-y-2">
@@ -216,15 +214,14 @@ export function SmartsheetSourceDialog({
         </div>
         <DialogFooter className="shrink-0 flex-row flex-wrap items-center justify-between gap-3 border-t px-6 py-4 sm:justify-between">
           {editingSchema ? (
-            <Button asChild variant="link" className="h-auto p-0 text-xs text-muted-foreground hover:text-foreground">
-              <a
-                href="https://developer.work.weixin.qq.com/document/path/101239"
-                target="_blank"
-                rel="noopener noreferrer"
-              >
-                了解如何通过 Webhook 地址推送数据
-              </a>
-            </Button>
+            <a
+              href="https://developer.work.weixin.qq.com/document/path/101239"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="min-w-0 break-words text-xs text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
+            >
+              了解如何通过 Webhook 地址推送数据
+            </a>
           ) : (
             <span className="text-xs text-muted-foreground">已选 {selectedOptions.length} / {WORKFLOW_SMARTSHEET_WRITE_FIELD_MAX_COUNT}</span>
           )}

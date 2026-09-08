@@ -70,6 +70,7 @@ describe("workflow Smartsheet Write node", () => {
     expect(screen.queryByText(/已选 \d+ \/ 20/)).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "确认" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "返回" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "取消" })).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "解析" })).toBeDisabled();
     fireEvent.change(screen.getByLabelText("Webhook 地址"), {
       target: { value: COMPLETE_WEBHOOK_URL },
@@ -225,6 +226,22 @@ describe("workflow Smartsheet Write node", () => {
     expect(screen.getByLabelText("示例数据")).toHaveValue(COMPLETE_SCHEMA);
   });
 
+  it("discards initial source edits when closed before parsing", async () => {
+    const user = userEvent.setup();
+    const onNodeChange = vi.fn();
+    render(<StatefulSmartsheetWriteConfig onNodeChange={onNodeChange} />);
+
+    await user.click(screen.getByRole("button", { name: "配置智能表格" }));
+    fireEvent.change(screen.getByLabelText("Webhook 地址"), { target: { value: COMPLETE_WEBHOOK_URL } });
+    fireEvent.change(screen.getByLabelText("示例数据"), { target: { value: COMPLETE_SCHEMA } });
+    await user.click(screen.getByRole("button", { name: "关闭" }));
+
+    expect(onNodeChange).not.toHaveBeenCalled();
+    await user.click(screen.getByRole("button", { name: "配置智能表格" }));
+    expect(screen.getByLabelText("Webhook 地址")).toHaveValue("");
+    expect(screen.getByLabelText("示例数据")).toHaveValue("");
+  });
+
   it("selects any 20 fields from the complete catalog without search", async () => {
     const user = userEvent.setup();
     const onNodeChange = vi.fn();
@@ -292,7 +309,7 @@ describe("workflow Smartsheet Write node", () => {
     }));
     fireEvent.change(screen.getByLabelText("示例数据"), { target: { value: "{" } });
     await user.click(screen.getByRole("button", { name: "解析" }));
-    expect(screen.getByText("Schema 格式不正确")).toBeInTheDocument();
+    expect(screen.getByText("示例数据格式不正确")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "确认" })).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "解析" })).not.toBeDisabled();
     expect(onNodeChange).not.toHaveBeenCalled();
@@ -301,7 +318,7 @@ describe("workflow Smartsheet Write node", () => {
       f2: { title: "金额", type: "text" },
       f4: { title: "新字段", type: "text" },
     }) } });
-    expect(screen.queryByText("Schema 格式不正确")).not.toBeInTheDocument();
+    expect(screen.queryByText("示例数据格式不正确")).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "解析" })).not.toBeDisabled();
     await user.click(screen.getByRole("button", { name: "解析" }));
     expect(screen.getByRole("checkbox", { name: "客户姓名" })).toBeChecked();

@@ -1,5 +1,8 @@
 import type { ColumnType, Generated } from "kysely";
 
+// Workflow tables are maintained separately from generated platform tables.
+// Keep these definitions aligned with docs/db/schema.sql.
+
 export type DatabaseId = bigint | number | string;
 type DatabaseDate = ColumnType<Date, Date | string, Date | string>;
 type GeneratedDate = ColumnType<Date, Date | string | undefined, Date | string>;
@@ -446,7 +449,7 @@ export interface WorkflowNodeMetricTable {
   workflow_id: DatabaseId;
 }
 
-export interface WorkflowDatabase {
+export interface WorkflowTables {
   xy_wap_embed_workflow_ai_collect_state: WorkflowAiCollectStateTable;
   xy_wap_embed_workflow_capacity_daily_metric: WorkflowCapacityDailyMetricTable;
   xy_wap_embed_workflow_capacity_guard: WorkflowCapacityGuardTable;

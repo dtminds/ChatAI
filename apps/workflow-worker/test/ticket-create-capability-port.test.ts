@@ -10,9 +10,9 @@ import {
   type Driver,
   type QueryResult,
 } from "kysely";
+import type { Database } from "@chatai/database";
 import {
   WORKFLOW_TICKET_CREATE_CAPABILITY_BINDING,
-  type WorkflowDatabase,
 } from "@chatai/workflow-runtime";
 import { MysqlWorkflowTicketCreateCapabilityPort } from "../src/ticket-create-capability-port.js";
 
@@ -162,7 +162,7 @@ function createRecordingDatabase(resolve: (query: CompiledQuery) => QueryResult<
     rollbackTransaction: async () => undefined,
     savepoint: async () => undefined,
   };
-  const database = new Kysely<WorkflowDatabase>({
+  const database = new Kysely<Database>({
     dialect: {
       createAdapter: () => new MysqlAdapter(),
       createDriver: () => driver,

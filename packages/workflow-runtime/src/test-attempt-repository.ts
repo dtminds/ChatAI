@@ -5,8 +5,8 @@ import {
   WorkflowJsonObjectSchema,
 } from "@chatai/contracts";
 import { Value } from "@sinclair/typebox/value";
+import type { Database, WorkflowLlmTestAttemptTable } from "@chatai/database";
 import { sql, type Kysely, type Selectable } from "kysely";
-import type { WorkflowDatabase, WorkflowLlmTestAttemptTable } from "./db.js";
 import type {
   WorkflowLlmTestAttemptRecord,
   WorkflowLlmTestAttemptRepository,
@@ -15,7 +15,7 @@ import type {
 const TABLE = "xy_wap_embed_workflow_llm_test_attempt" as const;
 
 export class MysqlWorkflowLlmTestAttemptRepository implements WorkflowLlmTestAttemptRepository {
-  constructor(private readonly db: Kysely<WorkflowDatabase>) {}
+  constructor(private readonly db: Kysely<Database>) {}
 
   async createLlmTestAttempt(input: Parameters<WorkflowLlmTestAttemptRepository["createLlmTestAttempt"]>[0]) {
     const inserted = await this.db.insertInto(TABLE).values({

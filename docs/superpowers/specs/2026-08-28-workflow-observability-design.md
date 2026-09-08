@@ -50,7 +50,7 @@ CREATE TABLE IF NOT EXISTS xy_wap_embed_workflow_worker_state (
 ) COMMENT='营销Workflow Worker角色运行状态表';
 ```
 
-- 同步登记：`docs/db/schema.sql`、kysely 类型（worker 侧加进 `packages/workflow-runtime/src/db.ts` 的 `WorkflowDatabase`；backend 侧按 `apps/backend/src/db` 现有方式补表类型）。
+- 同步登记：`docs/db/schema.sql` 和 `packages/database/src/workflow-schema.ts`；所有调用方统一通过 `@chatai/database` 的 `Database` 类型访问。
 - 不进 `apps/backend/src/db/writable-tables.ts`：该表只有 workflow-worker 写，backend 只读。
 - 不清除 `last_error_code`：健康度由 `last_failure_at` 与 `last_success_at` 的新旧关系推导（与 insights、memory 一致），不需要成功时清错。
 

@@ -1,6 +1,6 @@
 import { Kysely, MysqlDialect } from "kysely";
 import mysql from "mysql2";
-import type { WorkflowDatabase } from "@chatai/workflow-runtime";
+import type { Database } from "@chatai/database";
 
 export function createWorkflowDatabase(databaseUrl: string) {
   const pool = mysql.createPool({
@@ -13,5 +13,5 @@ export function createWorkflowDatabase(databaseUrl: string) {
     timezone: "+08:00",
     waitForConnections: true,
   });
-  return new Kysely<WorkflowDatabase>({ dialect: new MysqlDialect({ pool }) });
+  return new Kysely<Database>({ dialect: new MysqlDialect({ pool }) });
 }

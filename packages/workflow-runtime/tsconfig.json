@@ -9,11 +9,13 @@
     "rootDir": "src",
     "tsBuildInfoFile": "dist/.tsbuildinfo",
     "paths": {
+      "@chatai/database": ["../database/src/index.ts"],
       "@chatai/llm": ["../llm/src/index.ts"]
     }
   },
   "include": ["src/**/*.ts"],
   "references": [
+    { "path": "../database" },
     { "path": "../llm" }
   ]
 }

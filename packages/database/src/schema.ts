@@ -3677,4 +3677,4 @@ export interface DB {
   xy_wap_embed_user_seat_sub_relation: XyWapEmbedUserSeatSubRelation;
 }
 
-export type Database = DB;
+export type Database = DB & import("./workflow-schema.js").WorkflowTables;

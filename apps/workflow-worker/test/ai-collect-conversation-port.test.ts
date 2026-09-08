@@ -11,7 +11,7 @@ import {
   type QueryResult,
 } from "kysely";
 import { WORKBENCH_MESSAGE_SOURCE } from "@chatai/contracts";
-import type { WorkflowDatabase } from "@chatai/workflow-runtime";
+import type { Database } from "@chatai/database";
 import { MysqlWorkflowAiCollectConversationPort } from "../src/ai-collect-conversation-port.js";
 
 describe("MysqlWorkflowAiCollectConversationPort", () => {
@@ -195,7 +195,7 @@ function createRecordingDatabase(resolve: (query: CompiledQuery) => QueryResult<
     rollbackTransaction: async () => undefined,
     savepoint: async () => undefined,
   };
-  const database = new Kysely<WorkflowDatabase>({
+  const database = new Kysely<Database>({
     dialect: {
       createAdapter: () => new MysqlAdapter(),
       createDriver: () => driver,

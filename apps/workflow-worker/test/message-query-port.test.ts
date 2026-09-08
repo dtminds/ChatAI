@@ -11,7 +11,7 @@ import {
   type Driver,
   type QueryResult,
 } from "kysely";
-import type { WorkflowDatabase } from "@chatai/workflow-runtime";
+import type { Database } from "@chatai/database";
 import {
   buildEntryMessageQuery,
   buildMessageQueryMessagesQuery,
@@ -462,7 +462,7 @@ function messageRow(id: number, text: string) {
 }
 
 function createCompileOnlyDatabase() {
-  return new Kysely<WorkflowDatabase>({
+  return new Kysely<Database>({
     dialect: new MysqlDialect({ pool: {} as never }),
   });
 }
@@ -492,7 +492,7 @@ function createRecordingDatabase(resolve: (query: CompiledQuery) => QueryResult<
     rollbackTransaction: async () => undefined,
     savepoint: async () => undefined,
   };
-  const database = new Kysely<WorkflowDatabase>({
+  const database = new Kysely<Database>({
     dialect: {
       createAdapter: () => new MysqlAdapter(),
       createDriver: () => driver,

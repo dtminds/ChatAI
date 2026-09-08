@@ -561,6 +561,9 @@ importers:
       '@chatai/contracts':
         specifier: workspace:*
         version: link:../contracts
+      '@chatai/database':
+        specifier: workspace:*
+        version: link:../database
       '@chatai/llm':
         specifier: workspace:*
         version: link:../llm

@@ -1,5 +1,5 @@
 import type { Kysely } from "kysely";
-import type { WorkflowDatabase } from "@chatai/workflow-runtime";
+import type { Database } from "@chatai/database";
 import type { WorkflowObservabilityRole } from "@chatai/contracts";
 import type { WorkflowWorkerLogger } from "./observability.js";
 
@@ -24,7 +24,7 @@ export type WorkflowWorkerRuntimeState = {
 };
 
 export function createWorkflowWorkerRuntimeState(input: {
-  db: Kysely<WorkflowDatabase>;
+  db: Kysely<Database>;
   flushIntervalMs?: number;
   logger: WorkflowWorkerLogger;
   now?: () => Date;

@@ -161,8 +161,8 @@ describe("compileWorkflowDraft", () => {
     const draft = createDraft();
     const timeRange = {
       mode: "relative",
-      start: { amount: 30, unit: "day", time: "00:00" },
-      end: { amount: 0, unit: "day", time: "23:59" },
+      start: { amount: 30, unit: "day", time: "00:00:00" },
+      end: { amount: 0, unit: "day", time: "23:59:59" },
     };
     draft.nodes.splice(1, 1, node("wait", "message-query", { limit: 10, take: "latest", timeRange }));
     const spec = compileWorkflowDraft({ draft, revision: 3, workflowId: "42", workflowType: "chatai_sop" });
@@ -180,7 +180,7 @@ describe("compileWorkflowDraft", () => {
     const mixedRange = createDraft();
     mixedRange.nodes.splice(1, 1, node("wait", "message-query", {
       limit: 10, take: "latest", timeRange: {
-        mode: "relative", start: { amount: 0, unit: "hour" }, end: { amount: 1, unit: "day", time: "00:00" },
+        mode: "relative", start: { amount: 0, unit: "hour" }, end: { amount: 1, unit: "day", time: "00:00:00" },
       },
     }));
     expectCompilationIssue(mixedRange, {
@@ -193,9 +193,9 @@ describe("compileWorkflowDraft", () => {
       limit: 10,
       take: "latest",
       timeRange: {
-        endAt: "2026-08-15T09:00",
+        endAt: "2026-08-15T09:00:00",
         mode: "fixed",
-        startAt: "2026-08-15T10:00",
+        startAt: "2026-08-15T10:00:00",
       },
     }));
     expectCompilationIssue(invalidFixedRange, {

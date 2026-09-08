@@ -1,7 +1,51 @@
 import { describe, expect, it } from "vitest";
-import { isWorkflowNodeDraftConfig, isWorkflowNodeExecutionConfig, isMessageQueryRelativeRangeWithinBounds, isMessageQueryFixedRangeWithinBounds } from "../src/index.js";
+import {
+  isWorkflowNodeDraftConfig,
+  isWorkflowNodeExecutionConfig,
+  isMessageQueryRelativeRangeWithinBounds,
+  isMessageQueryFixedRangeWithinBounds,
+  normalizeWorkflowMessageQueryConfigTimePrecision,
+  normalizeWorkflowOrderQueryConfigTimePrecision,
+} from "../src/index.js";
 
 describe("Message Query relative time contract", () => {
+  it("upgrades legacy minute precision without changing interval bounds", () => {
+    expect(normalizeWorkflowMessageQueryConfigTimePrecision({
+      limit: 10,
+      take: "latest",
+      timeRange: {
+        endAt: "2026-09-05T23:59",
+        mode: "fixed",
+        startAt: "2026-09-01T00:00",
+      },
+    })).toMatchObject({
+      timeRange: {
+        endAt: "2026-09-05T23:59:59",
+        startAt: "2026-09-01T00:00:00",
+      },
+    });
+    expect(normalizeWorkflowOrderQueryConfigTimePrecision({
+      conditions: {
+        amount: {},
+        shopIds: [],
+        timeField: "order-time",
+        timeRange: {
+          end: { amount: 0, time: "23:59", unit: "day" },
+          mode: "relative",
+          start: { amount: 30, time: "00:00", unit: "day" },
+        },
+      },
+      mode: "conditions",
+    })).toMatchObject({
+      conditions: {
+        timeRange: {
+          end: { amount: 0, time: "23:59:59", unit: "day" },
+          start: { amount: 30, time: "00:00:00", unit: "day" },
+        },
+      },
+    });
+  });
+
   it.each([
     [{ amount: 0, unit: "hour" }, { amount: 1, unit: "day", time: "00:00:00" }, false],
     [{ amount: 0, unit: "day", time: "00:00:00" }, { amount: 24, unit: "hour" }, false],

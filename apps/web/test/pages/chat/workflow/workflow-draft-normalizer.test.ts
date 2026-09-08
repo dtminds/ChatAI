@@ -99,6 +99,62 @@ function createRuntimeDraft(index = 0): WorkflowDraft {
 }
 
 describe("workflow draft normalizer", () => {
+  it("upgrades legacy minute-only query time values during hydration", () => {
+    const draft = hydrateWorkflowDraft({
+      edges: [],
+      nodes: [
+        {
+          data: {
+            ...createDefaultNodeData("message-query"),
+            timeRange: {
+              endAt: "2026-09-05T23:59",
+              mode: "fixed",
+              startAt: "2026-09-01T00:00",
+            },
+          },
+          id: "message-query",
+          position: { x: 0, y: 0 },
+        },
+        {
+          data: {
+            ...createDefaultNodeData("order-query"),
+            conditions: {
+              amount: {},
+              shopIds: [],
+              timeField: "order-time",
+              timeRange: {
+                end: { amount: 0, time: "23:59", unit: "day" },
+                mode: "relative",
+                start: { amount: 30, time: "00:00", unit: "day" },
+              },
+            },
+            mode: "conditions",
+          },
+          id: "order-query",
+          position: { x: 100, y: 0 },
+        },
+      ],
+      viewport: DEFAULT_WORKFLOW_VIEWPORT,
+    });
+
+    expect(draft.nodes.find(node => node.id === "message-query")?.data).toMatchObject({
+      timeRange: {
+        endAt: "2026-09-05T23:59:59",
+        mode: "fixed",
+        startAt: "2026-09-01T00:00:00",
+      },
+    });
+    expect(draft.nodes.find(node => node.id === "order-query")?.data).toMatchObject({
+      conditions: {
+        timeRange: {
+          end: { amount: 0, time: "23:59:59", unit: "day" },
+          mode: "relative",
+          start: { amount: 30, time: "00:00:00", unit: "day" },
+        },
+      },
+    });
+  });
+
   it("drops retired Start fields before saving an unrestricted friend source", () => {
     const startData = createDefaultNodeData("start");
     const draft = hydrateWorkflowDraft({

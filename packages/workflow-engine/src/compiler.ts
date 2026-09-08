@@ -20,6 +20,8 @@ import {
   isWorkflowTicketCreateExecutionConfigComplete,
   isWorkflowSmartsheetWriteDraftConfigComplete,
   normalizeWorkflowEntryPolicy,
+  normalizeWorkflowMessageQueryConfigTimePrecision,
+  normalizeWorkflowOrderQueryConfigTimePrecision,
   type WorkflowDraft,
   type CustomFieldItem,
   type WorkflowExecutionNode,
@@ -670,6 +672,12 @@ export function normalizeWorkflowDraft(draft: WorkflowDraft): WorkflowDraft {
     const data = node.data as Record<string, unknown>;
     for (const key of getUnknownWorkflowNodeDraftDataKeys(node.data.kind, data)) {
       delete data[key];
+    }
+    if (node.data.kind === "message-query") {
+      Object.assign(data, normalizeWorkflowMessageQueryConfigTimePrecision(data));
+    }
+    if (node.data.kind === "order-query") {
+      Object.assign(data, normalizeWorkflowOrderQueryConfigTimePrecision(data));
     }
     if (node.data.kind !== "start") continue;
     data.entryPolicy = normalizeWorkflowEntryPolicy(data.entryPolicy);

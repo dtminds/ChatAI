@@ -176,6 +176,34 @@ describe("compileWorkflowDraft", () => {
     });
   });
 
+  it("canonicalizes legacy minute-only Message Query dates before compilation", () => {
+    const draft = createDraft();
+    draft.nodes.splice(1, 1, node("wait", "message-query", {
+      limit: 10,
+      take: "latest",
+      timeRange: {
+        endAt: "2026-08-15T10:00",
+        mode: "fixed",
+        startAt: "2026-08-15T09:00",
+      },
+    }));
+
+    const spec = compileWorkflowDraft({
+      draft,
+      revision: 3,
+      workflowId: "42",
+      workflowType: "chatai_sop",
+    });
+
+    expect(spec.nodes.find(node => node.kind === "message-query")?.config).toMatchObject({
+      timeRange: {
+        endAt: "2026-08-15T10:00:59",
+        mode: "fixed",
+        startAt: "2026-08-15T09:00:00",
+      },
+    });
+  });
+
   it("rejects incomplete or unavailable Message Query time ranges", () => {
     const mixedRange = createDraft();
     mixedRange.nodes.splice(1, 1, node("wait", "message-query", {

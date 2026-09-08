@@ -1,5 +1,6 @@
 import {
   isWorkflowNodeExecutionConfig,
+  normalizeWorkflowOrderQueryConfigTimePrecision,
   WORKFLOW_ORDER_QUERY_TIME_RANGE_REJECTION_DAYS,
   WorkflowOrderQueryCommandSchema,
   WorkflowOrderQueryResultSchema,
@@ -111,10 +112,11 @@ export function mapWorkflowOrderQueryResult(
 function requireWorkflowOrderQueryExecutionConfig(
   config: Record<string, unknown>,
 ): WorkflowOrderQueryExecutionConfig {
-  if (!isWorkflowNodeExecutionConfig("order-query", config)) {
+  const normalizedConfig = normalizeWorkflowOrderQueryConfigTimePrecision(config);
+  if (!isWorkflowNodeExecutionConfig("order-query", normalizedConfig)) {
     throw orderQueryCommandError("Order Query execution config failed schema validation");
   }
-  return structuredClone(config) as WorkflowOrderQueryExecutionConfig;
+  return structuredClone(normalizedConfig) as WorkflowOrderQueryExecutionConfig;
 }
 
 function resolveOrderTimeRange(

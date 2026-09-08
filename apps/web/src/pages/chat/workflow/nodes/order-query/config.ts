@@ -1,6 +1,7 @@
 import {
   hasValidWorkflowOrderQueryAmountPrecision,
   isWorkflowNodeExecutionConfig,
+  normalizeWorkflowOrderQueryConfigTimePrecision,
   WORKFLOW_ORDER_QUERY_MAX_AMOUNT,
   WORKFLOW_ORDER_QUERY_MAX_LOOKBACK_DAYS,
   WORKFLOW_ORDER_QUERY_MAX_SELECTED_SHOPS,
@@ -34,6 +35,15 @@ export function createDefaultOrderQueryConditions(): WorkflowOrderQueryDraftCond
     timeField: "order-time",
     timeRange: createDefaultOrderQueryDynamicTimeRange(),
   };
+}
+
+export function normalizeOrderQueryConditions(
+  conditions: WorkflowOrderQueryDraftCondition,
+): WorkflowOrderQueryDraftCondition {
+  return normalizeWorkflowOrderQueryConfigTimePrecision({
+    conditions,
+    mode: "conditions" as const,
+  }).conditions;
 }
 
 export function createDefaultOrderQueryDynamicTimeRange() {

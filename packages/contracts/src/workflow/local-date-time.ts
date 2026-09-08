@@ -3,6 +3,8 @@ const WORKFLOW_LOCAL_DATE_TIME_PATTERN =
 const WORKFLOW_LOCAL_DATE_TIME_TO_SECOND_PATTERN =
   /^(\d{4})-(\d{2})-(\d{2})T((?:[01]\d|2[0-3]):[0-5]\d):([0-5]\d)$/;
 const WORKFLOW_LOCAL_DATE_PATTERN = /^(\d{4})-(\d{2})-(\d{2})$/;
+const WORKFLOW_LOCAL_TIME_PATTERN = /^(?:[01]\d|2[0-3]):[0-5]\d$/;
+const WORKFLOW_LOCAL_TIME_TO_SECOND_PATTERN = /^(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d$/;
 
 export function isValidWorkflowLocalDate(value: string) {
   const match = WORKFLOW_LOCAL_DATE_PATTERN.exec(value);
@@ -46,4 +48,28 @@ export function isValidWorkflowLocalDateTimeToSecond(value: string) {
     && normalized.getUTCHours() === hour
     && normalized.getUTCMinutes() === minute
     && normalized.getUTCSeconds() === second;
+}
+
+/**
+ * Canonicalizes persisted minute-only workflow clock values after the picker
+ * gained second precision. End bounds include the complete legacy minute.
+ */
+export function normalizeWorkflowLocalTimeToSecond(value: unknown, end: boolean) {
+  if (typeof value !== "string") return undefined;
+  if (WORKFLOW_LOCAL_TIME_TO_SECOND_PATTERN.test(value)) return value;
+  return WORKFLOW_LOCAL_TIME_PATTERN.test(value)
+    ? `${value}:${end ? "59" : "00"}`
+    : undefined;
+}
+
+/**
+ * Canonicalizes persisted minute-only workflow date-times without changing the
+ * legacy interval semantics: starts begin at :00 and ends include :59.
+ */
+export function normalizeWorkflowLocalDateTimeToSecond(value: unknown, end: boolean) {
+  if (typeof value !== "string") return undefined;
+  if (isValidWorkflowLocalDateTimeToSecond(value)) return value;
+  return isValidWorkflowLocalDateTime(value)
+    ? `${value}:${end ? "59" : "00"}`
+    : undefined;
 }

@@ -24,6 +24,23 @@ describe("Workflow Message Query binding", () => {
       rangeEnd: Date.parse("2026-01-02T10:00:34.999+08:00"),
     });
   });
+  it("executes legacy minute-only fixed dates with their original bounds", () => {
+    expect(createWorkflowMessageQueryCommand({
+      config: {
+        limit: 10,
+        take: "latest",
+        timeRange: {
+          endAt: "2026-01-02T10:00",
+          mode: "fixed",
+          startAt: "2026-01-01T10:00",
+        },
+      },
+      context: context(),
+    })).toMatchObject({
+      rangeEnd: Date.parse("2026-01-02T10:00:59.999+08:00"),
+      rangeStart: Date.parse("2026-01-01T10:00:00.000+08:00"),
+    });
+  });
   it("does not reapply publication offset limits at runtime", () => {
     const commandContext = context();
     const config = {
@@ -65,6 +82,24 @@ describe("Workflow Message Query binding", () => {
       rangeEnd: Date.parse("2026-08-15T15:59:34.999Z"),
     });
     expect(createWorkflowMessageQueryCommand(input)).toEqual(command);
+  });
+
+  it("executes legacy minute-only relative day times with their original bounds", () => {
+    expect(createWorkflowMessageQueryCommand({
+      config: {
+        limit: 10,
+        take: "latest",
+        timeRange: {
+          end: { amount: 0, time: "23:59", unit: "day" },
+          mode: "relative",
+          start: { amount: 30, time: "00:00", unit: "day" },
+        },
+      },
+      context: context(),
+    })).toMatchObject({
+      rangeEnd: Date.parse("2026-08-15T15:59:59.999Z"),
+      rangeStart: Date.parse("2026-07-15T16:00:00.000Z"),
+    });
   });
 
   it.each(["hour", "minute"])("handles relative %s offsets across local midnight", unit => {

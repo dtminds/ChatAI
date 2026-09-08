@@ -1,7 +1,11 @@
 import { Type, type Static } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
 import { WorkflowMessagesV1Schema } from "./messages.js";
-import { isValidWorkflowLocalDateTimeToSecond } from "./local-date-time.js";
+import {
+  isValidWorkflowLocalDateTimeToSecond,
+  normalizeWorkflowLocalDateTimeToSecond,
+  normalizeWorkflowLocalTimeToSecond,
+} from "./local-date-time.js";
 
 export const WORKFLOW_MESSAGE_QUERY_MAX_LOOKBACK_DAYS = 90;
 export const WORKFLOW_MESSAGE_QUERY_TIME_RANGE_REJECTION_DAYS =
@@ -24,8 +28,46 @@ export const WorkflowMessageQueryRelativeTimeRangeSchema = Type.Object({
 
 export type WorkflowMessageQueryRelativePoint = Static<typeof WorkflowMessageQueryRelativePointSchema>;
 
+/**
+ * Upgrades legacy minute-only message-query values at read boundaries. Invalid
+ * values are intentionally left untouched so normal draft/execution validation
+ * can reject them instead of silently replacing user configuration.
+ */
+export function normalizeWorkflowMessageQueryConfigTimePrecision<T>(value: T): T {
+  if (!isRecord(value) || !isRecord(value.timeRange)) return value;
+  const timeRange = normalizeWorkflowMessageQueryTimeRangeTimePrecision(value.timeRange);
+  return timeRange === value.timeRange ? value : { ...value, timeRange } as T;
+}
+
+export function normalizeWorkflowMessageQueryTimeRangeTimePrecision<T>(value: T): T {
+  if (!isRecord(value)) return value;
+  if (value.mode === "fixed") {
+    return {
+      ...value,
+      endAt: normalizeWorkflowLocalDateTimeToSecond(value.endAt, true) ?? value.endAt,
+      startAt: normalizeWorkflowLocalDateTimeToSecond(value.startAt, false) ?? value.startAt,
+    } as T;
+  }
+  if (value.mode !== "relative") return value;
+  return {
+    ...value,
+    end: normalizeRelativePointTimePrecision(value.end, true),
+    start: normalizeRelativePointTimePrecision(value.start, false),
+  } as T;
+}
+
 export function isMessageQueryRelativeTimeRange(value: unknown): value is Static<typeof WorkflowMessageQueryRelativeTimeRangeSchema> {
   return Value.Check(WorkflowMessageQueryRelativeTimeRangeSchema, value);
+}
+
+function normalizeRelativePointTimePrecision(value: unknown, end: boolean) {
+  if (!isRecord(value) || value.unit !== "day") return value;
+  const time = normalizeWorkflowLocalTimeToSecond(value.time, end);
+  return time === undefined ? value : { ...value, time };
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }
 
 export function getMessageQueryRelativeAmountMax(unit: WorkflowMessageQueryRelativePoint["unit"]) {

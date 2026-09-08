@@ -38,6 +38,29 @@ describe("Order Query compiler validation", () => {
     })).not.toThrow();
   });
 
+  it("canonicalizes legacy minute-only Order Query dates before compilation", () => {
+    const spec = compileWorkflowDraft({
+      draft: createOrderQueryDraft(customerConditions({
+        endAt: "2026-09-04T23:59",
+        mode: "absolute",
+        startAt: "2026-09-01T00:00",
+      })),
+      revision: 1,
+      workflowId: "42",
+      workflowType: "chatai_sop",
+    });
+
+    expect(spec.nodes.find(node => node.id === "order-query")?.config).toMatchObject({
+      conditions: {
+        timeRange: {
+          endAt: "2026-09-04T23:59:59",
+          mode: "absolute",
+          startAt: "2026-09-01T00:00:00",
+        },
+      },
+    });
+  });
+
   it("rejects an unreachable order number selector", () => {
     expectCompilationIssue(
       { mode: "order-number", orderNumberSelector: ["node", "missing", "orderNo"] },

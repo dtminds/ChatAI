@@ -3,6 +3,7 @@ import {
   WorkflowMessageQueryConfigSchema,
   WorkflowMessageQueryResultSchema,
   isValidWorkflowLocalDateTimeToSecond,
+  normalizeWorkflowMessageQueryConfigTimePrecision,
   resolveMessageQueryRelativePoint,
   type WorkflowContactIdentity,
   type WorkflowMessageQueryCommand,
@@ -49,10 +50,11 @@ export function createWorkflowMessageQueryCommand(input: {
   // publishing, not when executing. Do not reuse execution completeness here:
   // published fixed dates must keep working as time passes. Runtime still checks
   // structure, timestamps, identities and the resolved start/end ordering.
-  if (!Value.Check(WorkflowMessageQueryConfigSchema, input.config)) {
+  const normalizedConfig = normalizeWorkflowMessageQueryConfigTimePrecision(input.config);
+  if (!Value.Check(WorkflowMessageQueryConfigSchema, normalizedConfig)) {
     throw invalidMessageQueryCommand("Message Query config failed schema validation");
   }
-  const config = input.config as WorkflowMessageQueryConfig;
+  const config = normalizedConfig as WorkflowMessageQueryConfig;
   const seatId = readWorkflowTriggerSeatId(input.context.trigger);
   if (seatId === null) {
     throw invalidMessageQueryCommand("Message Query requires trigger.projection.seatId");

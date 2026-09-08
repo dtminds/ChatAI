@@ -1,4 +1,8 @@
 import { Type, type Static } from "@sinclair/typebox";
+import {
+  normalizeWorkflowLocalDateTimeToSecond,
+  normalizeWorkflowLocalTimeToSecond,
+} from "./local-date-time.js";
 
 export const WORKFLOW_ORDER_QUERY_MAX_SELECTED_SHOPS = 20;
 export const WORKFLOW_ORDER_QUERY_MAX_LOOKBACK_DAYS = 360;
@@ -253,3 +257,45 @@ export type WorkflowOrderQueryTestRunVariableValue = Static<
 export type WorkflowOrderQueryTestRunRequest = Static<typeof WorkflowOrderQueryTestRunRequestSchema>;
 export type WorkflowOrderQueryTestRunOutput = Static<typeof WorkflowOrderQueryTestRunOutputSchema>;
 export type WorkflowOrderQueryTestRunResponse = Static<typeof WorkflowOrderQueryTestRunResponseSchema>;
+
+/**
+ * Upgrades minute-only order-query values at read boundaries. Keep malformed
+ * values intact so execution validation reports configuration errors instead of
+ * replacing the user's conditions with defaults.
+ */
+export function normalizeWorkflowOrderQueryConfigTimePrecision<T>(value: T): T {
+  if (!isRecord(value) || value.mode !== "conditions" || !isRecord(value.conditions)) return value;
+  const timeRange = normalizeWorkflowOrderQueryTimeRangeTimePrecision(value.conditions.timeRange);
+  if (timeRange === value.conditions.timeRange) return value;
+  return {
+    ...value,
+    conditions: { ...value.conditions, timeRange },
+  } as T;
+}
+
+export function normalizeWorkflowOrderQueryTimeRangeTimePrecision<T>(value: T): T {
+  if (!isRecord(value)) return value;
+  if (value.mode === "absolute") {
+    return {
+      ...value,
+      endAt: normalizeWorkflowLocalDateTimeToSecond(value.endAt, true) ?? value.endAt,
+      startAt: normalizeWorkflowLocalDateTimeToSecond(value.startAt, false) ?? value.startAt,
+    } as T;
+  }
+  if (value.mode !== "relative") return value;
+  return {
+    ...value,
+    end: normalizeOrderQueryRelativePointTimePrecision(value.end, true),
+    start: normalizeOrderQueryRelativePointTimePrecision(value.start, false),
+  } as T;
+}
+
+function normalizeOrderQueryRelativePointTimePrecision(value: unknown, end: boolean) {
+  if (!isRecord(value) || value.unit !== "day") return value;
+  const time = normalizeWorkflowLocalTimeToSecond(value.time, end);
+  return time === undefined ? value : { ...value, time };
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}

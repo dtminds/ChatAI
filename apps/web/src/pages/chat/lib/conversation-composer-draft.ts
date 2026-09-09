@@ -53,6 +53,37 @@ export function hasConversationComposerDraftContent(
   );
 }
 
+export type ComposerDraftPersistAction =
+  | { type: "skip" }
+  | { type: "clear" }
+  | { type: "save"; draft: ConversationComposerDraft };
+
+export function resolveComposerDraftPersistAction(
+  conversationId: string,
+  conversationListsByScope: Record<string, Conversation[]>,
+  content: {
+    draft: string;
+    quotedMessage: QuotedMessagePreviewContent | null;
+    segments: ComposerSegment[];
+  },
+): ComposerDraftPersistAction {
+  if (!conversationId) {
+    return { type: "skip" };
+  }
+
+  if (!isConversationListedInWorkbench(conversationListsByScope, conversationId)) {
+    return { type: "clear" };
+  }
+
+  const draft = buildConversationComposerDraft(content);
+
+  if (!hasConversationComposerDraftContent(draft)) {
+    return { type: "clear" };
+  }
+
+  return { draft, type: "save" };
+}
+
 export const CONVERSATION_COMPOSER_DRAFT_PREVIEW_PREFIX = "[草稿]";
 
 export function getConversationComposerDraftPreview(

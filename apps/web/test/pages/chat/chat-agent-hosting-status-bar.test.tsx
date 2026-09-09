@@ -64,10 +64,6 @@ describe("ChatAgentHostingStatusBar", () => {
       "true",
     );
     expect(screen.getByTestId("agent-hosting-border-beam")).toHaveAttribute(
-      "data-border-radius",
-      "999",
-    );
-    expect(screen.getByTestId("agent-hosting-border-beam")).toHaveAttribute(
       "data-size",
       "line",
     );

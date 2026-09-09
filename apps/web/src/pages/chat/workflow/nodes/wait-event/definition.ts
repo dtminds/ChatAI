@@ -1,4 +1,4 @@
-import { HourglassIcon } from "@hugeicons/core-free-icons";
+import { BellRingIcon } from "@hugeicons/core-free-icons";
 import {
   DEFAULT_WORKFLOW_WAIT_EVENT_DELAY,
   WORKFLOW_WAIT_EVENT_DELAY_MAX_BY_UNIT,
@@ -117,7 +117,7 @@ export const waitEventNodeDefinition: WorkflowNodeDefinition<"wait-event"> = {
   visual: {
     accentClassName: "bg-rose-400 text-white",
     accentRgb: "244 63 94",
-    icon: HourglassIcon,
+    icon: BellRingIcon,
     label: "等待事件",
   },
 };

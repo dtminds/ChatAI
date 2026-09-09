@@ -2,6 +2,15 @@
 -- The team currently applies database changes manually in the shared test DB.
 -- Keep this file synchronized after schema changes.
 
+CREATE TABLE IF NOT EXISTS xy_internal_request_idempotent (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+  idempotent_key VARCHAR(128) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NOT NULL COMMENT '幂等键',
+  create_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  PRIMARY KEY (id),
+  UNIQUE KEY uk_idempotentKey (idempotent_key),
+  KEY idx_createTime (create_time)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci COMMENT='内部接口请求幂等表';
+
 CREATE TABLE IF NOT EXISTS xy_wap_embed_insight_sync_cursor (
   id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '主键ID',
   source VARCHAR(128) NOT NULL COMMENT '同步源名称',
@@ -355,7 +364,7 @@ CREATE TABLE IF NOT EXISTS xy_wap_embed_session_action_item (
   session_id BIGINT UNSIGNED NULL COMMENT '关联接待会话ID',
   anchor_message_id BIGINT UNSIGNED NULL COMMENT '关联消息锚点ID',
   snapshot_id BIGINT UNSIGNED NULL COMMENT 'AI来源洞察快照ID',
-  source_type VARCHAR(32) NOT NULL DEFAULT 'ai' COMMENT '来源，ai：AI生成，manual：人工创建',
+  source_type VARCHAR(32) NOT NULL DEFAULT 'ai' COMMENT '来源，ai：AI生成，manual：人工创建，workflow：工作流创建',
   created_by_sub_user_id BIGINT UNSIGNED NULL COMMENT '创建子账号ID',
   assignee_sub_user_id BIGINT UNSIGNED NULL COMMENT '负责人子账号ID',
   completed_by_sub_user_id BIGINT UNSIGNED NULL COMMENT '完成人子账号ID',

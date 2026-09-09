@@ -1,17 +1,6 @@
-import type { WorkflowDatabase } from "@chatai/workflow-runtime";
+import type { Database } from "@chatai/database";
 import type { Kysely } from "kysely";
 import { readString } from "./capability-port-support.js";
-
-interface WorkflowSeatTable {
-  id: number;
-  platform: number;
-  third_userid: string;
-  uid: number;
-}
-
-type WorkflowSeatDatabase = WorkflowDatabase & {
-  xy_wap_embed_user_seat: WorkflowSeatTable;
-};
 
 type WorkflowSeat = {
   id: number;
@@ -20,10 +9,10 @@ type WorkflowSeat = {
 };
 
 function buildWorkflowSeatQuery(
-  database: Kysely<WorkflowDatabase>,
+  database: Kysely<Database>,
   input: { seatId: number; uid: number },
 ) {
-  return asWorkflowSeatDatabase(database)
+  return database
     .selectFrom("xy_wap_embed_user_seat")
     .select(["id", "platform", "third_userid"])
     .where("uid", "=", input.uid)
@@ -31,7 +20,7 @@ function buildWorkflowSeatQuery(
 }
 
 export async function findWorkflowSeat(
-  database: Kysely<WorkflowDatabase>,
+  database: Kysely<Database>,
   input: { seatId: number; uid: number },
 ): Promise<WorkflowSeat | null> {
   const row = await buildWorkflowSeatQuery(database, input).executeTakeFirst();
@@ -39,10 +28,6 @@ export async function findWorkflowSeat(
   const platform = readPositiveInteger(row?.platform);
   const thirdUserId = readString(row?.third_userid);
   return id && platform && thirdUserId ? { id, platform, thirdUserId } : null;
-}
-
-function asWorkflowSeatDatabase(database: Kysely<WorkflowDatabase>) {
-  return database as unknown as Kysely<WorkflowSeatDatabase>;
 }
 
 function readPositiveInteger(value: unknown) {

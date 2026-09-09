@@ -78,6 +78,40 @@ describe("Workflow execution context prepare", () => {
     })).customFields).toEqual([{ fieldId: 42, valueTypes: ["number", "string"] }]);
   });
 
+  it("requires and resolves xyId only for condition-based order queries", async () => {
+    expect(deriveWorkflowExecutionContextRequirements(node("order-query", {
+      mode: "conditions",
+    })).identities).toEqual(["xyId"]);
+    expect(deriveWorkflowExecutionContextRequirements(node("order-query", {
+      mode: "order-number",
+    })).identities).toEqual([]);
+
+    const getContactIdentity = vi.fn(async () => ({ externalUserId: 101, xyId: 303 }));
+    await expect(prepareWorkflowExecutionContext({
+      contactIdentityPort: { getContactIdentity },
+      node: node("order-query", { mode: "conditions" }),
+      subjectId: "101",
+      subjectType: "wecom_contact",
+      trigger: {},
+      uid: 9,
+    })).resolves.toEqual({
+      customFields: {},
+      identities: { externalUserId: 101, xyId: 303 },
+    });
+    expect(getContactIdentity).toHaveBeenCalledOnce();
+
+    getContactIdentity.mockClear();
+    await expect(prepareWorkflowExecutionContext({
+      contactIdentityPort: { getContactIdentity },
+      node: node("order-query", { mode: "order-number" }),
+      subjectId: "101",
+      subjectType: "wecom_contact",
+      trigger: {},
+      uid: 9,
+    })).resolves.toEqual({ customFields: {}, identities: {} });
+    expect(getContactIdentity).not.toHaveBeenCalled();
+  });
+
   it("fails before Branch execution when the active field type drifted", async () => {
     await expect(prepareWorkflowExecutionContext({
       contactCustomFieldPort: {

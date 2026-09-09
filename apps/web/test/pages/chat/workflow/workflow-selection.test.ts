@@ -1,3 +1,5 @@
+// @vitest-environment node
+
 import { describe, expect, it } from "vitest";
 import {
   createEdge,
@@ -26,6 +28,25 @@ describe("workflow selection", () => {
       selectedEdgeId: "edge-wait-2d-end",
       selectedNodeIds: [],
     }, "wait-2d")).toEqual({
+      selectedEdgeId: null,
+      selectedNodeIds: ["wait-2d"],
+    });
+  });
+
+  it("keeps the current node selected when a different node leaves the graph", () => {
+    const nodes = createInitialNodes();
+
+    expect(normalizeWorkflowSelection({
+      defaultNodeId: "message-welcome",
+      edges: createInitialEdges().filter((edge) => (
+        edge.source !== "message-welcome" && edge.target !== "message-welcome"
+      )),
+      nodes: nodes.filter((node) => node.id !== "message-welcome"),
+      selection: {
+        selectedEdgeId: null,
+        selectedNodeIds: ["wait-2d"],
+      },
+    })).toEqual({
       selectedEdgeId: null,
       selectedNodeIds: ["wait-2d"],
     });

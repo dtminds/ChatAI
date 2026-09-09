@@ -14,9 +14,9 @@ import {
   WORKBENCH_MESSAGE_SOURCE,
   type WorkflowHandoffCommand,
 } from "@chatai/contracts";
+import type { Database } from "@chatai/database";
 import {
   WORKFLOW_HANDOFF_CAPABILITY_BINDING,
-  type WorkflowDatabase,
 } from "@chatai/workflow-runtime";
 import {
   MysqlWorkflowHandoffCapabilityPort,
@@ -348,7 +348,7 @@ function createRecordingDatabase(resolve: (query: CompiledQuery) => QueryResult<
     rollbackTransaction: async () => undefined,
     savepoint: async () => undefined,
   };
-  const database = new Kysely<WorkflowDatabase>({
+  const database = new Kysely<Database>({
     dialect: {
       createAdapter: () => new MysqlAdapter(),
       createDriver: () => driver,

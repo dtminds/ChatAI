@@ -1,3 +1,5 @@
+// @vitest-environment jsdom
+
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { openMessageDownloadUrl } from "@/pages/chat/lib/message-download";
 import type { ChatMessage } from "@/pages/chat/chat-types";

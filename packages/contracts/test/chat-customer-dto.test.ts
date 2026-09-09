@@ -1,10 +1,29 @@
 import { Value } from "@sinclair/typebox/value";
 import { describe, expect, it } from "vitest";
 import {
+  WORKBENCH_ENTERPRISE_MEMBER_MAX_ITEMS,
   WorkbenchCustomerDetailResponseSchema,
   WorkbenchCustomerListResponseSchema,
   WorkbenchCustomerRelationConversationsResponseSchema,
+  WorkbenchEnterpriseMemberListResponseSchema,
 } from "../src/chat/dto";
+
+describe("chat enterprise member DTOs", () => {
+  it("accepts enterprise member catalog responses within the documented cap", () => {
+    expect(WORKBENCH_ENTERPRISE_MEMBER_MAX_ITEMS).toBe(2000);
+    expect(
+      Value.Check(WorkbenchEnterpriseMemberListResponseSchema, {
+        items: [
+          {
+            avatarUrl: "https://example.com/hua.png",
+            displayName: "花花",
+            thirdUserId: "seat-user-hua",
+          },
+        ],
+      }),
+    ).toBe(true);
+  });
+});
 
 describe("chat customer DTOs", () => {
   it("accepts customer list responses with aggregated visible seat relations", () => {

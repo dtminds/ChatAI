@@ -1,3 +1,5 @@
+// @vitest-environment node
+
 import MockAdapter from "axios-mock-adapter";
 import { afterEach, describe, expect, it } from "vitest";
 import {

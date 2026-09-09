@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { WorkflowCapabilityExecutionError } from "@chatai/workflow-engine";
 import { Kysely, MysqlDialect } from "kysely";
-import type { WorkflowDatabase } from "@chatai/workflow-runtime";
+import type { Database } from "@chatai/database";
 import { VolcengineChatCompletionAdapter } from "../src/volcengine-chat-completion-adapter.js";
 
 const request = (overrides: Record<string, unknown> = {}) => ({
@@ -44,7 +44,7 @@ function createProductionDatabase(rows: Array<Record<string, unknown>>) {
       callback(null, connection);
     },
   };
-  const db = new Kysely<WorkflowDatabase>({ dialect: new MysqlDialect({ pool: pool as never }) });
+  const db = new Kysely<Database>({ dialect: new MysqlDialect({ pool: pool as never }) });
   return { db, query };
 }
 

@@ -14,12 +14,79 @@ import {
   type WorkflowMessageQueryRequest,
   WORKFLOW_HANDOFF_CAPABILITY_BINDING,
   WORKFLOW_MESSAGE_CAPABILITY_BINDING,
+  WORKFLOW_SMARTSHEET_WRITE_CAPABILITY_BINDING,
   WorkflowRuntimeService,
 } from "../src/index.js";
 
 const now = new Date("2026-07-13T00:00:00.000Z");
 
 describe("workflow capability reliability", () => {
+  it.each([true, false])("advances smartsheet success=%s on the default outlet with lifecycle and output", async (success) => {
+    const runtime = new InMemoryWorkflowRuntimeRepository(undefined, () => now);
+    const execute = vi.fn(async () => ({ success }));
+    const service = createService(runtime, execute, {
+      capabilityBindings: [WORKFLOW_SMARTSHEET_WRITE_CAPABILITY_BINDING], spec: smartsheetSpec(), strictNodeMaturity: true,
+    });
+    const task = await startCapability(runtime, service);
+    const result = await service.executeTask({ now, taskId: task.id, taskVersion: task.taskVersion, uid: 9, workerId: "worker-1" });
+    expect(result).toMatchObject({ kind: "success", nextTask: { nodeId: "end" }, run: { context: {
+      outputs: { message: { success } }, nodeLifecycle: { message: { enteredAt: now.toISOString(), exitedAt: now.toISOString() } },
+    } } });
+    expect(execute).toHaveBeenCalledOnce();
+    expect(execute.mock.calls[0]).toEqual([expect.objectContaining({ idempotencyKey: "9:1:message:2" })]);
+    expect(runtime.nodeExecutions.find(item => item.nodeId === "message")).toMatchObject({
+      status: "completed", input: { smartsheetAttemptStarted: true }, output: { success },
+    });
+  });
+
+  it("continues a smartsheet timeout without scheduling another attempt", async () => {
+    vi.useFakeTimers();
+    try {
+      const runtime = new InMemoryWorkflowRuntimeRepository(undefined, () => now);
+      let signal: AbortSignal | undefined;
+      const service = createService(runtime, async (request: unknown) => {
+        signal = (request as { signal: AbortSignal }).signal;
+        return new Promise(() => {});
+      }, { capabilityBindings: [{ ...WORKFLOW_SMARTSHEET_WRITE_CAPABILITY_BINDING, executionTimeoutMs: 100 }], spec: smartsheetSpec() });
+      const task = await startCapability(runtime, service);
+      const execution = service.executeTask({ now, taskId: task.id, taskVersion: task.taskVersion, uid: 9, workerId: "worker-1" });
+      await vi.advanceTimersByTimeAsync(100);
+      await expect(execution).resolves.toMatchObject({ kind: "success", nextTask: { nodeId: "end" }, run: { context: { outputs: { message: { success: false } } } } });
+      expect(signal?.aborted).toBe(true);
+      expect(runtime.tasks.find(item => item.id === task.id)).toMatchObject({ attempt: 1, status: "completed" });
+    } finally { vi.useRealTimers(); }
+  });
+
+  it("does not resend a smartsheet action after a crash or a lost completion commit", async () => {
+    for (const crashAt of ["adapter", "commit"] as const) {
+      const runtime = new InMemoryWorkflowRuntimeRepository(undefined, () => now);
+      const execute = vi.fn(async () => {
+        if (crashAt === "adapter") throw new Error("worker crashed");
+        return { success: true };
+      });
+      const service = createService(runtime, execute, { capabilityBindings: [WORKFLOW_SMARTSHEET_WRITE_CAPABILITY_BINDING], spec: smartsheetSpec() });
+      const task = await startCapability(runtime, service);
+      if (crashAt === "commit") vi.spyOn(runtime, "commitNodeResult").mockRejectedValueOnce(new Error("worker crashed"));
+      await expect(service.executeTask({ now, taskId: task.id, taskVersion: task.taskVersion, uid: 9, workerId: "worker-1" })).rejects.toThrow("worker crashed");
+      const recoveredAt = new Date(now.getTime() + 180_000);
+      await runtime.recoverExpiredLeases({ limit: 100, maxAttempts: 3, now: recoveredAt });
+      const recovered = await runtime.findTask(9, task.id);
+      await expect(service.executeTask({ now: recoveredAt, taskId: task.id, taskVersion: recovered!.taskVersion, uid: 9, workerId: "worker-2" }))
+        .resolves.toMatchObject({ kind: "success", nextTask: { nodeId: "end" }, run: { context: { outputs: { message: { success: false } } } } });
+      expect(execute).toHaveBeenCalledOnce();
+    }
+  });
+
+  it("never enters the smartsheet adapter when its durable attempt marker cannot be saved", async () => {
+    const runtime = new InMemoryWorkflowRuntimeRepository(undefined, () => now);
+    const execute = vi.fn(async () => ({ success: true }));
+    const service = createService(runtime, execute, { capabilityBindings: [WORKFLOW_SMARTSHEET_WRITE_CAPABILITY_BINDING], spec: smartsheetSpec() });
+    const task = await startCapability(runtime, service);
+    vi.spyOn(runtime, "updateCapabilityExecutionInput").mockResolvedValueOnce({ kind: "conflict" });
+    await expect(service.executeTask({ now, taskId: task.id, taskVersion: task.taskVersion, uid: 9, workerId: "worker-1" })).rejects.toMatchObject({ code: "WORKFLOW_TASK_STALE" });
+    expect(execute).not.toHaveBeenCalled();
+  });
+
   it("admits runtime-ready Handoff when its production binding is registered", async () => {
     const runtime = new InMemoryWorkflowRuntimeRepository(undefined, () => now);
     const service = createService(runtime, async () => ({}), {
@@ -1661,6 +1728,18 @@ function actionSpec(): WorkflowExecutionSpec {
     terminalNodeId: "end",
     workflowId: "31",
   };
+}
+
+function smartsheetSpec(): WorkflowExecutionSpec {
+  const spec = actionSpec();
+  spec.nodes[1] = {
+    id: "message", kind: "smartsheet-write", nodeSchemaVersion: 1,
+    config: {
+      webhookUrl: "https://qyapi.weixin.qq.com/cgi-bin/wedoc/smartsheet/webhook?key=test",
+      fieldMappings: [{ fieldId: "text", fieldType: "text", value: { kind: "literal", value: "hello" } }],
+    },
+  };
+  return spec;
 }
 
 function handoffSpec(): WorkflowExecutionSpec {

@@ -1,4 +1,9 @@
-import type { TicketActivity, TicketPriority, TicketUser } from "@chatai/contracts";
+import type {
+  TicketActivity,
+  TicketPriority,
+  TicketSourceType,
+  TicketUser,
+} from "@chatai/contracts";
 import type {
   ExpressionBuilder,
   Kysely,
@@ -542,6 +547,79 @@ export class TicketsRepository {
     });
   }
 
+  async createWorkflowTicket(input: {
+    anchorMessageId: number | null;
+    conversationId: number;
+    description: string | null;
+    idempotencyKey: string;
+    priority: TicketPriority;
+    title: string;
+    uid: number;
+  }) {
+    return this.db.transaction().execute(async (transaction) => {
+      try {
+        await transaction
+          .insertInto("xy_internal_request_idempotent")
+          .values({ idempotent_key: input.idempotencyKey })
+          .executeTakeFirstOrThrow();
+      } catch (error) {
+        if (isDuplicateEntryError(error)) return;
+        throw error;
+      }
+
+      const assigneeSubUserId = await this.resolveAiTicketAssignee(transaction, input);
+      const insertResult = await transaction
+        .insertInto("xy_wap_embed_session_action_item")
+        .values({
+          action_type: "follow_up",
+          anchor_message_id: input.anchorMessageId,
+          assignee_sub_user_id: assigneeSubUserId,
+          canceled_at: null,
+          canceled_by_sub_user_id: null,
+          completed_at: null,
+          completed_by_sub_user_id: null,
+          conversation_id: input.conversationId,
+          created_by_sub_user_id: null,
+          description: input.description,
+          due_at: null,
+          priority: input.priority,
+          session_id: null,
+          snapshot_id: null,
+          source_type: "workflow",
+          status: "open",
+          title: input.title,
+          uid: input.uid,
+        })
+        .executeTakeFirstOrThrow();
+      const ticketId = Number(insertResult.insertId);
+      if (!Number.isSafeInteger(ticketId) || ticketId <= 0) {
+        throw new Error("TICKET_INSERT_ID_MISSING");
+      }
+
+      await transaction
+        .insertInto("xy_wap_embed_ticket_activity")
+        .values({
+          activity_type: "created",
+          content: null,
+          detail_json: null,
+          operator_sub_user_id: null,
+          operator_type: "system",
+          ticket_id: ticketId,
+          uid: input.uid,
+        })
+        .executeTakeFirstOrThrow();
+    });
+  }
+
+  async hasRequestIdempotencyKey(idempotencyKey: string) {
+    const row = await this.db
+      .selectFrom("xy_internal_request_idempotent")
+      .select("id")
+      .where("idempotent_key", "=", idempotencyKey)
+      .executeTakeFirst();
+    return row !== undefined;
+  }
+
   private async resolveAiTicketAssignee(
     transaction: Transaction<Database>,
     input: { conversationId: number; uid: number },
@@ -654,7 +732,7 @@ export class TicketsRepository {
       createdBySubUserId: toNullableId(row.created_by_sub_user_id),
       hasAccountAccess: Number(row.has_account_access) === 1,
       sessionId: toNullableId(row.session_id),
-      sourceType: row.source_type === "ai" ? "ai" : "manual",
+      sourceType: normalizeSourceType(row.source_type),
       ticketId: String(row.ticket_id),
     };
   }
@@ -672,7 +750,7 @@ export class TicketsRepository {
     if (!row) return undefined;
     return {
       createdBySubUserId: toNullableId(row.created_by_sub_user_id),
-      sourceType: row.source_type === "ai" ? "ai" : "manual",
+      sourceType: normalizeSourceType(row.source_type),
       status: normalizePersistenceStatus(row.status),
     };
   }
@@ -1280,7 +1358,7 @@ function mapTicketRecord(row: TicketQueryRow): TicketRecord {
     priority: normalizePriority(row.priority),
     sessionId: toNullableId(row.session_id),
     snapshotId: toNullableId(row.snapshot_id),
-    sourceType: row.source_type === "ai" ? "ai" : "manual",
+    sourceType: normalizeSourceType(row.source_type),
     status: row.status,
     ticketId: String(row.ticket_id),
     title: row.title,
@@ -1290,6 +1368,17 @@ function mapTicketRecord(row: TicketQueryRow): TicketRecord {
 
 function normalizePriority(value: string) {
   return value === "low" || value === "high" ? value : "medium";
+}
+
+function normalizeSourceType(value: string): TicketSourceType {
+  if (value === "ai" || value === "workflow") return value;
+  return "manual";
+}
+
+function isDuplicateEntryError(error: unknown) {
+  if (typeof error !== "object" || error === null) return false;
+  const value = error as { code?: unknown; errno?: unknown };
+  return value.code === "ER_DUP_ENTRY" || value.errno === 1062;
 }
 
 function normalizePersistenceStatus(value: string): TicketDeleteRecord["status"] {

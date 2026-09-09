@@ -2116,3 +2116,11 @@ ALTER TABLE xy_wap_embed_logical_session_message
     source_message_id
   );
 ```
+## 2026-09-08 Workflow 创建工单
+
+- `source_type` 新增 `workflow`，用于区分工作流创建的工单。
+- 创建工单直接复用 Java 内部接口使用的 `xy_internal_request_idempotent`，原样写入 Workflow Runtime 提供的 `idempotentKey`。
+- 幂等记录、工单和工单活动在同一事务内写入；重复 `idempotentKey` 按已成功处理，不重复创建工单。
+- 不向 `xy_wap_embed_session_action_item` 增加幂等字段或索引。
+
+本次不需要执行工单表 DDL；运行环境需已有 `xy_internal_request_idempotent`。

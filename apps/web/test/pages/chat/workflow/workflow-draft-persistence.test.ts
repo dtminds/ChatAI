@@ -1,3 +1,5 @@
+// @vitest-environment node
+
 import { describe, expect, it } from "vitest";
 import { createNewWorkflowDraft } from "@/pages/chat/workflow/graph";
 import { getWorkflowTrigger } from "@/pages/chat/workflow/workflow-draft-persistence";

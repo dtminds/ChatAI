@@ -1206,6 +1206,37 @@ describe("useWorkflowWorkspace", () => {
     }
   });
 
+  it("updates workflow metadata through the workspace top bar boundary", async () => {
+    const { result } = renderHook(() => useWorkflowWorkspace("newcomer-conversion"));
+
+    await act(async () => {
+      await result.current.topBar.onUpdateMetadata({
+        description: "引导新客完成首购",
+        name: "新客首购旅程",
+      });
+    });
+
+    expect(getWorkflowDocument("newcomer-conversion").name).toBe("新客首购旅程");
+    expect(getWorkflowDocument("newcomer-conversion").description).toBe("引导新客完成首购");
+    expect(result.current.document.name).toBe("新客首购旅程");
+  });
+
+  it("selects the end node without opening node settings", () => {
+    const { result } = renderHook(() => useWorkflowWorkspace("newcomer-conversion"));
+
+    act(() => {
+      result.current.canvas.onSelectNode("message-welcome");
+    });
+    expect(result.current.inspector.isOpen).toBe(true);
+
+    act(() => {
+      result.current.canvas.onSelectNode("end");
+    });
+
+    expect(result.current.inspector.isOpen).toBe(false);
+    expect(result.current.canvas.nodes.find((node) => node.id === "end")?.data.selected).toBe(true);
+  });
+
 });
 
 function createWorkflowDraftWithStartSourceMarker(marker: string): WorkflowDraft {

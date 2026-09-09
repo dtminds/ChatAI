@@ -1,3 +1,5 @@
+// @vitest-environment node
+
 import { describe, expect, it } from "vitest";
 import { resolveConversationAIHostingPolicy } from "@/pages/chat/lib/conversation-ai-hosting";
 

@@ -40,14 +40,19 @@ export interface WorkflowContactIdentityPort {
 
 export class WorkflowContactIdentityLookupError extends Error {
   readonly failureKind: "retryable" | "terminal";
+  readonly upstreamErrorCode: number | undefined;
 
   constructor(
     message = "Workflow contact identity service is unavailable",
-    options?: ErrorOptions & { failureKind?: "retryable" | "terminal" },
+    options?: ErrorOptions & {
+      failureKind?: "retryable" | "terminal";
+      upstreamErrorCode?: number;
+    },
   ) {
     super(message, options);
     this.name = "WorkflowContactIdentityLookupError";
     this.failureKind = options?.failureKind ?? "retryable";
+    this.upstreamErrorCode = options?.upstreamErrorCode;
   }
 }
 
@@ -70,6 +75,9 @@ export function deriveWorkflowExecutionContextRequirements(
   const identities = new Set<WorkflowIdentityField>(
     getWorkflowNodeContract(node.kind).identityInputs,
   );
+  if (node.kind === "order-query" && node.config.mode === "conditions") {
+    identities.add("xyId");
+  }
   if (globalContext) {
     GLOBAL_CONTEXT_REQUIRED_IDENTITIES.forEach(identity => identities.add(identity));
   }

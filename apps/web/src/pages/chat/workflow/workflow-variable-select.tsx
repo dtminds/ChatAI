@@ -1,4 +1,4 @@
-import { ArrowDown01Icon } from "@hugeicons/core-free-icons";
+import { ArrowDown01Icon, Cancel01Icon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
@@ -23,6 +23,7 @@ export function WorkflowVariableSelect({
   customFieldVisibility,
   disabled = false,
   invalidLabel = "原变量不可用",
+  onClear,
   onSelect,
   placeholder = "选择变量",
   value,
@@ -33,6 +34,7 @@ export function WorkflowVariableSelect({
   customFieldVisibility: WorkflowCustomFieldVisibility;
   disabled?: boolean;
   invalidLabel?: string;
+  onClear?: () => void;
   onSelect: (variable: WorkflowVariableDefinition) => void;
   placeholder?: string;
   value?: WorkflowVariableSelector;
@@ -41,8 +43,9 @@ export function WorkflowVariableSelect({
   const [open, setOpen] = useState(false);
   const selectedVariable = value ? resolveWorkflowVariable(variables, value) : undefined;
   const hasInvalidValue = Boolean(value && !selectedVariable);
+  const showClear = Boolean(value && onClear);
 
-  return (
+  const trigger = (
     <WorkflowVariablePicker
       customFieldVisibility={customFieldVisibility}
       onOpenChange={setOpen}
@@ -63,14 +66,14 @@ export function WorkflowVariableSelect({
         type="button"
         variant="outline"
       >
-        <span className="flex min-w-0 flex-1 text-left">
+        <span className={cn("flex min-w-0 flex-1 text-left", showClear && "pr-8")}>
           {selectedVariable ? (
             <WorkflowVariableValueTag
               label={selectedVariable.label}
               sourceLabel={getWorkflowVariableDisplaySourceLabel(selectedVariable)}
             />
           ) : (
-            <span className="truncate text-muted-foreground">
+            <span className="truncate pl-1.5 text-muted-foreground">
               {hasInvalidValue ? invalidLabel : placeholder}
             </span>
           )}
@@ -84,5 +87,27 @@ export function WorkflowVariableSelect({
         />
       </Button>
     </WorkflowVariablePicker>
+  );
+
+  if (!showClear) return trigger;
+
+  return (
+    <div className="relative min-w-0 w-full">
+      {trigger}
+      <Button
+        aria-label={`清除${ariaLabel}`}
+        className="absolute right-8 top-1/2 z-10 size-7 -translate-y-1/2 p-0 text-muted-foreground hover:bg-accent hover:text-foreground"
+        disabled={disabled}
+        onClick={() => {
+          setOpen(false);
+          onClear?.();
+        }}
+        size="sm"
+        type="button"
+        variant="ghost"
+      >
+        <HugeiconsIcon aria-hidden="true" icon={Cancel01Icon} size={13} strokeWidth={1.8} />
+      </Button>
+    </div>
   );
 }

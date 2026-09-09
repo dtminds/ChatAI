@@ -3,6 +3,8 @@ import {
   getWorkflowCustomFieldVariableId,
   getWorkflowCustomFieldVariableValueType,
   getWorkflowContextVariableValueType,
+  extractWorkflowNodeDraftConfig,
+  getUnknownWorkflowNodeDraftDataKeys,
   getWorkflowNodeOutputContracts,
   isWorkflowAiCollectExecutionConfigComplete,
   isWorkflowAiIntentExecutionConfigComplete,
@@ -12,8 +14,14 @@ import {
   isWorkflowLlmExecutionConfigComplete,
   isWorkflowMessageExecutionConfigComplete,
   isWorkflowMessageQueryExecutionConfigComplete,
+  isWorkflowOrderQueryExecutionConfigComplete,
   isWorkflowOutputValueTypeEqual,
+  isWorkflowSmartsheetWriteExecutionConfigComplete,
+  isWorkflowTicketCreateExecutionConfigComplete,
+  isWorkflowSmartsheetWriteDraftConfigComplete,
   normalizeWorkflowEntryPolicy,
+  normalizeWorkflowMessageQueryConfigTimePrecision,
+  normalizeWorkflowOrderQueryConfigTimePrecision,
   type WorkflowDraft,
   type CustomFieldItem,
   type WorkflowExecutionNode,
@@ -77,6 +85,16 @@ export function compileWorkflowDraft({
       throw new WorkflowCompilationError([{
         code: "invalid-node-config",
         message: executionConfigError,
+        nodeId: node.id,
+      }]);
+    }
+    if (node.data.kind === "smartsheet-write"
+      && !isWorkflowSmartsheetWriteDraftConfigComplete(
+        extractWorkflowNodeDraftConfig(node.data.kind, node.data),
+      )) {
+      throw new WorkflowCompilationError([{
+        code: "invalid-node-config",
+        message: "Smartsheet Write node schema and field mappings do not match",
         nodeId: node.id,
       }]);
     }
@@ -236,6 +254,37 @@ function validateWorkflowNodeReferences(
       }
     }
 
+    if (node.kind === "ticket-create"
+      && isWorkflowTicketCreateExecutionConfigComplete(node.config)) {
+      const guaranteedUpstreamIds = getWorkflowGuaranteedUpstreamNodeIds(
+        node.id,
+        nodeIds,
+        edges,
+      );
+      const selectors = [node.config.ticketTitle, node.config.description]
+        .flatMap(segments => segments.flatMap(segment =>
+          segment.type === "variable" ? [segment.selector] : []));
+      const referencesAvailable = selectors.every(selector =>
+        validateWorkflowVariableSelector({
+          edges,
+          guaranteedUpstreamIds,
+          customFieldById,
+          nodeById,
+          requiredUsage: "variable",
+          selector,
+          targetNodeId: node.id,
+          workflowType,
+          entryEventTypes,
+        }));
+      if (!referencesAvailable) {
+        issues.push({
+          code: "invalid-node-config",
+          message: "Ticket Create node references unavailable content data",
+          nodeId: node.id,
+        });
+      }
+    }
+
     if (node.kind === "llm" && isWorkflowLlmExecutionConfigComplete(node.config)) {
       const guaranteedUpstreamIds = getWorkflowGuaranteedUpstreamNodeIds(
         node.id,
@@ -293,7 +342,38 @@ function validateWorkflowNodeReferences(
       }
     }
 
-    if ((node.kind === "order-conversion" || node.kind === "order-bind")
+    if (node.kind === "smartsheet-write"
+      && isWorkflowSmartsheetWriteExecutionConfigComplete(node.config)) {
+      const guaranteedUpstreamIds = getWorkflowGuaranteedUpstreamNodeIds(
+        node.id,
+        nodeIds,
+        edges,
+      );
+      const valid = node.config.fieldMappings.every(field =>
+        field.value.kind === "literal"
+        || validateWorkflowVariableSelector({
+          edges,
+          expectedValueType: field.value.valueType,
+          guaranteedUpstreamIds,
+          customFieldById,
+          nodeById,
+          selector: field.value.selector,
+          targetNodeId: node.id,
+          workflowType,
+          entryEventTypes,
+        }));
+      if (!valid) {
+        issues.push({
+          code: "invalid-node-config",
+          message: "Smartsheet Write node references unavailable or changed field data",
+          nodeId: node.id,
+        });
+      }
+    }
+
+    if ((node.kind === "order-conversion"
+      || node.kind === "order-bind"
+      || node.kind === "order-query" && node.config.mode === "order-number")
       && Array.isArray(node.config.orderNumberSelector)) {
       const selectorInput = {
         customFieldById,
@@ -318,7 +398,9 @@ function validateWorkflowNodeReferences(
         expectedValueType: { kind: "number" },
       });
       if (!valid) {
-        const label = node.kind === "order-conversion" ? "Order Conversion" : "Order Bind";
+        const label = node.kind === "order-conversion"
+          ? "Order Conversion"
+          : node.kind === "order-bind" ? "Order Bind" : "Order Query";
         issues.push({
           code: "invalid-node-config",
           message: `${label} node references unavailable or incompatible order number data`,
@@ -422,6 +504,52 @@ function validateWorkflowNodeReferences(
           message: rangeInvalid
             ? "Message Query node time range is causally reversed"
             : "Message Query node references unavailable time data",
+          nodeId: node.id,
+        });
+      }
+    }
+
+    if (node.kind === "order-query"
+      && isWorkflowOrderQueryExecutionConfigComplete(node.config)
+      && node.config.mode === "conditions"
+      && node.config.conditions.timeRange.mode === "dynamic") {
+      const guaranteedUpstreamIds = getWorkflowGuaranteedUpstreamNodeIds(
+        node.id,
+        nodeIds,
+        edges,
+      );
+      const { timeRange } = node.config.conditions;
+      const referencesAvailable = [timeRange.start, timeRange.end]
+        .every(selector => validateWorkflowVariableSelector({
+          allowedSourceKinds: [
+            "context",
+            "current-node-lifecycle",
+            "node-lifecycle",
+            "node-output",
+          ],
+          edges,
+          expectedValueType: { kind: "datetime" },
+          guaranteedUpstreamIds,
+          customFieldById,
+          nodeById,
+          requiredUsage: "time-reference",
+          selector,
+          targetNodeId: node.id,
+          workflowType,
+          entryEventTypes,
+        }));
+      const rangeInvalid = isWorkflowDynamicTimeRangeProvablyInvalidInGraph({
+        edges,
+        end: timeRange.end,
+        nodeIds,
+        start: timeRange.start,
+      });
+      if (!referencesAvailable || rangeInvalid) {
+        issues.push({
+          code: "invalid-node-config",
+          message: rangeInvalid
+            ? "Order Query node time range is causally reversed"
+            : "Order Query node references unavailable time data",
           nodeId: node.id,
         });
       }
@@ -541,8 +669,17 @@ function getWorkflowEntryEventTypes(nodes: WorkflowExecutionNode[]) {
 export function normalizeWorkflowDraft(draft: WorkflowDraft): WorkflowDraft {
   const normalized = structuredClone(draft);
   for (const node of normalized.nodes) {
-    if (node.data.kind !== "start") continue;
     const data = node.data as Record<string, unknown>;
+    for (const key of getUnknownWorkflowNodeDraftDataKeys(node.data.kind, data)) {
+      delete data[key];
+    }
+    if (node.data.kind === "message-query") {
+      Object.assign(data, normalizeWorkflowMessageQueryConfigTimePrecision(data));
+    }
+    if (node.data.kind === "order-query") {
+      Object.assign(data, normalizeWorkflowOrderQueryConfigTimePrecision(data));
+    }
+    if (node.data.kind !== "start") continue;
     data.entryPolicy = normalizeWorkflowEntryPolicy(data.entryPolicy);
     if (Array.isArray(data.workUserIds)) {
       delete data.messageSendingWindow;

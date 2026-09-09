@@ -3,6 +3,8 @@ import type { FastifyError } from "fastify";
 const REQUEST_FIELD_LABELS: Record<string, string> = {
   availableKbIds: "知识库",
   availableSkillIds: "技能",
+  contactThirdUserIds: "客户",
+  thirdUserIds: "成员",
   kbs: "知识库",
   select_sub_ids: "标签",
   tools: "工具",
@@ -20,6 +22,8 @@ const REQUEST_FIELD_LABELS: Record<string, string> = {
 const MAX_ITEMS_ACTIONS: Record<string, string> = {
   availableKbIds: "添加",
   availableSkillIds: "添加",
+  contactThirdUserIds: "选择",
+  thirdUserIds: "选择",
   kbs: "添加",
   select_sub_ids: "选择",
   tools: "添加",

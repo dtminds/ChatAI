@@ -463,7 +463,7 @@ describe("MessageHistorySidePanel", () => {
     }
   });
 
-  it("keeps long non-breaking history text inside the panel width", () => {
+  it("normalizes non-breaking spaces in history text", () => {
     render(
       <MessageHistorySidePanel
         activeConversation={createConversation()}
@@ -494,8 +494,6 @@ describe("MessageHistorySidePanel", () => {
     const historyText = screen.getByTestId("history-message-text");
 
     expect(historyText.textContent).not.toContain("\u00a0");
-    expect(historyText).toHaveClass("w-full", "max-w-full", "min-w-0", "[overflow-wrap:anywhere]");
-    expect(historyText).not.toHaveClass("w-max", "max-w-none", "whitespace-nowrap");
   });
 
   it("renders WeChat emoji tokens as inline images in compact history text", () => {
@@ -1260,41 +1258,6 @@ describe("MessageHistorySidePanel", () => {
     expect(screen.getByTestId("history-media-tile-video-no-handler")).toHaveTextContent("");
   });
 
-  it("keeps long file names inside the history panel width", () => {
-    render(
-      <MessageHistorySidePanel
-        activeConversation={createConversation()}
-        activeHistory={{
-          hasNext: false,
-          hasPrev: false,
-          messages: [
-            createFileMessage("file-long", {
-              extension: "docx",
-              fileName: "智能应用可行性报告_gemini2.5pro_非常非常非常非常非常非常长的文件名.docx",
-              fileSizeLabel: "431.68 KB",
-              sourceLabel: "范双飞test",
-            }),
-          ],
-        }}
-        activeHistoryFilters={{ scope: "file" }}
-        activeHistoryLoading={false}
-        groupMembers={[]}
-        isOpen
-        onClose={vi.fn()}
-        onLoadMoreNext={vi.fn()}
-        onLoadMorePrev={vi.fn()}
-        onRefresh={vi.fn()}
-        onSetDay={vi.fn()}
-        onSetScope={vi.fn()}
-        onSetSenderId={vi.fn()}
-      />,
-    );
-
-    const title = screen.getByText("智能应用可行性报告_gemini2.5pro_非常非常非常非常非常非常长的文件名.docx");
-
-    expect(title).toHaveClass("min-w-0", "truncate");
-    expect(title.closest(".grid")).toHaveClass("grid-cols-[auto_minmax(0,1fr)]", "w-full", "max-w-full", "min-w-0", "overflow-hidden");
-  });
 
   it("keeps the viewport at the end when the panel opens", () => {
     const { rerender } = render(

@@ -8,12 +8,6 @@ import {
 } from "react-router-dom";
 import { vi } from "vitest";
 import { StrictMode, type ReactElement } from "react";
-import {
-  Sheet,
-  SheetContent,
-  SheetDescription,
-  SheetTitle,
-} from "@/components/ui/sheet";
 import { requestInstance } from "@/lib/request";
 import {
   ChatWorkbenchPage,
@@ -140,26 +134,18 @@ export function renderConversationOpenFromOutsideRoute(
   const router = createMemoryRouter(
     [
       {
-        element: (
-          <Sheet onOpenChange={() => undefined} open>
-            <SheetContent>
-              <SheetTitle>洞察详情</SheetTitle>
-              <SheetDescription>查看本轮对话</SheetDescription>
-              <OpenConversationLink conversationId={conversationId} />
-            </SheetContent>
-          </Sheet>
-        ),
+        element: <OpenConversationLink conversationId={conversationId} />,
         path: "/chat/insights",
       },
       {
-        element: <ChatWorkbenchRoutePage />,
-        path: "/chat",
         children: [
           {
             element: <></>,
             path: "conversations/:conversationId",
           },
         ],
+        element: <ChatWorkbenchRoutePage />,
+        path: "/chat",
       },
     ],
     { initialEntries: ["/chat"] },

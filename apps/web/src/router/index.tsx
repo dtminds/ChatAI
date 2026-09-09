@@ -14,6 +14,14 @@ import { isPagePathAllowedForHostname } from "@/lib/host-page-access";
 import { isEmbedPath } from "@/pages/auth/auth-redirect";
 import { isChatEmbedHostname } from "@chatai/contracts";
 
+function E2eLoginPage() {
+  useEffect(() => {
+    window.location.replace("/api/auth/e2e-login");
+  }, []);
+
+  return null;
+}
+
 const LoginPage = lazy(() =>
   import("@/pages/auth/login-page").then(({ LoginPage }) => ({
     default: LoginPage,
@@ -250,6 +258,10 @@ export const routerConfig = [
       {
         path: "login",
         element: withRouteSuspense(<LoginPage />),
+      },
+      {
+        path: "e2e_login",
+        element: import.meta.env.DEV ? <E2eLoginPage /> : withRouteSuspense(<NotFoundPage />),
       },
       {
         path: "workflow/endpoint",

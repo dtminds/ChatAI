@@ -873,6 +873,59 @@ export type WorkbenchGroupMembersResponse = {
   items: WorkbenchGroupMemberDto[];
 };
 
+/** 企微客户群单次邀请好友上限，拉人请求与弹窗勾选共用。 */
+export const WORKBENCH_PULL_GROUP_MEMBERS_MAX_ITEMS = 40;
+
+export const WorkbenchPullGroupMembersRequestSchema = Type.Object({
+  contactThirdUserIds: Type.Optional(
+    Type.Array(Type.String({ minLength: 1 }), {
+      maxItems: WORKBENCH_PULL_GROUP_MEMBERS_MAX_ITEMS,
+    }),
+  ),
+  thirdUserIds: Type.Optional(
+    Type.Array(Type.String({ minLength: 1 }), {
+      maxItems: WORKBENCH_PULL_GROUP_MEMBERS_MAX_ITEMS,
+    }),
+  ),
+});
+
+export type WorkbenchPullGroupMembersRequest = Static<
+  typeof WorkbenchPullGroupMembersRequestSchema
+>;
+
+export type WorkbenchPullGroupMembersResponse = {
+  conversationId: string;
+};
+
+export type WorkbenchKickGroupMemberRequest = {
+  kickOutThirdUserId: string;
+};
+
+export type WorkbenchKickGroupMemberResponse = {
+  conversationId: string;
+};
+
+/** 加群弹窗成员候选：该企业已开通 ChatAI 席位的稳定上限。 */
+export const WORKBENCH_ENTERPRISE_MEMBER_MAX_ITEMS = 2000;
+
+export const WorkbenchEnterpriseMemberSchema = Type.Object({
+  avatarUrl: Type.String(),
+  displayName: Type.String(),
+  thirdUserId: Type.String({ minLength: 1 }),
+});
+
+export const WorkbenchEnterpriseMemberListResponseSchema = Type.Object({
+  items: Type.Array(WorkbenchEnterpriseMemberSchema, {
+    maxItems: WORKBENCH_ENTERPRISE_MEMBER_MAX_ITEMS,
+  }),
+});
+
+export type WorkbenchEnterpriseMemberDto = Static<typeof WorkbenchEnterpriseMemberSchema>;
+
+export type WorkbenchEnterpriseMemberListResponse = Static<
+  typeof WorkbenchEnterpriseMemberListResponseSchema
+>;
+
 export type WorkbenchUploadCredentialResponse = {
   allowPerfixs: string[];
   bucket: string;

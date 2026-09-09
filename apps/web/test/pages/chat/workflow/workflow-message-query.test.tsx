@@ -1,5 +1,6 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { useState } from "react";
 import { describe, expect, it, vi } from "vitest";
 import { projectWorkflowNodeExecutionConfig } from "@chatai/workflow-engine/node-contract-registry";
 import { WORKFLOW_NODE_TYPE } from "@/pages/chat/workflow/constants";
@@ -13,6 +14,134 @@ import { validateWorkflowNodeConfig } from "@/pages/chat/workflow/validation/wor
 import { WorkflowCustomFieldResourceProvider } from "@/pages/chat/workflow/workflow-custom-field-resource";
 
 describe("workflow message query", () => {
+  it("keeps a rejected fixed time in the picker and commits only after correction", async () => {
+    const now = vi.spyOn(Date, "now").mockReturnValue(Date.parse("2026-09-05T15:00:00+08:00"));
+    try {
+      const user = userEvent.setup();
+      const node = createMessageQueryNode();
+      node.data.timeRange = { mode: "fixed", startAt: "2026-09-05T10:00:00", endAt: "2026-09-05T12:00:00" };
+      const onNodeChange = vi.fn();
+      render(<MessageQueryConfig node={node} nodes={[node]} edges={[]} onNodeChange={onNodeChange} />);
+      await user.click(screen.getByRole("button", { name: "结束时间" }));
+      await user.click(screen.getByRole("button", { name: "结束时间时间" }));
+      await user.click(screen.getByRole("button", { name: "09时" }));
+      await user.click(screen.getByRole("button", { name: "结束时间时间确认" }));
+      await user.click(screen.getByRole("button", { name: "确定" }));
+      expect(onNodeChange).not.toHaveBeenCalled();
+      expect(screen.getByRole("alert")).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "结束时间时间" })).toHaveTextContent("09:00:00");
+      await user.click(screen.getByRole("button", { name: "结束时间时间" }));
+      await user.click(screen.getByRole("button", { name: "13时" }));
+      await user.click(screen.getByRole("button", { name: "结束时间时间确认" }));
+      await user.click(screen.getByRole("button", { name: "确定" }));
+      expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: "确定" })).not.toBeInTheDocument();
+      expect(onNodeChange).toHaveBeenCalledWith(expect.objectContaining({
+        timeRange: { mode: "fixed", startAt: "2026-09-05T10:00:00", endAt: "2026-09-05T13:00:00" },
+      }));
+    } finally { now.mockRestore(); }
+  });
+
+  it.each([
+    ["2026-06-06T10:00:00", "2026-06-06T12:00:00", "开始时间"],
+    ["2026-09-05T10:00:00", "2026-12-05T12:00:00", "结束时间"],
+  ])("does not commit fixed time beyond lookback or span: %s", async (startAt, endAt, label) => {
+    const now = vi.spyOn(Date, "now").mockReturnValue(Date.parse("2026-09-05T15:00:00+08:00"));
+    try {
+      const user = userEvent.setup();
+      const node = createMessageQueryNode();
+      node.data.timeRange = { mode: "fixed", startAt, endAt };
+      const onNodeChange = vi.fn();
+      render(<MessageQueryConfig node={node} nodes={[node]} edges={[]} onNodeChange={onNodeChange} />);
+      await user.click(screen.getByRole("button", { name: label }));
+      await user.click(screen.getByRole("button", { name: "确定" }));
+      expect(onNodeChange).not.toHaveBeenCalled();
+      expect(screen.getByRole("alert")).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "确定" })).toBeInTheDocument();
+      await user.keyboard("{Escape}");
+      expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    } finally { now.mockRestore(); }
+  });
+
+  it("reports only the reversed-range issue for an otherwise valid fixed date", () => {
+    const now = vi.spyOn(Date, "now").mockReturnValue(Date.parse("2026-09-05T15:00:00+08:00"));
+    try {
+      const node = createMessageQueryNode();
+      node.data.timeRange = { mode: "fixed", startAt: "2026-09-05T15:00:00", endAt: "2026-09-05T14:00:00" };
+      const issues = validateWorkflowNodeConfig(node, [createStartNode(), node], [createEdge("start", node.id)]);
+      expect(issues).toContainEqual(expect.objectContaining({ code: "message-query-time-range-invalid" }));
+      expect(issues).not.toContainEqual(expect.objectContaining({ code: "message-query-fixed-time-bounds-invalid" }));
+    } finally { now.mockRestore(); }
+  });
+  it.each(["00:00:00.000", "10:30:00.000", "23:59:59.999"])(
+    "allows the complete 90th day at %s when validating publication", clock => {
+      const now = vi.spyOn(Date, "now").mockReturnValue(Date.parse(`2026-09-05T${clock}+08:00`));
+      try {
+        const node = createMessageQueryNode();
+        node.data.timeRange = {
+          mode: "relative",
+          start: { amount: 90, unit: "day", time: "00:00:00" },
+          end: { amount: 0, unit: "day", time: "23:59:59" },
+        };
+        const validate = () => validateWorkflowNodeConfig(node, [createStartNode(), node], [createEdge("start", node.id)]);
+        expect(validate()).not.toContainEqual(expect.objectContaining({ code: "message-query-relative-time-invalid" }));
+        node.data.timeRange = { mode: "fixed", startAt: "2026-06-07T00:00:00", endAt: "2026-09-05T23:59:59" };
+        expect(validate()).not.toContainEqual(expect.objectContaining({ code: "message-query-fixed-time-bounds-invalid" }));
+        node.data.timeRange.endAt = "2026-09-06T00:00:00";
+        expect(validate()).toContainEqual(expect.objectContaining({ code: "message-query-fixed-time-bounds-invalid" }));
+      } finally {
+        now.mockRestore();
+      }
+    },
+  );
+  it("edits relative times with the existing panel controls and preserves saved values", async () => {
+    const user = userEvent.setup();
+    const onChange = vi.fn();
+    function StatefulPanel() {
+      const [node, setNode] = useState(createMessageQueryNode);
+      return <MessageQueryConfig
+        edges={[createEdge("start", node.id)]} node={node} nodes={[createStartNode(), node]}
+        onNodeChange={patch => {
+          onChange(patch);
+          setNode(current => ({ ...current, data: { ...current.data, ...patch } }));
+        }}
+      />;
+    }
+    const view = render(<StatefulPanel />);
+    expect(screen.getByRole("radio", { name: "动态时间" })).toBeChecked();
+    await user.click(screen.getByRole("radio", { name: "相对时间" }));
+    const startInput = screen.getByRole("spinbutton", { name: "开始时间相对数值" });
+    await user.clear(startInput);
+    await user.type(startInput, "7");
+    await user.tab();
+    await user.click(screen.getByRole("combobox", { name: "开始时间相对单位" }));
+    await user.click(screen.getByRole("option", { name: "小时前" }));
+    expect(screen.queryByRole("button", { name: "开始时间时间点" })).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "结束时间时间点" }));
+    await user.click(screen.getByRole("button", { name: "22时" }));
+    await user.click(screen.getByRole("button", { name: "结束时间时间点确认" }));
+    const patch = onChange.mock.calls.at(-1)![0];
+    expect(patch.timeRange).toEqual({
+      mode: "relative",
+      start: { amount: 7, unit: "hour" },
+      end: { amount: 0, unit: "day", time: "22:59:59" },
+    });
+    view.unmount();
+    const node = createMessageQueryNode();
+    node.data = { ...node.data, ...patch };
+    render(<MessageQueryConfig edges={[]} node={node} nodes={[node]} onNodeChange={vi.fn()} />);
+    expect(screen.getByRole("radio", { name: "相对时间" })).toBeChecked();
+    expect(screen.getByRole("spinbutton", { name: "开始时间相对数值" })).toHaveValue(7);
+    expect(messageQueryNodeUi.body.kind === "fields" && messageQueryNodeUi.body.getFields(node.data))
+      .toEqual(expect.arrayContaining([expect.objectContaining({
+        id: "time-range",
+        value: expect.objectContaining({ items: expect.arrayContaining([
+          expect.objectContaining({ text: "过去 7 小时" }),
+          expect.objectContaining({ text: "过去 0 天 22:59:59" }),
+        ]) }),
+      })]));
+  });
+
   it("defines a stable default execution contract and downstream outputs", () => {
     const definition = getNodeDefinition("message-query");
     const data = definition.createDefaultData();
@@ -98,7 +227,7 @@ describe("workflow message query", () => {
       timeRange: {
         endAt: "",
         mode: "fixed" as const,
-        startAt: "2026-07-17T00:00",
+        startAt: "2026-07-17T00:00:00",
       },
     };
 
@@ -107,7 +236,7 @@ describe("workflow message query", () => {
       id: "time-range",
       value: {
         items: [
-          { kind: "value", text: "2026-07-17 00:00" },
+          { kind: "value", text: "2026-07-17 00:00:00" },
           { kind: "operator", text: " 至 " },
           { kind: "value", text: "未配置", tone: "warning" },
         ],
@@ -115,7 +244,7 @@ describe("workflow message query", () => {
         maxLines: 2,
       },
     }));
-    expect(data.timeRange.startAt).toBe("2026-07-17T00:00");
+    expect(data.timeRange.startAt).toBe("2026-07-17T00:00:00");
   });
 
   it("selects lifecycle and business times from nested node menus", async () => {
@@ -280,15 +409,15 @@ describe("workflow message query", () => {
     }));
   });
 
-  it("allows one complete minute and rejects reversed fixed ranges", () => {
+  it("allows one complete second and rejects reversed fixed ranges", () => {
     const queryNode = {
       ...createMessageQueryNode(),
       data: {
         ...createDefaultNodeData("message-query"),
         timeRange: {
-          endAt: "2026-07-10T10:00",
+          endAt: "2026-07-10T10:00:00",
           mode: "fixed" as const,
-          startAt: "2026-07-10T11:00",
+          startAt: "2026-07-10T11:00:00",
         },
       },
     };
@@ -304,9 +433,9 @@ describe("workflow message query", () => {
       data: {
         ...createDefaultNodeData("message-query"),
         timeRange: {
-          endAt: "2026-07-10T10:00",
+          endAt: "2026-07-10T10:00:00",
           mode: "fixed" as const,
-          startAt: "2026-07-10T10:00",
+          startAt: "2026-07-10T10:00:00",
         },
       },
     };
@@ -343,9 +472,9 @@ describe("workflow message query", () => {
       data: {
         ...createDefaultNodeData("message-query"),
         timeRange: {
-          endAt: "2026-03-01T09:30",
+          endAt: "2026-03-01T09:30:00",
           mode: "fixed" as const,
-          startAt: "2026-02-30T09:30",
+          startAt: "2026-02-30T09:30:00",
         },
       },
     };

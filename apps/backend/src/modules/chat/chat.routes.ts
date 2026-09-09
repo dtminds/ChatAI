@@ -3,6 +3,8 @@ import type {
   WorkbenchRetryMessageRequest,
   WorkbenchSendMessagePayload,
   WorkbenchGetOrCreateConversationRequestDto,
+  WorkbenchKickGroupMemberRequest,
+  WorkbenchPullGroupMembersRequest,
   WorkbenchSmartReplyAttachmentsRequest,
   WorkbenchSmartReplyAutoGeneralAnswerRequest,
   WorkbenchSmartReplyGeneralAnswerRequest,
@@ -42,6 +44,7 @@ import type {
 import {
   QUICK_REPLY_CATEGORY_CONTENT_ITEM_LIMIT,
   QUICK_REPLY_CHILD_CATEGORY_LIMIT,
+  WorkbenchPullGroupMembersRequestSchema,
 } from "@chatai/contracts";
 import { Type, type Static } from "@sinclair/typebox";
 import type { FastifyInstance, FastifyRequest } from "fastify";
@@ -64,6 +67,14 @@ const ConversationListQuerySchema = Type.Object({
 const ConversationParamsSchema = Type.Object({
   conversationId: Type.String(),
 });
+
+type PullGroupMembersBody = WorkbenchPullGroupMembersRequest;
+
+const KickGroupMemberBodySchema = Type.Object({
+  kickOutThirdUserId: Type.String({ minLength: 1 }),
+});
+
+type KickGroupMemberBody = Static<typeof KickGroupMemberBodySchema>;
 
 const ConversationFullAutoRequestSchema = Type.Object({
   enabled: Type.Boolean(),
@@ -744,6 +755,10 @@ export async function registerChatRoutes(app: FastifyInstance) {
     getWorkbenchService(app, request).getSeats(getSubUserId(request)),
   );
 
+  app.get("/api/server/employees", { preHandler: app.authenticate }, async (request) =>
+    getWorkbenchService(app, request).getEnterpriseMembers(getSubUserId(request)),
+  );
+
   app.get<{ Querystring: CustomersQuery }>(
     "/api/server/customers",
     {
@@ -1150,6 +1165,49 @@ export async function registerChatRoutes(app: FastifyInstance) {
         getSubUserId(request),
         request.params.conversationId,
       ),
+  );
+
+  app.post<{ Body: PullGroupMembersBody; Params: ConversationParams }>(
+    "/api/server/conversations/:conversationId/group-members",
+    {
+      preHandler: app.authenticate,
+      schema: {
+        body: WorkbenchPullGroupMembersRequestSchema,
+        params: ConversationParamsSchema,
+      },
+    },
+    async (request) => {
+      assertChatWriteAccess(request);
+      return getWorkbenchService(app, request).pullGroupMembers(
+        getSubUserId(request),
+        request.params.conversationId,
+        {
+          contactThirdUserIds: request.body.contactThirdUserIds,
+          thirdUserIds: request.body.thirdUserIds,
+        } satisfies WorkbenchPullGroupMembersRequest,
+      );
+    },
+  );
+
+  app.post<{ Body: KickGroupMemberBody; Params: ConversationParams }>(
+    "/api/server/conversations/:conversationId/group-members/remove",
+    {
+      preHandler: app.authenticate,
+      schema: {
+        body: KickGroupMemberBodySchema,
+        params: ConversationParamsSchema,
+      },
+    },
+    async (request) => {
+      assertChatWriteAccess(request);
+      return getWorkbenchService(app, request).kickGroupMember(
+        getSubUserId(request),
+        request.params.conversationId,
+        {
+          kickOutThirdUserId: request.body.kickOutThirdUserId,
+        } satisfies WorkbenchKickGroupMemberRequest,
+      );
+    },
   );
 
   app.get<{ Querystring: MaterialGroupsQuery }>(

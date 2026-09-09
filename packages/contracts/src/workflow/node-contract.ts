@@ -12,10 +12,20 @@ import {
   type WorkflowAudienceGroupSnapshot,
 } from "./audience-filter.js";
 import { WorkflowBranchConfigSchema } from "./branch.js";
+import { WorkflowCouponDraftConfigSchema, WorkflowCouponExecutionConfigSchema } from "./coupon.js";
 import { getWorkflowCustomFieldVariableId } from "./custom-field-variable.js";
 import type { WorkflowNodeKind } from "./dto.js";
 import { WORKFLOW_HANDOFF_MESSAGE_MAX_LENGTH } from "./handoff.js";
-import { isValidWorkflowLocalDate, isValidWorkflowLocalDateTime } from "./local-date-time.js";
+import {
+  isValidWorkflowLocalDate,
+  isValidWorkflowLocalDateTime,
+  isValidWorkflowLocalDateTimeToSecond,
+} from "./local-date-time.js";
+import {
+  isMessageQueryRelativeRangeComplete,
+  WORKFLOW_MESSAGE_QUERY_TIME_RANGE_REJECTION_DAYS,
+  WorkflowMessageQueryRelativeTimeRangeSchema,
+} from "./message-query.js";
 import {
   WORKFLOW_MESSAGE_SCHEMA_REF,
   WORKFLOW_MESSAGES_SCHEMA_REF,
@@ -39,6 +49,25 @@ import {
   isWorkflowMessageSendingWindowValid,
   type WorkflowStartTrigger,
 } from "./trigger.js";
+import {
+  hasValidWorkflowOrderQueryAmountPrecision,
+  isWorkflowOrderQueryRelativeRangeComplete,
+  WORKFLOW_ORDER_QUERY_TIME_RANGE_REJECTION_DAYS,
+  WorkflowOrderQueryDraftConfigSchema,
+  WorkflowOrderQueryExecutionConfigSchema,
+  type WorkflowOrderQueryDraftConfig,
+  type WorkflowOrderQueryExecutionConfig,
+} from "./order-query.js";
+import {
+  isWorkflowSmartsheetWriteExecutionConfigComplete,
+  WorkflowSmartsheetWriteDraftConfigSchema,
+  WorkflowSmartsheetWriteExecutionConfigSchema,
+} from "./smartsheet-write.js";
+import { TicketPrioritySchema } from "../tickets/dto.js";
+import {
+  WORKFLOW_TICKET_DESCRIPTION_MAX_LENGTH,
+  WORKFLOW_TICKET_TITLE_MAX_LENGTH,
+} from "./ticket-create.js";
 
 export const WorkflowNodeMaturitySchema = Type.Union([
   Type.Literal("placeholder"),
@@ -174,10 +203,11 @@ export const WorkflowMessageExecutionConfigSchema = Type.Union([
 ]);
 
 export const WorkflowTimeRangeSchema = Type.Union([
+  WorkflowMessageQueryRelativeTimeRangeSchema,
   Type.Object({
-    endAt: Type.String({ maxLength: 32 }),
+    endAt: Type.String({ maxLength: 19 }),
     mode: Type.Literal("fixed"),
-    startAt: Type.String({ maxLength: 32 }),
+    startAt: Type.String({ maxLength: 19 }),
   }, { additionalProperties: false }),
   Type.Object({
     end: WorkflowVariableSelectorSchema,
@@ -201,6 +231,14 @@ export const WorkflowHandoffExecutionConfigSchema = Type.Object({
   customerMessage: WorkflowVariableContentSchema,
   operatorMessage: WorkflowVariableContentSchema,
 }, { additionalProperties: false });
+
+export const WorkflowTicketCreateDraftConfigSchema = Type.Object({
+  description: WorkflowVariableContentSchema,
+  priority: TicketPrioritySchema,
+  ticketTitle: WorkflowVariableContentSchema,
+}, { additionalProperties: false });
+
+export const WorkflowTicketCreateExecutionConfigSchema = WorkflowTicketCreateDraftConfigSchema;
 
 export const WORKFLOW_TAG_MAX_COUNT = 5;
 
@@ -564,6 +602,12 @@ export type WorkflowTimeRange = Static<typeof WorkflowTimeRangeSchema>;
 export type WorkflowMessageQueryConfig = Static<typeof WorkflowMessageQueryConfigSchema>;
 export type WorkflowHandoffDraftConfig = Static<typeof WorkflowHandoffDraftConfigSchema>;
 export type WorkflowHandoffExecutionConfig = Static<typeof WorkflowHandoffExecutionConfigSchema>;
+export type WorkflowTicketCreateDraftConfig = Static<
+  typeof WorkflowTicketCreateDraftConfigSchema
+>;
+export type WorkflowTicketCreateExecutionConfig = Static<
+  typeof WorkflowTicketCreateExecutionConfigSchema
+>;
 export type WorkflowTagOperation = Static<typeof WorkflowTagOperationSchema>;
 export type WorkflowTagDraftConfig = Static<typeof WorkflowTagDraftConfigSchema>;
 export type WorkflowTagExecutionConfig = Static<typeof WorkflowTagExecutionConfigSchema>;
@@ -662,7 +706,7 @@ export const workflowNodeContractRegistry = {
     [],
     true,
   ),
-  coupon: placeholderContract("action", ["externalUserId"]),
+  coupon: runtimeReadyContract("action", 1, WorkflowCouponDraftConfigSchema, WorkflowCouponExecutionConfigSchema, ["mallUserId"]),
   "customer-update": runtimeReadyContract(
     "action",
     1,
@@ -705,7 +749,12 @@ export const workflowNodeContractRegistry = {
     WorkflowOrderBindExecutionConfigSchema,
     ["externalUserId"],
   ),
-  "order-query": placeholderContract("query", ["externalUserId"]),
+  "order-query": runtimeReadyContract(
+    "query",
+    1,
+    WorkflowOrderQueryDraftConfigSchema,
+    WorkflowOrderQueryExecutionConfigSchema,
+  ),
   "order-conversion": runtimeReadyContract(
     "action",
     1,
@@ -745,6 +794,19 @@ export const workflowNodeContractRegistry = {
     WorkflowWaitEventDraftConfigSchema,
     WorkflowWaitEventConfigSchema,
   ),
+  "smartsheet-write": runtimeReadyContract(
+    "action",
+    1,
+    WorkflowSmartsheetWriteDraftConfigSchema,
+    WorkflowSmartsheetWriteExecutionConfigSchema,
+  ),
+  "ticket-create": runtimeReadyContract(
+    "action",
+    1,
+    WorkflowTicketCreateDraftConfigSchema,
+    WorkflowTicketCreateExecutionConfigSchema,
+    ["thirdExternalUserId"],
+  ),
 } satisfies Record<WorkflowNodeKind, WorkflowNodeContractDefinition>;
 
 export type WorkflowNodeExecutionClassFor<TKind extends WorkflowNodeKind> =
@@ -782,6 +844,12 @@ export function isWorkflowNodeDraftConfig(
       (value as WorkflowAudienceFilterDraftConfig).groups,
     );
   }
+  if (kind === "order-query") {
+    const config = value as WorkflowOrderQueryDraftConfig;
+    return config.mode !== "conditions"
+      || config.conditions === undefined
+      || hasValidWorkflowOrderQueryAmountPrecision(config.conditions.amount);
+  }
   return true;
 }
 
@@ -809,6 +877,9 @@ export function isWorkflowNodeExecutionConfig(
   if (kind === "ratio-split") return isWorkflowRatioSplitExecutionConfigComplete(value);
   if (kind === "audience-filter") return isWorkflowAudienceFilterExecutionConfigComplete(value);
   if (kind === "customer-update") return isWorkflowCustomerUpdateExecutionConfigComplete(value);
+  if (kind === "order-query") return isWorkflowOrderQueryExecutionConfigComplete(value);
+  if (kind === "smartsheet-write") return isWorkflowSmartsheetWriteExecutionConfigComplete(value);
+  if (kind === "ticket-create") return isWorkflowTicketCreateExecutionConfigComplete(value);
   const schema = getWorkflowNodeContract(kind).executionConfigSchema;
   return schema !== null
     && Value.Check(schema, value)
@@ -840,6 +911,37 @@ export function isWorkflowCustomerUpdateExecutionConfigComplete(
       field.fieldType,
       field.value,
     ));
+}
+
+export function isWorkflowOrderQueryExecutionConfigComplete(
+  value: unknown,
+): value is WorkflowOrderQueryExecutionConfig {
+  if (!Value.Check(WorkflowOrderQueryExecutionConfigSchema, value)) return false;
+  if (value.mode === "order-number") return true;
+  const timeRange = value.conditions.timeRange;
+  if (timeRange.mode === "absolute"
+    && (!isValidWorkflowLocalDateTimeToSecond(timeRange.startAt)
+      || !isValidWorkflowLocalDateTimeToSecond(timeRange.endAt)
+      || timeRange.startAt > timeRange.endAt
+      || getWorkflowLocalDateTimeDifference(timeRange.startAt, timeRange.endAt)
+        >= WORKFLOW_ORDER_QUERY_TIME_RANGE_REJECTION_DAYS * 86_400_000)) {
+    return false;
+  }
+  if (timeRange.mode === "relative"
+    && !isWorkflowOrderQueryRelativeRangeComplete(timeRange)) {
+    return false;
+  }
+  if (timeRange.mode === "dynamic"
+    && isWorkflowDynamicTimeRangeProvablyInvalid(timeRange.start, timeRange.end)) {
+    return false;
+  }
+  const amount = value.conditions.amount;
+  return hasValidWorkflowOrderQueryAmountPrecision(amount)
+    && (amount.min === undefined || amount.max === undefined || amount.min <= amount.max);
+}
+
+function getWorkflowLocalDateTimeDifference(start: string, end: string) {
+  return Date.parse(`${end}Z`) - Date.parse(`${start}Z`);
 }
 
 export function isWorkflowCustomerFieldTypeSupported(
@@ -893,6 +995,21 @@ export function isWorkflowHandoffExecutionConfigComplete(
   );
 }
 
+export function isWorkflowTicketCreateExecutionConfigComplete(
+  value: unknown,
+): value is WorkflowTicketCreateExecutionConfig {
+  if (!Value.Check(WorkflowTicketCreateExecutionConfigSchema, value)) return false;
+  return isWorkflowVariableContentWithinLimit(
+    value.ticketTitle,
+    WORKFLOW_TICKET_TITLE_MAX_LENGTH,
+    true,
+  ) && isWorkflowVariableContentWithinLimit(
+    value.description,
+    WORKFLOW_TICKET_DESCRIPTION_MAX_LENGTH,
+    false,
+  );
+}
+
 export function isWorkflowMessageExecutionConfigComplete(
   value: unknown,
 ): value is WorkflowMessageExecutionConfig {
@@ -918,9 +1035,15 @@ export function isWorkflowMessageQueryExecutionConfigComplete(
 ): value is WorkflowMessageQueryConfig {
   if (!Value.Check(WorkflowMessageQueryConfigSchema, value)) return false;
   if (value.timeRange.mode === "fixed") {
-    return isValidWorkflowLocalDateTime(value.timeRange.startAt)
-      && isValidWorkflowLocalDateTime(value.timeRange.endAt)
-      && value.timeRange.startAt <= value.timeRange.endAt;
+    return isValidWorkflowLocalDateTimeToSecond(value.timeRange.startAt)
+      && isValidWorkflowLocalDateTimeToSecond(value.timeRange.endAt)
+      && value.timeRange.startAt <= value.timeRange.endAt
+      && Date.parse(`${value.timeRange.endAt}.999+08:00`)
+        - Date.parse(`${value.timeRange.startAt}+08:00`)
+        < WORKFLOW_MESSAGE_QUERY_TIME_RANGE_REJECTION_DAYS * 86_400_000;
+  }
+  if (value.timeRange.mode === "relative") {
+    return isMessageQueryRelativeRangeComplete(value.timeRange);
   }
   return !isWorkflowDynamicTimeRangeProvablyInvalid(
     value.timeRange.start,
@@ -1096,6 +1219,34 @@ export function getWorkflowNodeOutputContracts(
     return [
       {
         key: "result",
+        usages: ["variable"],
+        valueType: { kind: "boolean" },
+      },
+    ];
+  }
+  if (kind === "order-query") {
+    return [
+      {
+        key: "orderCount",
+        usages: ["variable"],
+        valueType: { kind: "number" },
+      },
+      {
+        key: "totalAmount",
+        usages: ["variable"],
+        valueType: { kind: "number" },
+      },
+      {
+        key: "netAmount",
+        usages: ["variable"],
+        valueType: { kind: "number" },
+      },
+    ];
+  }
+  if (kind === "smartsheet-write") {
+    return [
+      {
+        key: "success",
         usages: ["variable"],
         valueType: { kind: "boolean" },
       },

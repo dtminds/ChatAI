@@ -47,6 +47,14 @@ vi.mock("@/pages/chat/components/conversation-list-panel", () => ({
   },
 }));
 
+async function renderReadyWorkbenchPage() {
+  renderChatWorkbenchPage();
+
+  await waitFor(() => {
+    expect(useWorkbenchStore.getState().bootstrapStatus).toBe("ready");
+  });
+}
+
 describe("ChatWorkbenchPage render scope", () => {
   beforeEach(() => {
     vi.useRealTimers();
@@ -56,69 +64,7 @@ describe("ChatWorkbenchPage render scope", () => {
     conversationListPanelRenderMock.mockClear();
   });
 
-  it.each([
-    [
-      "suggestion state",
-      () => {
-        useWorkbenchStore.setState((state) => ({
-          smartReplyByMessageIdByConversationId: {
-            ...state.smartReplyByMessageIdByConversationId,
-            "conv-001": {
-              "1": {
-                assistantName: "智能助手",
-                content: "推荐回复",
-                pollComplete: true,
-                status: "ready",
-              },
-            },
-          },
-        }));
-      },
-    ],
-    [
-      "hidden state",
-      () => {
-        useWorkbenchStore.setState((state) => ({
-          smartReplyHiddenMessageKeysByConversationId: {
-            ...state.smartReplyHiddenMessageKeysByConversationId,
-            "conv-001": {
-              "1": true,
-            },
-          },
-        }));
-      },
-    ],
-    [
-      "auto pending state",
-      () => {
-        useWorkbenchStore.setState((state) => ({
-          smartReplyAutoPendingMessageKeysByConversationId: {
-            ...state.smartReplyAutoPendingMessageKeysByConversationId,
-            "conv-001": {
-              "1": true,
-            },
-          },
-        }));
-      },
-    ],
-  ])("does not re-render the page shell when smart reply %s changes", async (
-    _label,
-    updateSmartReplyState,
-  ) => {
-    renderChatWorkbenchPage();
-
-    await screen.findByTestId("mock-chat-panel");
-    await waitFor(() => expect(chatPanelRenderMock).toHaveBeenCalled());
-    chatPanelRenderMock.mockClear();
-
-    act(() => {
-      updateSmartReplyState();
-    });
-
-    expect(chatPanelRenderMock).not.toHaveBeenCalled();
-  });
-
-  it("does not re-render the page shell when poll has no business changes", async () => {
+  it("does not re-render ChatPanel when smart reply or empty poll updates", async () => {
     const baseService = createMockWorkbenchService();
 
     setWorkbenchService({
@@ -133,19 +79,27 @@ describe("ChatWorkbenchPage render scope", () => {
       },
     });
 
-    renderChatWorkbenchPage();
-
+    await renderReadyWorkbenchPage();
     await screen.findByTestId("mock-chat-panel");
-    await waitFor(() => expect(chatPanelRenderMock).toHaveBeenCalled());
+    chatPanelRenderMock.mockClear();
+
     act(() => {
       useWorkbenchStore.setState((state) => ({
-        smartReplyLastPolledAtByConversationId: {
-          ...state.smartReplyLastPolledAtByConversationId,
-          "conv-001": Date.now(),
+        smartReplyByMessageIdByConversationId: {
+          ...state.smartReplyByMessageIdByConversationId,
+          "conv-001": {
+            "1": {
+              assistantName: "智能助手",
+              content: "推荐回复",
+              pollComplete: true,
+              status: "ready",
+            },
+          },
         },
       }));
     });
-    chatPanelRenderMock.mockClear();
+
+    expect(chatPanelRenderMock).not.toHaveBeenCalled();
 
     await act(async () => {
       await useWorkbenchStore.getState().pollWorkbench();
@@ -155,8 +109,7 @@ describe("ChatWorkbenchPage render scope", () => {
   });
 
   it("keeps visible conversation references stable across unrelated page renders", async () => {
-    renderChatWorkbenchPage();
-
+    await renderReadyWorkbenchPage();
     await screen.findByTestId("mock-conversation-list-panel");
     await waitFor(() => expect(conversationListPanelRenderMock).toHaveBeenCalled());
     const firstProps = conversationListPanelRenderMock.mock.lastCall?.[0];
@@ -181,8 +134,7 @@ describe("ChatWorkbenchPage render scope", () => {
   });
 
   it("does not expose the revoke handler for shadow group conversations", async () => {
-    renderChatWorkbenchPage();
-
+    await renderReadyWorkbenchPage();
     await screen.findByTestId("mock-chat-panel");
     await waitFor(() => expect(chatPanelRenderMock).toHaveBeenCalled());
 

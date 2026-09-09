@@ -153,4 +153,38 @@ describe("Workflow variable picker custom fields", () => {
     expect(screen.getByRole("button", { name: "客户属性" }))
       .toHaveTextContent("原变量不可用");
   });
+
+  it("clears a selected variable without opening the picker", async () => {
+    const user = userEvent.setup();
+    const onClear = vi.fn();
+    const draft = createNewWorkflowDraft("chatai_sop");
+    const variables = getAvailableVariablesForNode(
+      "end",
+      draft.nodes,
+      draft.edges,
+      customFields,
+    );
+
+    render(
+      <WorkflowCustomFieldResourceProvider resource={{
+        fields: customFields,
+        reload: vi.fn(),
+        status: "ready",
+      }}>
+        <WorkflowVariableSelect
+          ariaLabel="客户属性"
+          customFieldVisibility="compatible"
+          onClear={onClear}
+          onSelect={() => undefined}
+          value={["subject", "customFields", "7"]}
+          variables={variables}
+        />
+      </WorkflowCustomFieldResourceProvider>,
+    );
+
+    await user.click(screen.getByRole("button", { name: "清除客户属性" }));
+
+    expect(onClear).toHaveBeenCalledOnce();
+    expect(screen.queryByRole("menu")).not.toBeInTheDocument();
+  });
 });

@@ -3,13 +3,13 @@ import { readFile } from "node:fs/promises";
 import { Kysely, MysqlDialect, sql, type Transaction } from "kysely";
 import mysql from "mysql2";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import type { Database } from "@chatai/database";
 import {
   MysqlWorkflowRuntimeRepository,
   MysqlWorkflowLlmTestAttemptRepository,
   clearMysqlWorkflowTaskTransitions,
   enqueueMysqlWorkflowTaskTransitions,
   WORKFLOW_MYSQL_WRITE_CHUNK_SIZE,
-  type WorkflowDatabase,
 } from "../src/index.js";
 import { runWorkflowRuntimeRepositoryContract } from "./support/runtime-repository-contract.js";
 import { runWorkflowLlmTestAttemptRepositoryContract } from "./support/llm-test-attempt-repository-contract.js";
@@ -26,7 +26,7 @@ describe("MySQL workflow runtime repository contract", () => {
     supportBigNumbers: true,
     timezone: "+08:00",
   });
-  let database: Kysely<WorkflowDatabase> | undefined;
+  let database: Kysely<Database> | undefined;
   let workflowPool: ReturnType<typeof mysql.createPool> | undefined;
   let workflowTableNames: string[] = [];
 
@@ -43,7 +43,7 @@ describe("MySQL workflow runtime repository contract", () => {
       supportBigNumbers: true,
       timezone: "+08:00",
     });
-    database = new Kysely<WorkflowDatabase>({
+    database = new Kysely<Database>({
       dialect: new MysqlDialect({ pool: workflowPool }),
     });
 
@@ -223,7 +223,7 @@ describe("MySQL workflow runtime repository contract", () => {
       task({ id: "1001", runId: "2001", shardId: 7 }),
       task({ id: "1002", runId: "2002", shardId: 255 }),
     ]).executeTakeFirstOrThrow();
-    const claimOneDueTask = (trx: Transaction<WorkflowDatabase>) => trx
+    const claimOneDueTask = (trx: Transaction<Database>) => trx
       .selectFrom("xy_wap_embed_workflow_task as task")
       .modifyFront(sql`/*+ INDEX(task idx_workflow_task_schedule) */`)
       .select("task.id")

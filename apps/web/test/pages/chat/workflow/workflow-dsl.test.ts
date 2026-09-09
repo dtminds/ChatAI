@@ -506,7 +506,7 @@ describe("workflow DSL", () => {
 
   it("marks placeholder nodes without projecting an executable config", () => {
     const draft = createInitialDraft();
-    const placeholderNode = createNodeFromKind("coupon", "coupon-issue", draft.nodes.length);
+    const placeholderNode = createNodeFromKind("agent", "agent-placeholder", draft.nodes.length);
     const graph = createWorkflowExecutionGraph({
       ...draft,
       nodes: [...draft.nodes, placeholderNode],
@@ -514,7 +514,7 @@ describe("workflow DSL", () => {
 
     expect(graph.nodes.find((node) => node.id === placeholderNode.id)).toMatchObject({
       config: null,
-      kind: "coupon",
+      kind: "agent",
       maturity: "placeholder",
     });
     expect(graph.nodes.find((node) => node.id === "start")).toMatchObject({

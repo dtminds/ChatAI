@@ -45,6 +45,8 @@ describe("formatValidationErrorMessage", () => {
     ["/variables/0/select_sub_ids", "最多选择 10 个标签"],
     ["/promptConfig/availableKbIds", "最多添加 10 个知识库"],
     ["/promptConfig/availableSkillIds", "最多添加 10 个技能"],
+    ["/contactThirdUserIds", "最多选择 10 个客户"],
+    ["/thirdUserIds", "最多选择 10 个成员"],
   ])("maps maxItems validation errors for %s", (instancePath, message) => {
     expect(
       formatValidationErrorMessage({

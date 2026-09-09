@@ -1,6 +1,45 @@
 import type { WorkbenchQuickReplyAttachment, WorkbenchQuickReplyDto } from "@chatai/contracts";
 import type { ComposerSegment } from "@/pages/chat/lib/composer-segments";
 
+export type QuickReplyInsertResult =
+  | { type: "blocked"; toast: string }
+  | { type: "restore"; nextDraft: string; segments: ComposerSegment[] };
+
+export function resolveQuickReplyInsert(
+  quickReply: WorkbenchQuickReplyDto,
+  canSendMessage: boolean,
+): QuickReplyInsertResult {
+  if (!canSendMessage) {
+    return {
+      toast: "当前无法发送消息",
+      type: "blocked",
+    };
+  }
+
+  const { invalidAttachmentCount, segments } =
+    buildQuickReplyComposerSegments(quickReply);
+
+  if (invalidAttachmentCount > 0) {
+    return {
+      toast: "该话术附件数据异常，无法发送",
+      type: "blocked",
+    };
+  }
+
+  if (segments.length === 0) {
+    return {
+      toast: "话术数据异常",
+      type: "blocked",
+    };
+  }
+
+  return {
+    nextDraft: segments.find((segment) => segment.type === "text")?.text ?? "",
+    segments,
+    type: "restore",
+  };
+}
+
 export function buildQuickReplyComposerSegments(
   quickReply: WorkbenchQuickReplyDto,
 ): {

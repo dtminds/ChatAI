@@ -11,6 +11,11 @@ import type {
   WorkbenchConversationSummaryDto,
   WorkbenchCustomerSeatRelationsResponse,
   WorkbenchGroupMembersResponse,
+  WorkbenchEnterpriseMemberListResponse,
+  WorkbenchKickGroupMemberRequest,
+  WorkbenchKickGroupMemberResponse,
+  WorkbenchPullGroupMembersRequest,
+  WorkbenchPullGroupMembersResponse,
   WorkbenchHistoryMessagePageDto,
   WorkbenchHistoryMessageQuery,
   WorkbenchSubUserDto,
@@ -176,6 +181,25 @@ export function createMemoryWorkbenchService() {
     },
     getSeats(_subUserId: string) {
       return clone(state.seats);
+    },
+    getEnterpriseMembers(_subUserId: string): WorkbenchEnterpriseMemberListResponse {
+      return {
+        items: clone(state.seats).flatMap((seat) => {
+          const thirdUserId = seat.thirdUserId?.trim();
+
+          if (!thirdUserId || seat.bizStatus === 0) {
+            return [];
+          }
+
+          return [
+            {
+              avatarUrl: seat.avatar,
+              displayName: seat.name.trim() || thirdUserId,
+              thirdUserId,
+            },
+          ];
+        }),
+      };
     },
     getConversations(
       _subUserId: string,
@@ -1043,6 +1067,28 @@ export function createMemoryWorkbenchService() {
       }
 
       return clone(response);
+    },
+    pullGroupMembers(
+      _subUserId: string,
+      conversationId: string,
+      _request: WorkbenchPullGroupMembersRequest,
+    ): WorkbenchPullGroupMembersResponse {
+      if (!state.groupMembersByConversationId[conversationId]) {
+        throw new NotFoundError("CONVERSATION_NOT_FOUND", "会话不存在");
+      }
+
+      return { conversationId };
+    },
+    kickGroupMember(
+      _subUserId: string,
+      conversationId: string,
+      _request: WorkbenchKickGroupMemberRequest,
+    ): WorkbenchKickGroupMemberResponse {
+      if (!state.groupMembersByConversationId[conversationId]) {
+        throw new NotFoundError("CONVERSATION_NOT_FOUND", "会话不存在");
+      }
+
+      return { conversationId };
     },
     getUploadCredential(
       _subUserId: string,

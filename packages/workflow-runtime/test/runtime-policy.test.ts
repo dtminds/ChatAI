@@ -9,12 +9,16 @@ import {
   InMemoryWorkflowRuntimeRepository,
   WORKFLOW_AUDIENCE_FILTER_CAPABILITY_BINDING,
   WORKFLOW_CUSTOMER_UPDATE_CAPABILITY_BINDING,
+  WORKFLOW_SMARTSHEET_WRITE_CAPABILITY_BINDING,
+  WORKFLOW_COUPON_CAPABILITY_BINDING,
   WORKFLOW_HANDOFF_CAPABILITY_BINDING,
   WORKFLOW_MESSAGE_CAPABILITY_BINDING,
   WORKFLOW_ORDER_CONVERSION_CAPABILITY_BINDING,
   WORKFLOW_ORDER_BIND_CAPABILITY_BINDING,
+  WORKFLOW_ORDER_QUERY_CAPABILITY_BINDING,
   WORKFLOW_TAG_CAPABILITY_BINDING,
   WORKFLOW_TAG_QUERY_CAPABILITY_BINDING,
+  WORKFLOW_TICKET_CREATE_CAPABILITY_BINDING,
   WorkflowRuntimeService,
   type WorkflowCapabilityExecutionBinding,
   type WorkflowRuntimeDefinitionRecord,
@@ -33,6 +37,110 @@ describe("Workflow runtime policy", () => {
       run: { subjectType: "chatai_contact" },
     });
     expect(harness.deactivateWorkflowForEntitlementLoss).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    { seatIds: [] },
+    { seatIds: "101" },
+    { seatIds: undefined },
+    { entryMode: "unknown" },
+    { triggers: [{ type: "contact.tag_added", tagIds: ["21311"], leftover: true }] },
+  ])("rejects invalid consumed Start fields despite unread fields: %j", async (invalidFields) => {
+    const spec = createExecutionSpec("chatai-workflow");
+    spec.nodes[0]!.config = {
+      ...spec.nodes[0]!.config,
+      pushAccountStrategy: "earliest-added",
+      extraField: true,
+      ...invalidFields,
+    };
+    const harness = createHarness({
+      entitlement: async () => ({ activeRunLimit: 10_000, entitled: true }),
+      executionSpec: spec,
+    });
+
+    await expect(harness.service.startRun(entryInput())).rejects.toMatchObject({
+      code: "WORKFLOW_START_CONFIG_INVALID",
+      details: expect.objectContaining({
+        chatAiCheck: false,
+        reason: "schema",
+        workflowId: "chatai-workflow",
+      }),
+    });
+  });
+
+  it("does not expose Start configuration values in admission error details", async () => {
+    const spec = createExecutionSpec("chatai-workflow");
+    spec.nodes[0]!.config.seatIds = "private-config-marker";
+    const harness = createHarness({
+      entitlement: async () => ({ activeRunLimit: 10_000, entitled: true }),
+      executionSpec: spec,
+    });
+    const error = await harness.service.startRun(entryInput()).then(
+      () => { throw new Error("Expected admission rejection"); },
+      (error: unknown) => error,
+    );
+    expect(error).toMatchObject({
+      code: "WORKFLOW_START_CONFIG_INVALID",
+      details: { nodeId: "start", reason: "schema", workflowId: "chatai-workflow" },
+    });
+    const details = (error as { details: Record<string, unknown> }).details;
+    expect(details).not.toHaveProperty("config");
+    expect(details.errors).toEqual(expect.arrayContaining([
+      expect.objectContaining({ path: expect.any(String), message: expect.any(String) }),
+    ]));
+    for (const issue of details.errors as object[]) expect(issue).not.toHaveProperty("value");
+    expect(JSON.stringify(details)).not.toContain("private-config-marker");
+  });
+
+  it("admits the published tag Start config while ignoring unread top-level and nested fields", async () => {
+    const spec = createExecutionSpec("chatai-workflow");
+    spec.nodes[0]!.config = {
+      ...spec.nodes[0]!.config,
+      extraField: true,
+      pushAccountStrategy: "earliest-added",
+      entryMode: "event",
+      entryPolicy: { mode: "lifetime_limit", maxEntries: 10, leftover: true },
+      messageSendingWindow: { endTime: "20:00", startTime: "09:00", leftover: true },
+      triggers: [{
+        leftover: true,
+        tagIds: [21311],
+        type: "contact.tag_added",
+      }],
+    };
+    const harness = createHarness({
+      entitlement: async () => ({ activeRunLimit: 10_000, entitled: true }),
+      executionSpec: spec,
+    });
+
+    const result = await harness.service.startRun(entryInput());
+    expect(result).toMatchObject({ kind: "success" });
+    if (result.kind !== "success") throw new Error("Expected admitted Run");
+    expect(result.run.context.workflow).toEqual({
+      message: { sendingWindow: { startTime: "09:00", endTime: "20:00" } },
+    });
+  });
+
+  it("uses the WeCom Start schema before ignoring stale ChatAI fields", async () => {
+    const spec = createExecutionSpec("wecom-workflow");
+    spec.nodes[0]!.config = {
+      ...spec.nodes[0]!.config,
+      messageSendingWindow: { endTime: "20:00", startTime: "09:00" },
+      seatIds: [101],
+    };
+    const harness = createHarness({
+      entitlement: async () => ({ activeRunLimit: 10_000, entitled: true }),
+      executionSpec: spec,
+    });
+
+    const result = await harness.service.startRun(entryInput({
+      entryEventId: "event-wecom",
+      subjectType: "wecom_contact",
+      workflowId: "wecom-workflow",
+    }));
+
+    expect(result).toMatchObject({ kind: "success" });
+    if (result.kind !== "success") throw new Error("Expected admitted Run");
+    expect(result.run.context.workflow).toEqual({});
   });
 
   it("does not fall back to individual reads when a batched runtime snapshot is missing", async () => {
@@ -290,13 +398,13 @@ describe("Workflow runtime policy", () => {
     const executionSpec = createExecutionSpec("chatai-workflow");
     executionSpec.nodes.splice(1, 0, {
       config: {},
-      id: "order-query",
-      kind: "order-query",
+      id: "coupon",
+      kind: "agent",
       nodeSchemaVersion: 1,
     });
     executionSpec.edges = [
-      { id: "start-query", source: "start", sourceOutletId: "default", target: "order-query" },
-      { id: "query-end", source: "order-query", sourceOutletId: "default", target: "end" },
+      { id: "start-coupon", source: "start", sourceOutletId: "default", target: "coupon" },
+      { id: "coupon-end", source: "coupon", sourceOutletId: "default", target: "end" },
     ];
     const harness = createHarness({
       entitlement: async () => ({ activeRunLimit: 10_000, entitled: true }),
@@ -308,8 +416,8 @@ describe("Workflow runtime policy", () => {
       context: { outputs: {}, trigger: {} },
       entryEventId: "existing-unsupported-task",
       entryPolicy: { mode: "never" },
-      initialNodeId: "order-query",
-      initialNodeKind: "order-query",
+      initialNodeId: "coupon",
+      initialNodeKind: "agent",
       occurredAt: now,
       revision: 1,
       shardId: 7,
@@ -610,10 +718,14 @@ function createHarness(options: {
               WORKFLOW_HANDOFF_CAPABILITY_BINDING,
               WORKFLOW_MESSAGE_CAPABILITY_BINDING,
               WORKFLOW_CUSTOMER_UPDATE_CAPABILITY_BINDING,
+              WORKFLOW_SMARTSHEET_WRITE_CAPABILITY_BINDING,
+              WORKFLOW_COUPON_CAPABILITY_BINDING,
               WORKFLOW_ORDER_CONVERSION_CAPABILITY_BINDING,
               WORKFLOW_ORDER_BIND_CAPABILITY_BINDING,
+              WORKFLOW_ORDER_QUERY_CAPABILITY_BINDING,
               WORKFLOW_TAG_CAPABILITY_BINDING,
               WORKFLOW_TAG_QUERY_CAPABILITY_BINDING,
+              WORKFLOW_TICKET_CREATE_CAPABILITY_BINDING,
             ],
           }
         : {}),

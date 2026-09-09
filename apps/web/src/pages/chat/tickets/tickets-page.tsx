@@ -7,7 +7,7 @@ import {
   Male02Icon,
   Notification01Icon,
   Search01Icon,
-  StickyNote02Icon,
+  ListTodoIcon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -62,7 +62,7 @@ import {
   type TicketReminderDisplayMode,
   useTicketCountStore,
 } from "./ticket-count-store";
-import { TicketOverdueBadge, TicketPriority, TicketStatusBadge } from "./ticket-display";
+import { TicketOverdueBadge, TicketPriority, TicketStatusBadge, ticketCreatorText } from "./ticket-display";
 import { useAuthStore } from "@/store/auth-store";
 
 const views = new Set<TicketView>(["assigned_to_me_active", "assigned_to_me", "reception", "created_by_me", "all"]);
@@ -502,7 +502,7 @@ export function TicketsPage() {
                   <TableCell>
                     {ticket.assignee?.displayName ?? <span className="text-muted-foreground/60">未分配</span>}
                   </TableCell>
-                  <TableCell>{ticket.createdBy?.displayName || (ticket.sourceType === "ai" ? "AI" : "-")}</TableCell>
+                  <TableCell>{ticketCreatorText(ticket.sourceType, ticket.createdBy?.displayName)}</TableCell>
                   <TableCell className="whitespace-nowrap">{formatInsightTime(ticket.updatedAt)}</TableCell>
                 </TableRow>)}
             </TableBody>
@@ -541,7 +541,7 @@ function TicketReminderPreview({ mode }: { mode: TicketReminderDisplayMode }) {
         <div className="mx-auto flex h-9 max-w-[220px] items-center gap-2 rounded-[8px] bg-sidebar px-3 text-sm text-sidebar-foreground">
           <HugeiconsIcon
             aria-hidden="true"
-            icon={StickyNote02Icon}
+            icon={ListTodoIcon}
             size={16}
             strokeWidth={1.6}
           />
@@ -592,7 +592,7 @@ function TicketAdvancedFilterDropdown({
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" aria-label="更多筛选" className="w-52">
         <DropdownMenuLabel className="text-muted-foreground">更多筛选</DropdownMenuLabel>
-        <TicketFilterSubMenu label="来源" onValueChange={(value) => onUpdate("sourceType", value === "all" ? undefined : value)} options={[["all", "全部来源"], ["manual", "人工创建"], ["ai", "智能创建"]]} value={filters.sourceType ?? "all"} />
+        <TicketFilterSubMenu label="来源" onValueChange={(value) => onUpdate("sourceType", value === "all" ? undefined : value)} options={[["all", "全部来源"], ["manual", "人工创建"], ["ai", "智能创建"], ["workflow", "工作流创建"]]} value={filters.sourceType ?? "all"} />
         <TicketFilterSubMenu label="截止时间" onValueChange={(value) => onUpdate("dueScope", value === "all" ? undefined : value)} options={[["all", "全部截止时间"], ["overdue", "已逾期"], ["today", "今日到期"], ["next_7_days", "未来 7 天"], ["none", "无截止时间"]]} value={filters.dueScope ?? "all"} />
         <DropdownMenuSeparator />
         <DropdownMenuItem disabled={activeCount === 0} onClick={onReset}>重置筛选</DropdownMenuItem>

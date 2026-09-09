@@ -6,6 +6,7 @@ import {
   type WorkflowStatusReason,
   type WorkflowStoredExecutionSpec,
 } from "@chatai/contracts";
+import type { Database } from "@chatai/database";
 import {
   decodeWorkflowSubjectType,
   decodeWorkflowType,
@@ -14,7 +15,6 @@ import {
   clearMysqlWorkflowTaskTransitions,
   enqueueMysqlWorkflowTaskTransitions,
   transitionMysqlWorkflowInferenceJobs,
-  type WorkflowDatabase,
 } from "@chatai/workflow-runtime";
 import { normalizeWorkflowExecutionSpec } from "@chatai/workflow-engine";
 import { sql, type Kysely, type Transaction } from "kysely";
@@ -33,14 +33,14 @@ const REVISION_CLEANUP_TABLE = "xy_wap_embed_workflow_revision_cleanup" as const
 const TRIGGER_BINDING_TABLE = "xy_wap_embed_workflow_trigger_binding" as const;
 const REVIEW_TABLE = "xy_wap_embed_workflow_publish_review" as const;
 
-type WorkflowDbExecutor = Kysely<WorkflowDatabase> | Transaction<WorkflowDatabase>;
+type WorkflowDbExecutor = Kysely<Database> | Transaction<Database>;
 type PublishedWriteResult = {
   definition: WorkflowDefinitionRecord;
   revision: WorkflowRevisionRecord;
 };
 
 export class MysqlWorkflowRepository implements WorkflowRepository {
-  constructor(private readonly db: Kysely<WorkflowDatabase>) {}
+  constructor(private readonly db: Kysely<Database>) {}
 
   async createDefinition(input: Parameters<WorkflowRepository["createDefinition"]>[0]) {
     if (input.clientRequestId) {
@@ -618,7 +618,7 @@ export class MysqlWorkflowRepository implements WorkflowRepository {
 }
 
 async function findRemovedBlockingNodes(
-  transaction: Transaction<WorkflowDatabase>,
+  transaction: Transaction<Database>,
   input: {
     nextSpec: WorkflowExecutionSpec;
     previousRevision: number;

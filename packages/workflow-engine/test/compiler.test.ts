@@ -70,6 +70,24 @@ describe("compileWorkflowDraft", () => {
     )).toBe(true);
   });
 
+  it("strips unread leftover start fields instead of failing compile", () => {
+    const draft = createDraft();
+    Object.assign(draft.nodes.find((item) => item.id === "start")!.data, {
+      pushAccountStrategy: "earliest-added",
+    });
+
+    const spec = compileWorkflowDraft({
+      draft,
+      revision: 3,
+      workflowId: "42",
+      workflowType: "chatai_sop",
+    });
+
+    expect(spec.nodes.find((node) => node.id === "start")?.config).not.toHaveProperty(
+      "pushAccountStrategy",
+    );
+  });
+
   it("compiles direct push without entry events", () => {
     const draft = createDraft();
     Object.assign(draft.nodes.find((item) => item.id === "start")!.data, {
@@ -139,15 +157,73 @@ describe("compileWorkflowDraft", () => {
       .toMatchObject({ limit: 10, take: "latest" });
   });
 
+  it("compiles relative Message Query without dynamic variable dependencies", () => {
+    const draft = createDraft();
+    const timeRange = {
+      mode: "relative",
+      start: { amount: 30, unit: "day", time: "00:00:00" },
+      end: { amount: 0, unit: "day", time: "23:59:59" },
+    };
+    draft.nodes.splice(1, 1, node("wait", "message-query", { limit: 10, take: "latest", timeRange }));
+    const spec = compileWorkflowDraft({ draft, revision: 3, workflowId: "42", workflowType: "chatai_sop" });
+    expect(spec.nodes.find(item => item.kind === "message-query")?.config).toMatchObject({ timeRange });
+    timeRange.start.amount = 91;
+    draft.nodes.splice(1, 1, node("wait", "message-query", { limit: 10, take: "latest", timeRange }));
+    expectCompilationIssue(draft, {
+      code: "invalid-node-config",
+      message: "Message Query node requires a valid time range",
+      nodeId: "wait",
+    });
+  });
+
+  it("canonicalizes legacy minute-only Message Query dates before compilation", () => {
+    const draft = createDraft();
+    draft.nodes.splice(1, 1, node("wait", "message-query", {
+      limit: 10,
+      take: "latest",
+      timeRange: {
+        endAt: "2026-08-15T10:00",
+        mode: "fixed",
+        startAt: "2026-08-15T09:00",
+      },
+    }));
+
+    const spec = compileWorkflowDraft({
+      draft,
+      revision: 3,
+      workflowId: "42",
+      workflowType: "chatai_sop",
+    });
+
+    expect(spec.nodes.find(node => node.kind === "message-query")?.config).toMatchObject({
+      timeRange: {
+        endAt: "2026-08-15T10:00:59",
+        mode: "fixed",
+        startAt: "2026-08-15T09:00:00",
+      },
+    });
+  });
+
   it("rejects incomplete or unavailable Message Query time ranges", () => {
+    const mixedRange = createDraft();
+    mixedRange.nodes.splice(1, 1, node("wait", "message-query", {
+      limit: 10, take: "latest", timeRange: {
+        mode: "relative", start: { amount: 0, unit: "hour" }, end: { amount: 1, unit: "day", time: "00:00:00" },
+      },
+    }));
+    expectCompilationIssue(mixedRange, {
+      code: "invalid-node-config",
+      message: "Message Query node requires a valid time range",
+      nodeId: "wait",
+    });
     const invalidFixedRange = createDraft();
     invalidFixedRange.nodes.splice(1, 1, node("wait", "message-query", {
       limit: 10,
       take: "latest",
       timeRange: {
-        endAt: "2026-08-15T09:00",
+        endAt: "2026-08-15T09:00:00",
         mode: "fixed",
-        startAt: "2026-08-15T10:00",
+        startAt: "2026-08-15T10:00:00",
       },
     }));
     expectCompilationIssue(invalidFixedRange, {
@@ -621,13 +697,23 @@ describe("compileWorkflowDraft", () => {
 
   it("rejects node kinds that Phase 3 cannot execute", () => {
     const draft = createDraft();
-    draft.nodes.splice(2, 0, node("coupon", "coupon"));
+    draft.nodes.splice(2, 0, node("coupon", "agent"));
     draft.edges.splice(1, 1,
       { id: "wait-coupon", source: "wait", target: "coupon" },
       { id: "coupon-end", source: "coupon", target: "end" },
     );
 
     expectCompilationIssues(draft, ["unsupported-runtime-node"]);
+  });
+  it("compiles a selected coupon into one bounded issuance command", () => {
+    const draft = createDraft();
+    draft.nodes.splice(1, 1, node("wait", "coupon", {
+      coupon: { couponId: 12, couponName: "券", couponContent: "满100减20", couponType: 1 }, number: 5,
+    }));
+    const spec = compileWorkflowDraft({ draft, revision: 1, workflowId: "42", workflowType: "chatai_sop" });
+    expect(spec.nodes.find(item => item.id === "wait")?.config).toEqual({ couponId: 12, number: 5 });
+    draft.nodes.splice(1, 1, node("wait", "coupon", { number: 1 }));
+    expectCompilationIssues(draft, ["invalid-node-config"]);
   });
 });
 

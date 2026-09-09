@@ -14,13 +14,12 @@ import {
   type WorkflowType,
 } from "@chatai/contracts";
 import { Value } from "@sinclair/typebox/value";
+import type { Database } from "@chatai/database";
 import { sql, type Kysely } from "kysely";
 import {
   decodeWorkflowSubjectType,
   encodeWorkflowType,
-  type WorkflowDatabase,
 } from "@chatai/workflow-runtime";
-import type { Database } from "../../db/schema.js";
 import { NotFoundError } from "../../shared/errors.js";
 import { noopLogger, type AppLogger, type RequestAwareLogger } from "../../shared/logger.js";
 import { CURRENT_WORKBENCH_PLATFORM } from "../workbench-platform-scope.js";
@@ -32,7 +31,6 @@ import type {
 import type { WorkflowManagedAccountReader } from "./workflow-managed-account-reader.js";
 import type { WorkflowWeComMemberReader } from "./workflow-wecom-member-reader.js";
 
-type DataDatabase = Database & WorkflowDatabase;
 type WorkflowSubjectType = ReturnType<typeof decodeWorkflowSubjectType>;
 type WorkflowCustomerProfile = { avatar: string | null; name: string };
 
@@ -40,7 +38,7 @@ const WORKFLOW_RECORD_WECOM_CONTACT_BATCH_LIMIT = 100;
 const UNKNOWN_CUSTOMER: WorkflowCustomerProfile = { avatar: null, name: "未知客户" };
 
 export class MysqlWorkflowDataReader implements WorkflowDataReader {
-  private readonly db: Kysely<DataDatabase>;
+  private readonly db: Kysely<Database>;
   private readonly logger: AppLogger | RequestAwareLogger;
   private readonly managedAccountReader: WorkflowManagedAccountReader | undefined;
   private readonly wecomContactDirectory: WecomContactDirectory | undefined;
@@ -55,7 +53,7 @@ export class MysqlWorkflowDataReader implements WorkflowDataReader {
       wecomMemberReader?: WorkflowWeComMemberReader;
     } = {},
   ) {
-    this.db = db as unknown as Kysely<DataDatabase>;
+    this.db = db;
     this.logger = options.logger ?? noopLogger;
     this.managedAccountReader = options.managedAccountReader;
     this.wecomContactDirectory = options.wecomContactDirectory;
@@ -707,6 +705,8 @@ function fallbackNodeTitle(kind: WorkflowEntryRecordStepNodeKind) {
     "order-query": "订单查询",
     "order-conversion": "代客转积分",
     "ratio-split": "A/B 分流",
+    "smartsheet-write": "写入智能表格",
+    "ticket-create": "创建工单",
     start: "开始",
     tag: "客户打标",
     "tag-query": "标签查询",

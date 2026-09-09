@@ -77,6 +77,50 @@ describe("CustomerSidePanel", () => {
     expect(within(sidePanel).getByRole("tab", { name: "仅群聊" })).toBeInTheDocument();
   });
 
+  it("shows active custom sidebar tabs in sort order", () => {
+    render(
+      <CustomerSidePanel
+        {...defaultProps}
+        conversationMode="single"
+        sidebarItems={[
+          {
+            bindTypes: ["1", "2"] as SettingsSidebarBindType[],
+            id: "sidebar-2",
+            name: "客户详情",
+            sort: 2,
+            status: "active",
+            url: "https://example.com/customer",
+          },
+          {
+            bindTypes: ["1", "2"] as SettingsSidebarBindType[],
+            id: "sidebar-1",
+            name: "快捷回复",
+            sort: 1,
+            status: "active",
+            url: "https://example.com/replies",
+          },
+          {
+            bindTypes: ["1", "2"] as SettingsSidebarBindType[],
+            id: "sidebar-3",
+            name: "隐藏页面",
+            sort: 3,
+            status: "disabled",
+            url: "https://example.com/hidden",
+          },
+        ]}
+      />,
+    );
+
+    const sidePanel = screen.getByRole("complementary", { name: "客户信息栏" });
+    const tabNames = within(sidePanel)
+      .getAllByRole("tab")
+      .map((tab) => tab.textContent);
+
+    expect(tabNames).toEqual(["快捷话术", "快捷回复", "客户详情"]);
+    expect(within(sidePanel).queryByRole("tab", { name: "基础信息" })).not.toBeInTheDocument();
+    expect(within(sidePanel).queryByRole("tab", { name: "隐藏页面" })).not.toBeInTheDocument();
+  });
+
   it("shows the quick reply tab for single conversations without custom sidebar items", () => {
     render(
       <CustomerSidePanel
@@ -151,6 +195,38 @@ describe("CustomerSidePanel", () => {
 
     expect(screen.queryByRole("textbox", { name: "搜索群成员" })).not.toBeInTheDocument();
     expect(screen.getByText("群二成员")).toBeInTheDocument();
+  });
+
+  it("hides add group members when the current account is not taken over", () => {
+    render(
+      <CustomerSidePanel
+        {...defaultProps}
+        conversationMode="group"
+        sidebarIframeConversationId="conv-1"
+        sidebarIframeSeatId="seat-1"
+        sidebarIframeTos="0"
+        sidebarItems={undefined}
+      />,
+    );
+
+    expect(
+      screen.queryByRole("button", { name: "添加群成员" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("shows add group members when the current account is taken over", () => {
+    render(
+      <CustomerSidePanel
+        {...defaultProps}
+        conversationMode="group"
+        sidebarIframeConversationId="conv-1"
+        sidebarIframeSeatId="seat-1"
+        sidebarIframeTos="1"
+        sidebarItems={undefined}
+      />,
+    );
+
+    expect(screen.getByRole("button", { name: "添加群成员" })).toBeInTheDocument();
   });
 
   it("collapses custom tabs to the first row and expands them on demand", async () => {

@@ -150,6 +150,14 @@ function RefreshListButton({
 }
 
 export function AgentOptimizationSuggestionsPage() {
+  return (
+    <AiHostingLayout title="Agent 自主进化">
+      <AgentOptimizationSuggestionsContent />
+    </AiHostingLayout>
+  );
+}
+
+export function AgentOptimizationSuggestionsContent() {
   const { agentId = "" } = useParams();
   const subUser = useAuthStore((state) => state.subUser);
   const knowledgeBaseSelectRef = useRef<HTMLButtonElement>(null);
@@ -407,7 +415,7 @@ export function AgentOptimizationSuggestionsPage() {
   }
 
   return (
-    <AiHostingLayout title="Agent 自主进化">
+    <>
       <div className="space-y-6">
         <div className="space-y-3">
           <Link
@@ -757,7 +765,7 @@ export function AgentOptimizationSuggestionsPage() {
         }}
         open={searchDetailCandidateId != null}
       />
-    </AiHostingLayout>
+    </>
   );
 }
 

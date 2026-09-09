@@ -1,3 +1,5 @@
+// @vitest-environment node
+
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { listSubAccounts } from "@/pages/chat/settings/settings-service";
 import { listWorkflowManagedAccounts } from "@/pages/chat/workflow/workflow-managed-account-resource";

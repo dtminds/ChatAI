@@ -294,6 +294,142 @@ describe("createWorkbenchJavaClient", () => {
     );
   });
 
+  it("posts pull-friends-in-group payload to the Java internal API", async () => {
+    process.env.JAVA_INTERNAL_API_BASE_URL = "https://java.internal/";
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(JSON.stringify({ data: 1, error: 0, errorMsg: "", success: true }), {
+        headers: { "content-type": "application/json" },
+        status: 200,
+      }),
+    );
+
+    await createWorkbenchJavaClient().pullFriendsInGroup({
+      contactThirdUserids: ["external-a", "external-b"],
+      groupSeatId: 501,
+      platform: 5,
+      subUserId: 101,
+      thirdUserids: ["seat-user-hua"],
+      uid: 9001,
+    });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://java.internal/third-internal/wap-embed/group-seat/pull-fre-in-group",
+      expect.objectContaining({
+        body: JSON.stringify({
+          contactThirdUserids: ["external-a", "external-b"],
+          groupSeatId: 501,
+          platform: 5,
+          subUserId: 101,
+          thirdUserids: ["seat-user-hua"],
+          uid: 9001,
+        }),
+        method: "POST",
+      }),
+    );
+  });
+
+  it("posts group-del-user payload to the Java internal API", async () => {
+    process.env.JAVA_INTERNAL_API_BASE_URL = "https://java.internal/";
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(JSON.stringify({ data: 1, error: 0, errorMsg: "", success: true }), {
+        headers: { "content-type": "application/json" },
+        status: 200,
+      }),
+    );
+
+    await createWorkbenchJavaClient().kickOutOfGroup({
+      groupSeatId: 501,
+      kickOutThirdUserid: "member-xiaoming",
+      platform: 5,
+      subUserId: 101,
+      uid: 9001,
+    });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://java.internal/third-internal/wap-embed/group-seat/group-del-user",
+      expect.objectContaining({
+        body: JSON.stringify({
+          groupSeatId: 501,
+          kickOutThirdUserid: "member-xiaoming",
+          platform: 5,
+          subUserId: 101,
+          uid: 9001,
+        }),
+        method: "POST",
+      }),
+    );
+  });
+
+  it("loads the full enterprise address book without the workflow external-contact filter", async () => {
+    process.env.JAVA_INTERNAL_API_BASE_URL = "https://java.internal/";
+    process.env.JAVA_INTERNAL_API_TOKEN = "java-token";
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          data: {
+            roots: [
+              {
+                children: [
+                  {
+                    avatar: "https://example.com/hua.png",
+                    key: "1_201",
+                    title: "花花",
+                    type: 1,
+                    userKey: "201",
+                  },
+                ],
+                key: "2_1",
+                title: "销售部",
+                type: 2,
+              },
+            ],
+          },
+          success: true,
+        }),
+        {
+          headers: { "content-type": "application/json" },
+          status: 200,
+        },
+      ),
+    );
+
+    await expect(
+      createWorkbenchJavaClient().listEnterpriseDepartmentUsers({ uid: 9001 }),
+    ).resolves.toEqual({
+      roots: [
+        {
+          children: [
+            {
+              avatar: "https://example.com/hua.png",
+              key: "1_201",
+              title: "花花",
+              type: 1,
+              userKey: "201",
+            },
+          ],
+          key: "2_1",
+          title: "销售部",
+          type: 2,
+        },
+      ],
+      userLimit: undefined,
+    });
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://java.internal/third-internal/work-party/get-all-department-user",
+      expect.objectContaining({
+        method: "POST",
+      }),
+    );
+    expect(JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body))).toEqual({
+      isExternal: 0,
+      isLicense: 0,
+      selectType: 2,
+      status: 1,
+      uid: 9001,
+      withDefaultRootDepart: true,
+    });
+  });
+
   it("passes an abort signal to Java internal API requests", async () => {
     process.env.JAVA_INTERNAL_API_BASE_URL = "https://java.internal";
     process.env.JAVA_INTERNAL_API_TOKEN = "internal-token";

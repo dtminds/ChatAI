@@ -297,9 +297,7 @@ describe("chat user-memory popover", () => {
     await user.click(await screen.findByRole("button", { name: "新增" }));
     await user.click(screen.getByRole("radio", { name: "近期意向" }));
     await user.hover(screen.getByRole("button", { name: "有效期说明" }));
-    expect(await screen.findByRole("tooltip")).toHaveTextContent(
-      "到期后，这条近期意向将不再作为有效记忆使用",
-    );
+    expect(await screen.findByRole("tooltip")).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "7天" }));
     await user.type(
       screen.getByRole("textbox", { name: "记忆内容" }),

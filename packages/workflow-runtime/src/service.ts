@@ -11,13 +11,16 @@ import type {
   WorkflowType,
   WorkflowWaitEventConfig,
 } from "@chatai/contracts";
+import type { TSchema } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
 import {
   getWorkflowNodeContract,
   normalizeWorkflowEntryPolicy,
   WORKFLOW_INBOX_RETENTION_DAYS,
+  WorkflowChatAiStartConfigSchema,
   WorkflowStartConfigSchema,
   WorkflowWaitEventConfigSchema,
+  WorkflowWeComStartConfigSchema,
   WorkflowMessageSchema,
   WORKFLOW_DIRECT_ENTRY_EVENT_TYPE,
   isWorkflowAiCollectExecutionConfigComplete,
@@ -310,7 +313,11 @@ export class WorkflowRuntimeService {
       throw staleDefinitionError();
     }
     const entryNode = requireExecutionNode(revision.executionSpec, revision.executionSpec.entryNodeId);
-    const startConfig = requireStartConfig(entryNode);
+    const startConfig = requireStartConfig(entryNode, {
+      revision: revision.revision,
+      workflowId: input.workflowId,
+      workflowType: revision.workflowType,
+    });
     return this.createInitialRun({
       ...input,
       revision,
@@ -343,7 +350,11 @@ export class WorkflowRuntimeService {
       throw staleDefinitionError();
     }
     const entryNode = requireExecutionNode(revision.executionSpec, revision.executionSpec.entryNodeId);
-    const startConfig = requireStartConfig(entryNode);
+    const startConfig = requireStartConfig(entryNode, {
+      revision: revision.revision,
+      workflowId,
+      workflowType: revision.workflowType,
+    });
     if (startConfig.entryMode !== "direct-push") throw directEntryUnavailableError();
     const subject = resolveDirectEntrySubject(revision.subjectType, startConfig, input.payload);
     const projection: Record<string, unknown> = { ...input.payload };
@@ -626,6 +637,30 @@ export class WorkflowRuntimeService {
       | Awaited<ReturnType<ReturnType<typeof createCoreNodeExecutorRegistry>["execute"]>>
       | { kind: "inference-waiting"; type: "inference-wait" };
     let nextContext: Record<string, unknown>;
+    const recoveredSmartsheetAttempt = node.kind === "smartsheet-write"
+      && nodeExecutionInput.smartsheetAttemptStarted === true;
+    const capabilityPort: WorkflowCapabilityPort | undefined = node.kind === "smartsheet-write" && this.capabilityPort
+      ? {
+          execute: async (definition, request) => {
+            // WeCom cannot deduplicate this action. Fence retries before entering the adapter,
+            // including lease recovery after a successful write whose result was not committed.
+            if (nodeExecutionInput.smartsheetAttemptStarted === true) return { success: false, errorCode: "UNKNOWN_OUTCOME_RECOVERED" };
+            nodeExecutionInput = { ...nodeExecutionInput, smartsheetAttemptStarted: true };
+            const marked = await this.runtimeRepository.updateCapabilityExecutionInput({
+              expectedRunLockVersion: run.lockVersion,
+              expectedTaskVersion: claimed.task.taskVersion,
+              executionKey: nodeExecutionKey,
+              input: nodeExecutionInput,
+              runId: run.id,
+              taskId: claimed.task.id,
+              uid: run.uid,
+            });
+            if (marked.kind !== "success") throw staleTaskError();
+            request.signal.throwIfAborted();
+            return this.capabilityPort!.execute(definition, request);
+          },
+        }
+      : this.capabilityPort;
     try {
       assertWorkflowRuntimeValue(run.context, "run-context", WORKFLOW_RUN_CONTEXT_MAX_BYTES);
       let preparedContext: WorkflowPreparedExecutionContext = { customFields: {}, identities: {} };
@@ -633,8 +668,8 @@ export class WorkflowRuntimeService {
         nodeExecutionInput,
         contextRequirements.customFields,
       );
-      if (contextRequirements.identities.length > 0
-        || contextRequirements.customFieldIds.length > 0) {
+      if (!recoveredSmartsheetAttempt && (contextRequirements.identities.length > 0
+        || contextRequirements.customFieldIds.length > 0)) {
         preparedContext = await prepareWorkflowExecutionContext({
           contactCustomFieldPort: this.contactCustomFieldPort,
           contactIdentityPort: this.contactIdentityPort,
@@ -662,7 +697,9 @@ export class WorkflowRuntimeService {
           if (updated.kind !== "success") throw staleTaskError();
         }
       }
-      executionResult = node.kind === "wait" && claimed.task.taskType === "wait"
+      executionResult = recoveredSmartsheetAttempt
+        ? { output: { success: false, errorCode: "UNKNOWN_OUTCOME_RECOVERED" }, sourceOutletId: "default", type: "advance" as const }
+        : node.kind === "wait" && claimed.task.taskType === "wait"
         ? {
             output: { dueAt: claimed.task.dueAt.toISOString() },
             sourceOutletId: "default",
@@ -703,7 +740,7 @@ export class WorkflowRuntimeService {
             binding: capabilityBinding,
             enteredAt: claimed.task.createdAt,
             node,
-            port: this.capabilityPort,
+            port: capabilityPort,
             preparedContext,
             run,
             startedAt: this.clock(),
@@ -763,50 +800,59 @@ export class WorkflowRuntimeService {
       }
       const capabilityError = requiresPreparedExecution ? toCapabilityExecutionError(error) : null;
       if (!capabilityError) throw error;
-      const failureInput = {
-        errorCode: capabilityError.code.slice(0, 128),
-        errorMessage: capabilityError.message.slice(0, 512),
-        expectedRunLockVersion: run.lockVersion,
-        expectedTaskVersion: claimed.task.taskVersion,
-        failureKind: capabilityError.failureKind,
-        executionKey: nodeExecutionKey,
-        inbox: createInbox(input.messageId, task.id, input.taskVersion, input.now),
-        now: input.now,
-        runId: run.id,
-        taskId: task.id,
-        uid: input.uid,
-      };
-      if (capabilityError.failureKind === "terminal" || claimed.task.attempt >= this.maxTaskAttempts) {
-        const failed = await this.runtimeRepository.failCapabilityExecution(failureInput);
-        if (failed.kind === "already-processed") throw alreadyProcessedError();
-        if (failed.kind !== "success") throw staleTaskError();
+      if (node.kind === "smartsheet-write" && error instanceof WorkflowCapabilityExecutionError) {
+        executionResult = { output: { success: false, errorCode: "EXECUTION_FAILED" }, sourceOutletId: "default", type: "advance" };
+        nextContext = appendNodeOutput(run.context, node.id, executionResult.output, {
+          enteredAt: claimed.task.createdAt,
+          exitedAt: this.clock(),
+        });
+        assertWorkflowRuntimeValue(nextContext, "run-context", WORKFLOW_RUN_CONTEXT_MAX_BYTES);
+      } else {
+        const failureInput = {
+          errorCode: capabilityError.code.slice(0, 128),
+          errorMessage: capabilityError.message.slice(0, 512),
+          expectedRunLockVersion: run.lockVersion,
+          expectedTaskVersion: claimed.task.taskVersion,
+          failureKind: capabilityError.failureKind,
+          executionKey: nodeExecutionKey,
+          inbox: createInbox(input.messageId, task.id, input.taskVersion, input.now),
+          now: input.now,
+          runId: run.id,
+          taskId: task.id,
+          uid: input.uid,
+        };
+        if (capabilityError.failureKind === "terminal" || claimed.task.attempt >= this.maxTaskAttempts) {
+          const failed = await this.runtimeRepository.failCapabilityExecution(failureInput);
+          if (failed.kind === "already-processed") throw alreadyProcessedError();
+          if (failed.kind !== "success") throw staleTaskError();
+          return {
+            errorCode: failureInput.errorCode,
+            diagnosticMessage: capabilityError.diagnosticMessage.slice(0, 1_024),
+            failureKind: failureInput.failureKind,
+            kind: "failed" as const,
+            run: failed.run,
+            task: failed.task,
+          };
+        }
+        const retryDelayMs = Math.min(
+          this.capabilityRetryDelayMs * 2 ** Math.max(0, claimed.task.attempt - 1),
+          this.capabilityMaxRetryDelayMs,
+        );
+        const scheduled = await this.runtimeRepository.scheduleCapabilityRetry({
+          ...failureInput,
+          dueAt: new Date(input.now.getTime() + retryDelayMs),
+        });
+        if (scheduled.kind === "already-processed") throw alreadyProcessedError();
+        if (scheduled.kind !== "success") throw staleTaskError();
         return {
           errorCode: failureInput.errorCode,
           diagnosticMessage: capabilityError.diagnosticMessage.slice(0, 1_024),
           failureKind: failureInput.failureKind,
-          kind: "failed" as const,
-          run: failed.run,
-          task: failed.task,
+          kind: "retry-scheduled" as const,
+          retryAt: scheduled.task.dueAt,
+          task: scheduled.task,
         };
       }
-      const retryDelayMs = Math.min(
-        this.capabilityRetryDelayMs * 2 ** Math.max(0, claimed.task.attempt - 1),
-        this.capabilityMaxRetryDelayMs,
-      );
-      const scheduled = await this.runtimeRepository.scheduleCapabilityRetry({
-        ...failureInput,
-        dueAt: new Date(input.now.getTime() + retryDelayMs),
-      });
-      if (scheduled.kind === "already-processed") throw alreadyProcessedError();
-      if (scheduled.kind !== "success") throw staleTaskError();
-      return {
-        errorCode: failureInput.errorCode,
-        diagnosticMessage: capabilityError.diagnosticMessage.slice(0, 1_024),
-        failureKind: failureInput.failureKind,
-        kind: "retry-scheduled" as const,
-        retryAt: scheduled.task.dueAt,
-        task: scheduled.task,
-      };
     }
     const commitInput: WorkflowCommitNodeResultInput = {
       context: nextContext,
@@ -2016,18 +2062,127 @@ function requireExecutionNode(spec: WorkflowExecutionSpec, nodeId: string) {
   return node;
 }
 
-function requireStartConfig(node: WorkflowExecutionNode): WorkflowStartConfig {
+function requireStartConfig(
+  node: WorkflowExecutionNode,
+  context: { revision: number; workflowId: string; workflowType: WorkflowType },
+): WorkflowStartConfig {
   if (node.kind !== "start") {
-    throw new WorkflowRuntimeError("WORKFLOW_START_CONFIG_INVALID", "Workflow Start 配置无效", 500);
+    throw new WorkflowRuntimeError(
+      "WORKFLOW_START_CONFIG_INVALID",
+      "Workflow Start 配置无效",
+      500,
+      {
+        kind: node.kind,
+        nodeId: node.id,
+        reason: "not_start_node",
+        revision: context.revision,
+        workflowId: context.workflowId,
+      },
+    );
   }
-  const normalizedConfig = {
+  const schema = getWorkflowStartConfigSchema(context.workflowType);
+  const normalizedConfig = admitStartConfig(schema, {
     ...node.config,
     entryPolicy: normalizeWorkflowEntryPolicy(node.config.entryPolicy),
-  };
-  if (!Value.Check(WorkflowStartConfigSchema, normalizedConfig)) {
-    throw new WorkflowRuntimeError("WORKFLOW_START_CONFIG_INVALID", "Workflow Start 配置无效", 500);
+  });
+  if (!Value.Check(schema, normalizedConfig)) {
+    throw new WorkflowRuntimeError(
+      "WORKFLOW_START_CONFIG_INVALID",
+      "Workflow Start 配置无效",
+      500,
+      {
+        chatAiCheck: Value.Check(WorkflowChatAiStartConfigSchema, normalizedConfig),
+        configTypes: describeJsonTypes(normalizedConfig),
+        errors: collectSchemaErrors(schema, normalizedConfig),
+        kind: node.kind,
+        nodeId: node.id,
+        reason: "schema",
+        revision: context.revision,
+        weComCheck: Value.Check(WorkflowWeComStartConfigSchema, normalizedConfig),
+        workflowId: context.workflowId,
+      },
+    );
   }
   return structuredClone(normalizedConfig) as WorkflowStartConfig;
+}
+
+function collectSchemaErrors(schema: Parameters<typeof Value.Errors>[0], value: unknown) {
+  const errors: Array<{ message: string; path: string }> = [];
+  for (const error of Value.Errors(schema, value)) {
+    errors.push({
+      message: error.message,
+      path: error.path,
+    });
+    if (errors.length >= 12) break;
+  }
+  return errors;
+}
+
+function getWorkflowStartConfigSchema(workflowType: WorkflowType) {
+  if (workflowType === "chatai_sop") return WorkflowChatAiStartConfigSchema;
+  if (workflowType === "wecom_sop") return WorkflowWeComStartConfigSchema;
+  return WorkflowStartConfigSchema;
+}
+
+function admitStartConfig(schema: TSchema, config: Record<string, unknown>) {
+  return dropUnreadSchemaProperties(schema, config);
+}
+
+function dropUnreadSchemaProperties(schema: TSchema, value: unknown): unknown {
+  const variants = getSchemaAnyOf(schema);
+  if (variants) {
+    for (const variant of variants) {
+      const dropped = dropUnreadSchemaProperties(variant, value);
+      if (Value.Check(variant, dropped)) return dropped;
+    }
+    return value;
+  }
+  if (Array.isArray(value)) {
+    const items = getSchemaArrayItems(schema);
+    return items ? value.map((item) => dropUnreadSchemaProperties(items, item)) : value;
+  }
+  if (value !== null && typeof value === "object") {
+    const properties = getSchemaObjectProperties(schema);
+    if (!properties) return value;
+    const source = value as Record<string, unknown>;
+    const next: Record<string, unknown> = {};
+    for (const key of Object.keys(properties)) {
+      if (!Object.hasOwn(source, key)) continue;
+      next[key] = dropUnreadSchemaProperties(properties[key]!, source[key]);
+    }
+    return next;
+  }
+  return value;
+}
+
+function getSchemaAnyOf(schema: TSchema) {
+  return "anyOf" in schema && Array.isArray(schema.anyOf) ? schema.anyOf as TSchema[] : null;
+}
+
+function getSchemaArrayItems(schema: TSchema) {
+  return "items" in schema && schema.items && typeof schema.items === "object"
+    ? schema.items as TSchema
+    : null;
+}
+
+function getSchemaObjectProperties(schema: TSchema) {
+  if (!("properties" in schema) || schema.properties === null || typeof schema.properties !== "object") {
+    return null;
+  }
+  return schema.properties as Record<string, TSchema>;
+}
+
+function describeJsonTypes(value: unknown): unknown {
+  if (value === null) return "null";
+  if (Array.isArray(value)) return value.slice(0, 8).map(describeJsonTypes);
+  if (typeof value === "object") {
+    return Object.fromEntries(Object.entries(value).map(([key, item]) => [
+      key,
+      describeJsonTypes(item),
+    ]));
+  }
+  if (typeof value === "number") return Number.isInteger(value) ? "integer" : "number";
+  return typeof value;
 }
 
 function requireWaitEventConfig(node: WorkflowExecutionNode): WorkflowWaitEventConfig {

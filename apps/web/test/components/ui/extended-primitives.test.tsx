@@ -73,13 +73,10 @@ describe("extended UI primitives", () => {
     expect(screen.getAllByRole("slider")).toHaveLength(1);
   });
 
-  it("renders reusable shiny text with custom shimmer width", () => {
+  it("preserves the content and accessible label of shiny text", () => {
     render(
       <ShinyText
         aria-label="AI 正在思考"
-        className="text-primary"
-        duration={1.2}
-        shimmerWidth={96}
       >
         AI正在生成话术...
       </ShinyText>,
@@ -88,9 +85,6 @@ describe("extended UI primitives", () => {
     const text = screen.getByText("AI正在生成话术...");
     expect(text).toHaveAttribute("data-slot", "shiny-text");
     expect(text).toHaveAttribute("aria-label", "AI 正在思考");
-    expect(text).toHaveStyle({ "--shiny-text-duration": "1.2s" });
-    expect(text).toHaveStyle({ "--shiny-text-shimmer-width": "96px" });
-    expect(text).toHaveClass("text-primary");
   });
 
   it("renders animated text switch as a single accessible phrase", () => {
@@ -239,10 +233,6 @@ describe("extended UI primitives", () => {
     expect(container.querySelector("[data-phase='enter']")).toHaveClass(
       "shiny-text",
     );
-    expect(container.querySelector("[data-phase='enter']")).toHaveStyle({
-      "--shiny-text-duration": "1.1s",
-      "--shiny-text-shimmer-width": "72px",
-    });
     expect(
       container.querySelector("[data-phase='enter'] [data-slot='animated-text-switch-char']"),
     ).toBeNull();

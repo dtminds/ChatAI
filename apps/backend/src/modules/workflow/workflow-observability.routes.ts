@@ -4,8 +4,6 @@ import {
 } from "@chatai/contracts";
 import { Type, type Static } from "@sinclair/typebox";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
-import type { Kysely } from "kysely";
-import type { WorkflowDatabase } from "@chatai/workflow-runtime";
 import {
   ForbiddenError,
   UnauthorizedError,
@@ -81,6 +79,6 @@ async function setNoStore(_request: FastifyRequest, reply: FastifyReply) {
 
 function createService(app: FastifyInstance) {
   return new WorkflowObservabilityService(
-    new WorkflowObservabilityRepository(app.db as unknown as Kysely<WorkflowDatabase>),
+    new WorkflowObservabilityRepository(app.db),
   );
 }

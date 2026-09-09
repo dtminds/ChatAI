@@ -16,6 +16,7 @@ import type {
   MessageStatus,
   QuotedMessagePreviewContent,
 } from "@/pages/chat/chat-types";
+import { SOP_AVATAR_ORNAMENT_URL } from "@/pages/chat/chat-constants";
 import { isValidMessageSeq } from "@/pages/chat/lib/message-seq";
 
 type ChatMessageContent = ChatMessage["content"];
@@ -53,6 +54,7 @@ export function adaptAccount(dto: WorkbenchSeatDto, unreadCount = dto.unreadCoun
     seatGroupAIAssistantEnabled: dto.seatGroupAIAssistantEnabled === true,
     id: dto.seatId,
     lastMessageTime: dto.lastMessageTime,
+    thirdUserId: dto.thirdUserId,
     loginStatus: dto.loginStatus,
     metrics: {
       activeCustomers: 0,
@@ -112,7 +114,7 @@ export function adaptGroupMember(dto: WorkbenchGroupMemberDto) {
   return {
     avatarUrl: dto.avatarUrl,
     displayName: dto.displayName,
-    id: dto.thirdUserId,
+    id: dto.thirdUserId.trim(),
     isOpeningAccount: dto.isOpeningAccount,
     isReceptionAccount: dto.isReceptionAccount,
     type: dto.type,
@@ -213,15 +215,16 @@ export function adaptMessage(
 
   return {
     author: senderName,
+    avatarOrnamentUrl:
+      dto.source === WORKBENCH_MESSAGE_SOURCE.WORKFLOW
+        ? SOP_AVATAR_ORNAMENT_URL
+        : undefined,
     content,
     conversationId: dto.conversationId,
     createdAtMs,
     isGroupConversation,
     isAgentMessage:
-      dto.source === WORKBENCH_MESSAGE_SOURCE.AGENT
-        || dto.source === WORKBENCH_MESSAGE_SOURCE.WORKFLOW
-        ? true
-        : undefined,
+      dto.source === WORKBENCH_MESSAGE_SOURCE.AGENT ? true : undefined,
     isOwnMessage,
     failReason: dto.failReason,
     isRevoked: dto.isRevoked,

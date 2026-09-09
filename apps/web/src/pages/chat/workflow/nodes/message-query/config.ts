@@ -6,10 +6,19 @@ import type {
 import {
   areWorkflowVariableSelectorsEqual,
   isWorkflowMessageQueryExecutionConfigComplete,
+  isMessageQueryRelativeTimeRange,
+  normalizeWorkflowMessageQueryTimeRangeTimePrecision,
 } from "@chatai/contracts";
 
 export const MESSAGE_QUERY_LIMIT_MIN = 1;
 export const MESSAGE_QUERY_LIMIT_MAX = 50;
+export function createDefaultMessageQueryRelativeTimeRange(): Extract<WorkflowTimeRange, { mode: "relative" }> {
+  return {
+    mode: "relative",
+    start: { amount: 30, unit: "day", time: "00:00:00" },
+    end: { amount: 0, unit: "day", time: "23:59:59" },
+  };
+}
 export function createDefaultMessageQueryTimeRange(): WorkflowTimeRange {
   return {
     end: ["current-node-lifecycle", "enteredAt"],
@@ -19,25 +28,32 @@ export function createDefaultMessageQueryTimeRange(): WorkflowTimeRange {
 }
 
 export function normalizeMessageQueryTimeRange(value: unknown): WorkflowTimeRange {
-  if (!isRecord(value)) return createDefaultMessageQueryTimeRange();
+  const normalizedValue = normalizeWorkflowMessageQueryTimeRangeTimePrecision(value);
+  if (!isRecord(normalizedValue)) return createDefaultMessageQueryTimeRange();
 
-  if (value.mode === "fixed") {
+  if (normalizedValue.mode === "relative") {
+    return isMessageQueryRelativeTimeRange(normalizedValue)
+      ? structuredClone(normalizedValue)
+      : createDefaultMessageQueryRelativeTimeRange();
+  }
+
+  if (normalizedValue.mode === "fixed") {
     return {
-      endAt: typeof value.endAt === "string" ? value.endAt : "",
+      endAt: typeof normalizedValue.endAt === "string" ? normalizedValue.endAt : "",
       mode: "fixed",
-      startAt: typeof value.startAt === "string" ? value.startAt : "",
+      startAt: typeof normalizedValue.startAt === "string" ? normalizedValue.startAt : "",
     };
   }
 
-  if (value.mode === "dynamic") {
+  if (normalizedValue.mode === "dynamic") {
     return {
       end: normalizeTimeReferenceSelector(
-        value.end,
+        normalizedValue.end,
         ["current-node-lifecycle", "enteredAt"],
       ),
       mode: "dynamic",
       start: normalizeTimeReferenceSelector(
-        value.start,
+        normalizedValue.start,
         ["trigger", "occurredAt"],
       ),
     };

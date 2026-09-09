@@ -1,3 +1,5 @@
+// @vitest-environment node
+
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { ChatMessage } from "@/pages/chat/chat-types";
 import { forwardMessagesToRecipients } from "@/pages/chat/lib/forward-messages";

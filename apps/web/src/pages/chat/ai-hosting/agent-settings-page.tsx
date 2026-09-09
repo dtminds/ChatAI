@@ -179,6 +179,14 @@ const agentSettingsModuleSurfaceClassName =
   "agent-module-surface rounded-[12px] border border-border bg-card shadow-xs";
 
 export function AgentSettingsPage() {
+  return (
+    <AiHostingLayout title="Agent 设置">
+      <AgentSettingsEditor />
+    </AiHostingLayout>
+  );
+}
+
+export function AgentSettingsEditor() {
   const navigate = useNavigate();
   const { agentId } = useParams();
   const subUser = useAuthStore((state) => state.subUser);
@@ -717,7 +725,7 @@ export function AgentSettingsPage() {
   }
 
   return (
-    <AiHostingLayout title={pageTitle}>
+    <>
       <div className="space-y-6">
         <header className="flex flex-wrap items-center justify-between gap-4">
           <div className="flex min-w-0 items-center gap-3">
@@ -1212,7 +1220,7 @@ export function AgentSettingsPage() {
         open={previewOpen}
         testing={previewTesting}
       />
-    </AiHostingLayout>
+    </>
   );
 }
 

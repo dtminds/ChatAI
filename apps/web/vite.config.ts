@@ -1,4 +1,3 @@
-import path from "node:path";
 import tailwindcss from "@tailwindcss/vite";
 import react from "@vitejs/plugin-react";
 import {
@@ -15,14 +14,13 @@ import {
   resolveCosDevProxyTarget,
   rewriteCosDevProxyPath,
 } from "./vite.cos-dev-proxy.ts";
+import { getRepoRoot, getWebViteResolveConfig } from "./vite.shared.ts";
+
+export { getRepoRoot, getWebViteResolveConfig } from "./vite.shared.ts";
 
 type ViteDevEnv = Record<string, string | undefined>;
 
 const paddleOcrPackageName = "@paddleocr/paddleocr-js";
-
-export function getRepoRoot() {
-  return path.resolve(import.meta.dirname, "../..");
-}
 
 function parsePort(rawPort: string | undefined, fallback: number) {
   if (!rawPort) {
@@ -102,25 +100,8 @@ export function createViteConfig(
     },
     envDir: repoRoot,
     plugins: [react(), tailwindcss(), cosDevProxyPlugin()],
+    resolve: getWebViteResolveConfig(),
     server: getViteDevServerConfig({}, mode, repoRoot),
-    resolve: {
-      dedupe: ["react", "react-dom", "react/jsx-runtime", "react/jsx-dev-runtime"],
-      alias: {
-        "@": path.resolve(import.meta.dirname, "./src"),
-        "@chatai/contracts": path.resolve(
-          repoRoot,
-          "packages/contracts/src/index.ts",
-        ),
-        "@chatai/workflow-engine/node-contract-registry": path.resolve(
-          repoRoot,
-          "packages/workflow-engine/src/node-contract-registry.ts",
-        ),
-        "@chatai/workflow-engine/graph": path.resolve(
-          repoRoot,
-          "packages/workflow-engine/src/graph.ts",
-        ),
-      },
-    },
   };
 }
 

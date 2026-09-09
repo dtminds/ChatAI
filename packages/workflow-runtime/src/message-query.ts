@@ -2,7 +2,9 @@ import {
   WorkflowMessageQueryCommandSchema,
   WorkflowMessageQueryConfigSchema,
   WorkflowMessageQueryResultSchema,
-  isValidWorkflowLocalDateTime,
+  isValidWorkflowLocalDateTimeToSecond,
+  normalizeWorkflowMessageQueryConfigTimePrecision,
+  resolveMessageQueryRelativePoint,
   type WorkflowContactIdentity,
   type WorkflowMessageQueryCommand,
   type WorkflowMessageQueryConfig,
@@ -36,18 +38,23 @@ export interface WorkflowMessageQueryPort {
 }
 
 const WORKFLOW_TIMEZONE_OFFSET_MILLISECONDS = 8 * 60 * 60 * 1_000;
-const ONE_MINUTE_MILLISECONDS = 60 * 1_000;
+const ONE_SECOND_MILLISECONDS = 1_000;
 const FIXED_LOCAL_DATE_TIME_PATTERN =
-  /^(\d{4})-(\d{2})-(\d{2})T([01]\d|2[0-3]):([0-5]\d)$/;
+  /^(\d{4})-(\d{2})-(\d{2})T([01]\d|2[0-3]):([0-5]\d):([0-5]\d)$/;
 
 export function createWorkflowMessageQueryCommand(input: {
   config: Record<string, unknown>;
   context: WorkflowMessageQueryCommandContext;
 }): WorkflowMessageQueryCommand {
-  if (!Value.Check(WorkflowMessageQueryConfigSchema, input.config)) {
+  // Product policy: the 90-day lookback/span is checked when configuring and
+  // publishing, not when executing. Do not reuse execution completeness here:
+  // published fixed dates must keep working as time passes. Runtime still checks
+  // structure, timestamps, identities and the resolved start/end ordering.
+  const normalizedConfig = normalizeWorkflowMessageQueryConfigTimePrecision(input.config);
+  if (!Value.Check(WorkflowMessageQueryConfigSchema, normalizedConfig)) {
     throw invalidMessageQueryCommand("Message Query config failed schema validation");
   }
-  const config = input.config as WorkflowMessageQueryConfig;
+  const config = normalizedConfig as WorkflowMessageQueryConfig;
   const seatId = readWorkflowTriggerSeatId(input.context.trigger);
   if (seatId === null) {
     throw invalidMessageQueryCommand("Message Query requires trigger.projection.seatId");
@@ -107,8 +114,20 @@ function resolveMessageQueryRange(
 ) {
   if (timeRange.mode === "fixed") {
     return {
-      rangeEnd: parseFixedLocalDateTime(timeRange.endAt) + ONE_MINUTE_MILLISECONDS - 1,
+      // The picker has second precision. Include only the selected end second's
+      // millisecond tail because message timestamps carry milliseconds.
+      rangeEnd: parseFixedLocalDateTime(timeRange.endAt) + ONE_SECOND_MILLISECONDS - 1,
       rangeStart: parseFixedLocalDateTime(timeRange.startAt),
+    };
+  }
+  if (timeRange.mode === "relative") {
+    const enteredAt = parseTimestamp(
+      context.currentNodeLifecycle.enteredAt,
+      "Message Query relative time requires current node enteredAt",
+    );
+    return {
+      rangeStart: resolveMessageQueryRelativePoint(enteredAt, timeRange.start, false),
+      rangeEnd: resolveMessageQueryRelativePoint(enteredAt, timeRange.end, true),
     };
   }
   return {
@@ -148,18 +167,19 @@ function resolveSelector(
 }
 
 function parseFixedLocalDateTime(value: string) {
-  if (!isValidWorkflowLocalDateTime(value)) {
+  if (!isValidWorkflowLocalDateTimeToSecond(value)) {
     throw invalidMessageQueryCommand("Message Query fixed time is invalid");
   }
   const match = FIXED_LOCAL_DATE_TIME_PATTERN.exec(value);
   if (!match) throw invalidMessageQueryCommand("Message Query fixed time is invalid");
-  const [, year, month, day, hour, minute] = match;
+  const [, year, month, day, hour, minute, second] = match;
   const timestamp = Date.UTC(
     Number(year),
     Number(month) - 1,
     Number(day),
     Number(hour),
     Number(minute),
+    Number(second),
   ) - WORKFLOW_TIMEZONE_OFFSET_MILLISECONDS;
   return timestamp;
 }

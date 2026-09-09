@@ -1,3 +1,4 @@
+import { WORKBENCH_PULL_GROUP_MEMBERS_MAX_ITEMS } from "@chatai/contracts";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { solveChallenge, type Challenge } from "altcha-lib";
 import { deriveKey } from "altcha-lib/algorithms/scrypt";
@@ -2649,6 +2650,101 @@ describe("backend app", () => {
         }),
       ]),
     );
+
+    await app.close();
+  });
+
+  it("pulls selected friends into a group conversation", async () => {
+    const { app, authorization } = await createAuthenticatedApp();
+    const pullGroupMembers = vi
+      .spyOn(app.workbenchService, "pullGroupMembers")
+      .mockResolvedValue({ conversationId: "conv-004" });
+
+    const response = await app.inject({
+      headers: { authorization },
+      method: "POST",
+      payload: {
+        contactThirdUserIds: ["external-a", "external-b"],
+      },
+      url: "/api/server/conversations/conv-004/group-members",
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({ conversationId: "conv-004" });
+    expect(pullGroupMembers).toHaveBeenCalledWith("101", "conv-004", {
+      contactThirdUserIds: ["external-a", "external-b"],
+      thirdUserIds: undefined,
+    });
+
+    await app.close();
+  });
+
+  it("pulls selected employees into a group conversation", async () => {
+    const { app, authorization } = await createAuthenticatedApp();
+    const pullGroupMembers = vi
+      .spyOn(app.workbenchService, "pullGroupMembers")
+      .mockResolvedValue({ conversationId: "conv-004" });
+
+    const response = await app.inject({
+      headers: { authorization },
+      method: "POST",
+      payload: {
+        thirdUserIds: ["seat-user-hua"],
+      },
+      url: "/api/server/conversations/conv-004/group-members",
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(pullGroupMembers).toHaveBeenCalledWith("101", "conv-004", {
+      contactThirdUserIds: undefined,
+      thirdUserIds: ["seat-user-hua"],
+    });
+
+    await app.close();
+  });
+
+  it("rejects pulling more group members than the invite limit", async () => {
+    const { app, authorization } = await createAuthenticatedApp();
+    const pullGroupMembers = vi.spyOn(app.workbenchService, "pullGroupMembers");
+
+    const response = await app.inject({
+      headers: { authorization },
+      method: "POST",
+      payload: {
+        contactThirdUserIds: Array.from(
+          { length: WORKBENCH_PULL_GROUP_MEMBERS_MAX_ITEMS + 1 },
+          (_, index) => `external-${index + 1}`,
+        ),
+      },
+      url: "/api/server/conversations/conv-004/group-members",
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(pullGroupMembers).not.toHaveBeenCalled();
+
+    await app.close();
+  });
+
+  it("kicks a group member from a group conversation", async () => {
+    const { app, authorization } = await createAuthenticatedApp();
+    const kickGroupMember = vi
+      .spyOn(app.workbenchService, "kickGroupMember")
+      .mockResolvedValue({ conversationId: "conv-004" });
+
+    const response = await app.inject({
+      headers: { authorization },
+      method: "POST",
+      payload: {
+        kickOutThirdUserId: "member-xiaoming",
+      },
+      url: "/api/server/conversations/conv-004/group-members/remove",
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({ conversationId: "conv-004" });
+    expect(kickGroupMember).toHaveBeenCalledWith("101", "conv-004", {
+      kickOutThirdUserId: "member-xiaoming",
+    });
 
     await app.close();
   });

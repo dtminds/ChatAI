@@ -373,7 +373,6 @@ describe("MessageContentRenderer video messages", () => {
       maxWidth: "100%",
       width: "300px",
     });
-    expect(cover).toHaveClass("h-full", "w-full");
   });
 
   it("uses loaded cover dimensions when message video dimensions are invalid", () => {

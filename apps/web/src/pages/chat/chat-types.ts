@@ -52,6 +52,8 @@ export type Account = {
   semiAutoAuth?: boolean;
   semiAutoSwitch?: boolean;
   id: string;
+  /** 席位第三方成员 ID，对应 `xy_wap_embed_user_seat.third_userid` */
+  thirdUserId?: string;
   name: string;
   avatarUrl: string;
   operator: string;
@@ -352,6 +354,7 @@ export type SystemMessage = BaseMessage & {
 export type ChatMessage = BaseMessage & {
   role: "customer" | "agent";
   sender: MessageSender;
+  avatarOrnamentUrl?: string;
   isGroupConversation?: boolean;
   isAgentMessage?: boolean;
   isOwnMessage?: boolean;

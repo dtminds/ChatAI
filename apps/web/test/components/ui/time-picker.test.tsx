@@ -1,10 +1,10 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import { TimePicker } from "@/components/ui/time-picker";
 
 describe("TimePicker", () => {
-  it("shows invalid stored values as unconfigured", async () => {
+  it("updates when a time is selected and uses confirmation only to close", async () => {
     const user = userEvent.setup();
     const onValueChange = vi.fn();
 
@@ -23,6 +23,10 @@ describe("TimePicker", () => {
     await user.click(screen.getByRole("button", { name: "09时" }));
 
     expect(onValueChange).toHaveBeenCalledWith("09:00");
+
+    await user.click(screen.getByRole("button", { name: "执行时间确认" }));
+    expect(onValueChange).toHaveBeenCalledTimes(1);
+    expect(screen.queryByRole("button", { name: "00时" })).not.toBeInTheDocument();
   });
 
   it("renders valid times unchanged", () => {
@@ -35,5 +39,79 @@ describe("TimePicker", () => {
     );
 
     expect(screen.getByRole("button", { name: "执行时间" })).toHaveTextContent("20:15");
+  });
+
+  it("supports second precision when requested", async () => {
+    const user = userEvent.setup();
+    const onValueChange = vi.fn();
+
+    render(
+      <TimePicker
+        aria-label="执行时间"
+        onValueChange={onValueChange}
+        precision="second"
+        value="09:30:15"
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "执行时间" }));
+    await user.click(screen.getByRole("button", { name: "45秒" }));
+
+    expect(onValueChange).toHaveBeenCalledWith("09:30:45");
+  });
+
+  it("scrolls each selected time column after the popover content mounts", async () => {
+    const user = userEvent.setup();
+    const requestAnimationFrame = vi.fn<(callback: FrameRequestCallback) => number>();
+    const scrollIntoView = vi.fn();
+    vi.stubGlobal("requestAnimationFrame", requestAnimationFrame);
+    Object.defineProperty(HTMLElement.prototype, "scrollIntoView", {
+      configurable: true,
+      value: scrollIntoView,
+    });
+
+    try {
+      render(
+        <TimePicker
+          aria-label="执行时间"
+          onValueChange={() => undefined}
+          precision="second"
+          value="22:00:00"
+        />,
+      );
+
+      await user.click(screen.getByRole("button", { name: "执行时间" }));
+      expect(requestAnimationFrame).toHaveBeenCalledTimes(1);
+
+      requestAnimationFrame.mock.calls[0]![0](0);
+      expect(scrollIntoView.mock.contexts).toEqual(expect.arrayContaining([
+        screen.getByRole("button", { name: "22时" }),
+        screen.getByRole("button", { name: "00分" }),
+        screen.getByRole("button", { name: "00秒" }),
+      ]));
+    } finally {
+      vi.unstubAllGlobals();
+      delete (HTMLElement.prototype as { scrollIntoView?: unknown }).scrollIntoView;
+    }
+  });
+
+  it("prevents time-column wheel events from reaching the surrounding surface", async () => {
+    const user = userEvent.setup();
+    const onWheel = vi.fn();
+
+    render(
+      <div onWheel={onWheel}>
+          <TimePicker
+            aria-label="执行时间"
+            onValueChange={() => undefined}
+            value="00:00"
+          />
+      </div>,
+    );
+
+    await user.click(screen.getByRole("button", { name: "执行时间" }));
+    fireEvent.wheel(screen.getByRole("button", { name: "00时" }), { deltaY: 80 });
+
+    expect(onWheel).not.toHaveBeenCalled();
   });
 });

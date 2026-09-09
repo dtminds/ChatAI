@@ -9,6 +9,7 @@ import {
   resolveMessageAvatarUrl,
 } from "@/pages/chat/components/message-feed";
 import type { ChatMessage } from "@/pages/chat/chat-types";
+import { SOP_AVATAR_ORNAMENT_URL } from "@/pages/chat/chat-constants";
 import { getMessageFeedItemKey } from "@/pages/chat/lib/message-feed-key";
 
 vi.mock("sonner", async (importOriginal) => {
@@ -1206,6 +1207,27 @@ describe("message feed row actions", () => {
     expect(onRevokeMessage).not.toHaveBeenCalled();
   });
 
+  it("does not expose revoke action when no handler is provided", async () => {
+    const user = userEvent.setup();
+    vi.setSystemTime(new Date("2026-05-08T09:56:59").getTime());
+
+    render(
+      <MessageRow
+        message={{
+          ...createTextMessage("刚发送的客服消息"),
+          isOwnMessage: true,
+          seq: 42,
+          sentAt: "2026-05-08 09:54:00",
+        }}
+        onQuoteMessage={vi.fn()}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "消息操作" }));
+
+    expect(screen.queryByRole("menuitem", { name: "撤回消息" })).not.toBeInTheDocument();
+  });
+
   it("does not expose revoke action when seq is invalid", async () => {
     const user = userEvent.setup();
     const onRevokeMessage = vi.fn();
@@ -1302,6 +1324,25 @@ describe("message feed row actions", () => {
     expect(onRetryMessage).toHaveBeenCalledWith(expect.any(String));
   });
 
+  it("keeps the retry control visible but disabled when message actions are locked", () => {
+    const onRetryMessage = vi.fn();
+
+    render(
+      <MessageRow
+        canUseMessageActions={false}
+        message={{
+          ...createTextMessage("只读失败消息"),
+          failReason: "模拟发送失败",
+          status: "failed",
+        }}
+        onRetryMessage={onRetryMessage}
+      />,
+    );
+
+    expect(screen.getByRole("button", { name: "重试发送" })).toBeDisabled();
+    expect(onRetryMessage).not.toHaveBeenCalled();
+  });
+
   it("delegates retry for unsupported failed message content to the page handler", async () => {
     const user = userEvent.setup();
     const onRetryMessage = vi.fn();
@@ -1359,6 +1400,22 @@ describe("message feed row actions", () => {
     );
 
     expect(screen.getByLabelText("AI托管")).toBeInTheDocument();
+  });
+
+  it("overlays the SOP ornament on Workflow message avatars without the Agent badge", () => {
+    const { container } = render(
+      <MessageRow
+        message={{
+          ...createTextMessage("SOP 自动发送"),
+          avatarOrnamentUrl: SOP_AVATAR_ORNAMENT_URL,
+        }}
+      />,
+    );
+
+    expect(
+      container.querySelector(`img[src="${SOP_AVATAR_ORNAMENT_URL}"]`),
+    ).toBeInTheDocument();
+    expect(screen.queryByLabelText("AI托管")).not.toBeInTheDocument();
   });
 
   it("does not mark regular outbound messages as agent-hosted", () => {

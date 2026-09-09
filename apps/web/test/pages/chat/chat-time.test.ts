@@ -1,3 +1,5 @@
+// @vitest-environment node
+
 import { describe, expect, it } from "vitest";
 import { formatTextMessageSentAt } from "@/pages/chat/lib/chat-time";
 

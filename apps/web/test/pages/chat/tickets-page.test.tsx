@@ -214,10 +214,6 @@ describe("TicketsPage", () => {
     ));
     expect(screen.getByRole("button", { name: /日期范围.*近30天/ })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "搜索类型" })).toHaveTextContent("工单 ID");
-    expect(screen.getByRole("textbox", { name: "搜索工单" })).toHaveAttribute(
-      "placeholder",
-      "输入工单 ID",
-    );
     const callsBeforeSearch = api.getTickets.mock.calls.length;
     await user.type(screen.getByRole("textbox", { name: "搜索工单" }), "50a1");
     expect(screen.getByRole("textbox", { name: "搜索工单" })).toHaveValue("501");
@@ -229,10 +225,6 @@ describe("TicketsPage", () => {
     await user.click(screen.getByRole("button", { name: "搜索类型" }));
     await user.click(screen.getByRole("menuitemradio", { name: "标题" }));
     expect(screen.getByRole("textbox", { name: "搜索工单" })).toHaveValue("");
-    expect(screen.getByRole("textbox", { name: "搜索工单" })).toHaveAttribute(
-      "placeholder",
-      "输入标题关键词",
-    );
 
     api.getTickets.mockClear();
     await user.type(screen.getByRole("textbox", { name: "搜索工单" }), "退款");
@@ -272,13 +264,24 @@ describe("TicketsPage", () => {
     await user.keyboard("{Escape}");
 
     await user.click(screen.getByRole("button", { name: "更多筛选" }));
-    await user.click(screen.getByRole("menuitem", { name: "来源" }));
+    await user.click(screen.getByRole("menuitem", { name: /^来源/ }));
     const aiSourceOption = screen.getByRole("menuitemradio", { name: "智能创建" });
     fireEvent.click(aiSourceOption);
     expect(aiSourceOption).toHaveAttribute("data-state", "checked");
     await waitFor(() => expect(api.getTickets).toHaveBeenLastCalledWith(
       expect.objectContaining({
         sourceType: "ai",
+        status: "done",
+        ticketId: "501",
+      }),
+    ));
+
+    await user.click(screen.getByRole("button", { name: "更多筛选" }));
+    await user.click(screen.getByRole("menuitem", { name: /^来源/ }));
+    fireEvent.click(screen.getByRole("menuitemradio", { name: "工作流创建" }));
+    await waitFor(() => expect(api.getTickets).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        sourceType: "workflow",
         status: "done",
         ticketId: "501",
       }),

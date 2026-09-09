@@ -50,6 +50,10 @@ export function resolveWorkflowForwardRoute(input: {
     && !isWorkflowSelectorAvailable(["trigger", "projection", "seatId"], input.context)) {
     return { kind: "flow-changed", reason: "flow_changed_context_incompatible" };
   }
+  if (target.kind === "ticket-create"
+    && !isWorkflowSelectorAvailable(["trigger", "projection", "seatId"], input.context)) {
+    return { kind: "flow-changed", reason: "flow_changed_context_incompatible" };
+  }
   if (!getRequiredContextSelectors(target, input.latestSpec).every(selector =>
     isWorkflowSelectorAvailable(selector, input.context))) {
     return { kind: "flow-changed", reason: "flow_changed_context_incompatible" };
@@ -92,6 +96,9 @@ function getRequiredContextSelectors(
   if (node.kind === "handoff") {
     return [config.customerMessage, config.operatorMessage].flatMap(selectorsFromSegments);
   }
+  if (node.kind === "ticket-create") {
+    return [config.ticketTitle, config.description].flatMap(selectorsFromSegments);
+  }
   if (node.kind === "llm") {
     return readArray(config.inputs).flatMap(parameter => {
       const value = isRecord(parameter) && isRecord(parameter.value) ? parameter.value : null;
@@ -104,11 +111,22 @@ function getRequiredContextSelectors(
       return value?.kind === "variable" ? selectorFrom(value.selector) : [];
     });
   }
+  if (node.kind === "smartsheet-write") {
+    return readArray(config.fieldMappings).flatMap(field => {
+      const value = isRecord(field) && isRecord(field.value) ? field.value : null;
+      return value?.kind === "variable" ? selectorFrom(value.selector) : [];
+    });
+  }
   if (node.kind === "ai-intent") return selectorFrom(config.inputSelector);
   if (node.kind === "ai-collect") return selectorFrom(config.inputSelector);
   if (node.kind === "order-bind") return selectorFrom(config.orderNumberSelector);
   if (node.kind === "order-conversion") {
     return selectorFrom(config.orderNumberSelector);
+  }
+  if (node.kind === "order-query") {
+    if (config.mode === "order-number") return selectorFrom(config.orderNumberSelector);
+    const conditions = isRecord(config.conditions) ? config.conditions : {};
+    return selectorsFromTimeRange(conditions.timeRange);
   }
   if (node.kind === "message-query") return selectorsFromTimeRange(config.timeRange);
   if (node.kind === "branch") return requiredBranchSelectors(node, spec);

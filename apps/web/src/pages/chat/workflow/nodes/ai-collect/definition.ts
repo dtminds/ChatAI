@@ -1,4 +1,4 @@
-import { AiUserIcon } from "@hugeicons/core-free-icons";
+import { FaceMimicIcon } from "@hugeicons/core-free-icons";
 import type { WorkflowNodeDefinition } from "../definition-types";
 import {
   createCatalogIssue,
@@ -176,7 +176,7 @@ export const aiCollectNodeDefinition: WorkflowNodeDefinition<"ai-collect"> = {
     accentClassName: "bg-emerald-600 text-white",
     accentRgb: "5 150 105",
     badge: "ai",
-    icon: AiUserIcon,
+    icon: FaceMimicIcon,
     label: "资料收集",
   },
 };

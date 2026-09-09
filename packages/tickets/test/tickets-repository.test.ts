@@ -473,6 +473,79 @@ describe("TicketsRepository", () => {
     expect(transactionCount()).toBe(1);
   });
 
+  it("creates a Workflow ticket after claiming the shared idempotency key", async () => {
+    const { db, queries, transactionCount } = createRecordingDatabase({ hostSubUserId: 102 });
+
+    await expect(new TicketsRepository(db).createWorkflowTicket({
+      anchorMessageId: 601,
+      conversationId: 301,
+      description: "跟进客户需求",
+      idempotencyKey: "9001:run-1:ticket-create:2",
+      priority: "high",
+      title: "处理客户需求",
+      uid: 9001,
+    })).resolves.toBeUndefined();
+
+    const inserts = queries.filter((query) => normalizeSql(query).startsWith("insert into"));
+    expect(inserts).toHaveLength(3);
+    expect(normalizeSql(inserts[0]!)).toContain("insert into xy_internal_request_idempotent");
+    expect(inserts[0]?.parameters).toEqual(["9001:run-1:ticket-create:2"]);
+    expect(inserts[1]?.parameters).toEqual(expect.arrayContaining([
+      601,
+      102,
+      301,
+      "high",
+      "workflow",
+      "处理客户需求",
+    ]));
+    expect(inserts[2]?.parameters).toEqual(expect.arrayContaining([
+      "created",
+      "system",
+      501,
+    ]));
+    expect(transactionCount()).toBe(1);
+  });
+
+  it("treats a shared idempotency-key conflict as an already completed Workflow action", async () => {
+    const { db, queries, transactionCount } = createRecordingDatabase({
+      workflowIdempotencyInsertError: { errno: 1062 },
+    });
+
+    await expect(new TicketsRepository(db).createWorkflowTicket({
+      anchorMessageId: null,
+      conversationId: 301,
+      description: null,
+      idempotencyKey: "9001:run-1:ticket-create:3",
+      priority: "medium",
+      title: "处理客户需求",
+      uid: 9001,
+    })).resolves.toBeUndefined();
+
+    expect(transactionCount()).toBe(1);
+    expect(queries).toHaveLength(1);
+    expect(normalizeSql(queries[0]!)).toContain("insert into xy_internal_request_idempotent");
+  });
+
+  it("rolls back the shared idempotency claim when Workflow ticket creation fails", async () => {
+    const { db, queries, rollbackCount } = createRecordingDatabase({
+      hostSubUserId: 102,
+      workflowActivityInsertError: new Error("activity insert failed"),
+    });
+
+    await expect(new TicketsRepository(db).createWorkflowTicket({
+      anchorMessageId: null,
+      conversationId: 301,
+      description: null,
+      idempotencyKey: "9001:run-1:ticket-create:4",
+      priority: "medium",
+      title: "处理客户需求",
+      uid: 9001,
+    })).rejects.toThrow("activity insert failed");
+
+    expect(queries.filter(query => normalizeSql(query).startsWith("insert into"))).toHaveLength(3);
+    expect(rollbackCount()).toBe(1);
+  });
+
   it("fences status updates and writes their activities in the same transaction", async () => {
     const { db, queries } = createRecordingDatabase();
     const repository = new TicketsRepository(db);
@@ -620,17 +693,25 @@ function createRecordingDatabase(options: {
   accessibleSeatRows?: Record<string, unknown>[];
   hostSubUserId?: number;
   ticketPageRows?: Record<string, unknown>[];
+  workflowActivityInsertError?: unknown;
+  workflowIdempotencyInsertError?: unknown;
 } = {}) {
   const queries: CompiledQuery[] = [];
+  let rollbackCount = 0;
   let transactionCount = 0;
   const connection: DatabaseConnection = {
     executeQuery: async <R>(query: CompiledQuery): Promise<QueryResult<R>> => {
       queries.push(query);
 
+      if (query.sql.includes("insert into `xy_internal_request_idempotent`")) {
+        if (options.workflowIdempotencyInsertError) throw options.workflowIdempotencyInsertError;
+        return { insertId: 401n, rows: [] };
+      }
       if (query.sql.includes("insert into `xy_wap_embed_session_action_item`")) {
         return { insertId: 501n, rows: [] };
       }
       if (query.sql.includes("insert into `xy_wap_embed_ticket_activity`")) {
+        if (options.workflowActivityInsertError) throw options.workflowActivityInsertError;
         return { insertId: 601n, rows: [] };
       }
 
@@ -675,7 +756,9 @@ function createRecordingDatabase(options: {
     destroy: async () => undefined,
     init: async () => undefined,
     releaseConnection: async () => undefined,
-    rollbackTransaction: async () => undefined,
+    rollbackTransaction: async () => {
+      rollbackCount += 1;
+    },
     releaseSavepoint: async () => undefined,
     rollbackToSavepoint: async () => undefined,
     savepoint: async () => undefined,
@@ -689,7 +772,12 @@ function createRecordingDatabase(options: {
     },
   });
 
-  return { db, queries, transactionCount: () => transactionCount };
+  return {
+    db,
+    queries,
+    rollbackCount: () => rollbackCount,
+    transactionCount: () => transactionCount,
+  };
 }
 
 function normalizeSql(query: CompiledQuery) {

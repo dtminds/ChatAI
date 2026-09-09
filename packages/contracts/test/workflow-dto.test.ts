@@ -37,6 +37,47 @@ import {
 } from "../src/workflow/trigger.js";
 
 describe("workflow contracts", () => {
+  it("limits each message keyword to ten characters without shortening friend source IDs", () => {
+    const config = {
+      entryPolicy: { maxEntries: 2, mode: "lifetime_limit" },
+      seatIds: [101],
+    };
+    for (const schema of [WorkflowStartDraftConfigSchema, WorkflowStartConfigSchema]) {
+      expect(Value.Check(schema, {
+        ...config,
+        triggers: [{ keywords: ["词".repeat(10), "中Ab123 xyz"], type: "message.received" }],
+      })).toBe(true);
+      for (const keyword of ["词".repeat(11), "中Ab123 xyzz"]) {
+        expect(Value.Check(schema, {
+          ...config,
+          triggers: [{ keywords: [keyword], type: "message.received" }],
+        })).toBe(false);
+      }
+      expect(Value.Check(schema, {
+        ...config,
+        triggers: [{ sourceIds: ["source".repeat(10)], type: "contact.friend_added" }],
+      })).toBe(true);
+    }
+  });
+
+  it("limits message triggers to ten keywords in drafts and published configs", () => {
+    const config = {
+      entryPolicy: { maxEntries: 2, mode: "lifetime_limit" },
+      seatIds: [101],
+      triggers: [{
+        keywords: Array.from({ length: 10 }, (_, index) => `keyword${index}`),
+        type: "message.received",
+      }],
+    };
+    for (const schema of [WorkflowStartDraftConfigSchema, WorkflowStartConfigSchema]) {
+      expect(Value.Check(schema, config)).toBe(true);
+      expect(Value.Check(schema, {
+        ...config,
+        triggers: [{ ...config.triggers[0], keywords: [...config.triggers[0]!.keywords, "extra"] }],
+      })).toBe(false);
+    }
+  });
+
   it("limits each workflow list item to three managed account summaries", () => {
     const item = {
       description: "",
@@ -123,6 +164,7 @@ describe("workflow contracts", () => {
       "ai-collect",
       "audience-filter",
       "ai-intent",
+      "smartsheet-write",
       "end",
     ];
 

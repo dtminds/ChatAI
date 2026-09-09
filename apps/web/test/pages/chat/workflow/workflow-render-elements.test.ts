@@ -1,3 +1,5 @@
+// @vitest-environment jsdom
+
 import { renderHook } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import {
@@ -86,8 +88,10 @@ describe("createWorkflowRenderElements", () => {
       "message-query",
       "handoff",
       "agent",
+      "ticket-create",
       "coupon",
       "order-conversion",
+      "smartsheet-write",
     ]);
     expect(rendered.edges[1].data?.onInsertBetween).toBe(handlers.onInsertNodeBetween);
   });

@@ -2,8 +2,8 @@ import {
   assertDatabaseUtc8Timezone,
   createDatabase,
 } from "@chatai/database";
-import { createInsightsWorkerRuntime } from "@chatai/insights";
-import { createUserMemoryWorkerRuntime } from "@chatai/user-memory";
+import { createInsightsWorkerRuntime } from "@chatai/insights/worker";
+import { createUserMemoryWorkerRuntime } from "@chatai/user-memory/worker";
 import pino from "pino";
 import { parseBackendWorkerConfig } from "./config.js";
 

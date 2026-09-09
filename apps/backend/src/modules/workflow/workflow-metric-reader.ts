@@ -1,4 +1,4 @@
-import type { WorkflowDatabase } from "@chatai/workflow-runtime";
+import type { Database } from "@chatai/database";
 import type { Kysely } from "kysely";
 
 export type WorkflowMetricSummary = {
@@ -13,7 +13,7 @@ export type WorkflowMetricReader = {
 };
 
 export class MysqlWorkflowMetricReader implements WorkflowMetricReader {
-  constructor(private readonly db: Kysely<WorkflowDatabase>) {}
+  constructor(private readonly db: Kysely<Database>) {}
 
   async findByWorkflowIds(uid: number, workflowIds: string[]) {
     const uniqueWorkflowIds = [...new Set(workflowIds)];

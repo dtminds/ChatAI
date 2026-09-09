@@ -15,12 +15,16 @@ import {
   WorkflowRuntimeService,
   WORKFLOW_AUDIENCE_FILTER_CAPABILITY_BINDING,
   WORKFLOW_CUSTOMER_UPDATE_CAPABILITY_BINDING,
+  WORKFLOW_SMARTSHEET_WRITE_CAPABILITY_BINDING,
   WORKFLOW_HANDOFF_CAPABILITY_BINDING,
   WORKFLOW_MESSAGE_CAPABILITY_BINDING,
   WORKFLOW_ORDER_CONVERSION_CAPABILITY_BINDING,
+  WORKFLOW_COUPON_CAPABILITY_BINDING,
   WORKFLOW_ORDER_BIND_CAPABILITY_BINDING,
+  WORKFLOW_ORDER_QUERY_CAPABILITY_BINDING,
   WORKFLOW_TAG_CAPABILITY_BINDING,
   WORKFLOW_TAG_QUERY_CAPABILITY_BINDING,
+  WORKFLOW_TICKET_CREATE_CAPABILITY_BINDING,
 } from "@chatai/workflow-runtime";
 import { WorkflowCapabilityRouter } from "./capability-router.js";
 import { loadWorkflowWorkerConfig } from "./config.js";
@@ -30,6 +34,7 @@ import { HttpWorkflowAudienceFilterCapabilityPort } from "./audience-filter-capa
 import { HttpWorkflowContactIdentityPort } from "./contact-identity-port.js";
 import { HttpWorkflowContactCustomFieldPort } from "./contact-custom-field-port.js";
 import { HttpWorkflowCustomerUpdateCapabilityPort } from "./customer-update-capability-port.js";
+import { HttpWorkflowSmartsheetWriteCapabilityPort } from "./smartsheet-write-capability-port.js";
 import { createWorkflowEntitlementCache } from "./entitlement-cache.js";
 import { startEntryConsumer } from "./entry-consumer.js";
 import { startWorkflowHealthServer } from "./health.js";
@@ -52,12 +57,15 @@ import { HttpWorkflowTagCapabilityPort } from "./tag-capability-port.js";
 import { HttpWorkflowTagQueryCapabilityPort } from "./tag-query-capability-port.js";
 import { MysqlWorkflowHandoffCapabilityPort } from "./handoff-capability-port.js";
 import { HttpWorkflowOrderConversionCapabilityPort } from "./order-conversion-capability-port.js";
+import { HttpWorkflowCouponCapabilityPort } from "./coupon-capability-port.js";
 import { HttpWorkflowOrderBindCapabilityPort } from "./order-bind-capability-port.js";
+import { HttpWorkflowOrderQueryCapabilityPort } from "./order-query-capability-port.js";
 import { createVolcengineChatCompletionAdapter } from "./volcengine-chat-completion-adapter.js";
 import { MysqlWorkflowAiCollectConversationPort } from "./ai-collect-conversation-port.js";
 import { HttpWorkflowConversationDirectivePort } from "./conversation-directive-port.js";
 import { processWorkflowConversationDirectiveDisableBatch } from "./conversation-directive-worker.js";
 import type { WorkflowLlmTestAdapter } from "./llm-test-adapter.js";
+import { MysqlWorkflowTicketCreateCapabilityPort } from "./ticket-create-capability-port.js";
 
 export async function startWorkflowWorkerProcess(env: NodeJS.ProcessEnv = process.env) {
   const config = loadWorkflowWorkerConfig(env);
@@ -132,7 +140,16 @@ export async function startWorkflowWorkerProcess(env: NodeJS.ProcessEnv = proces
     baseUrl: config.javaInternalApi.baseUrl,
     token: config.javaInternalApi.token,
   });
+  const orderQueryCapabilityPort = new HttpWorkflowOrderQueryCapabilityPort({
+    baseUrl: config.javaInternalApi.baseUrl,
+    token: config.javaInternalApi.token,
+  });
   const capabilityPort = new WorkflowCapabilityRouter([
+    { binding: WORKFLOW_SMARTSHEET_WRITE_CAPABILITY_BINDING, port: new HttpWorkflowSmartsheetWriteCapabilityPort() },
+    {
+      binding: WORKFLOW_COUPON_CAPABILITY_BINDING,
+      port: new HttpWorkflowCouponCapabilityPort({ baseUrl: config.javaInternalApi.baseUrl, token: config.javaInternalApi.token }),
+    },
     {
       binding: WORKFLOW_AUDIENCE_FILTER_CAPABILITY_BINDING,
       port: audienceFilterCapabilityPort,
@@ -151,8 +168,16 @@ export async function startWorkflowWorkerProcess(env: NodeJS.ProcessEnv = proces
       binding: WORKFLOW_ORDER_BIND_CAPABILITY_BINDING,
       port: orderBindCapabilityPort,
     },
+    {
+      binding: WORKFLOW_ORDER_QUERY_CAPABILITY_BINDING,
+      port: orderQueryCapabilityPort,
+    },
     { binding: WORKFLOW_TAG_CAPABILITY_BINDING, port: tagCapabilityPort },
     { binding: WORKFLOW_TAG_QUERY_CAPABILITY_BINDING, port: tagQueryCapabilityPort },
+    {
+      binding: WORKFLOW_TICKET_CREATE_CAPABILITY_BINDING,
+      port: new MysqlWorkflowTicketCreateCapabilityPort(database),
+    },
   ]);
   const aiCollectConversationPort = new MysqlWorkflowAiCollectConversationPort(database, {
     baseUrl: config.javaInternalApi.baseUrl,
@@ -286,6 +311,7 @@ export * from "./contact-identity-port.js";
 export * from "./conversation-directive-port.js";
 export * from "./conversation-directive-worker.js";
 export * from "./customer-update-capability-port.js";
+export * from "./smartsheet-write-capability-port.js";
 export * from "./database.js";
 export * from "./entry-consumer.js";
 export * from "./entitlement-cache.js";
@@ -296,6 +322,7 @@ export * from "./inference-worker.js";
 export * from "./logger.js";
 export * from "./llm-test-adapter.js";
 export * from "./message-capability-port.js";
+export * from "./order-query-capability-port.js";
 export * from "./outbox-publisher.js";
 export * from "./observability.js";
 export * from "./reconciler.js";

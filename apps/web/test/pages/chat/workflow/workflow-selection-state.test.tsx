@@ -7,6 +7,38 @@ import {
 import { useWorkflowSelectionState } from "@/pages/chat/workflow/use-workflow-selection-state";
 
 describe("useWorkflowSelectionState", () => {
+  it("keeps the current node selected when a different node is removed", () => {
+    const initialNodes = [
+      ...createInitialNodes(),
+      {
+        ...createInitialNodes()[0],
+        id: "handoff-1",
+      },
+    ];
+    const { rerender, result } = renderHook(
+      ({ nodes }) =>
+        useWorkflowSelectionState({
+          defaultNodeId: "message-welcome",
+          edges: [],
+          nodes,
+        }),
+      {
+        initialProps: { nodes: initialNodes },
+      },
+    );
+
+    act(() => {
+      result.current.selectNode("wait-2d");
+    });
+
+    expect(result.current.selectedNodeId).toBe("wait-2d");
+
+    rerender({ nodes: initialNodes.filter((node) => node.id !== "handoff-1") });
+
+    expect(result.current.selectedNodeId).toBe("wait-2d");
+    expect(result.current.selectedNode?.id).toBe("wait-2d");
+  });
+
   it("falls back when the selected node no longer exists", () => {
     const initialNodes = createInitialNodes();
     const { rerender, result } = renderHook(

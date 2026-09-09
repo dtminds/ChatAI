@@ -84,4 +84,14 @@ describe("useWorkflowShortcuts", () => {
     expect(undoEvent.defaultPrevented).toBe(false);
     expect(redoEvent.defaultPrevented).toBe(false);
   });
+
+  it("does not treat duplicate-style shortcuts as workflow actions", () => {
+    const handlers = renderWorkflowShortcuts();
+    const event = dispatchShortcut("d");
+
+    expect(handlers.onDeleteSelection).not.toHaveBeenCalled();
+    expect(handlers.onUndo).not.toHaveBeenCalled();
+    expect(handlers.onRedo).not.toHaveBeenCalled();
+    expect(event.defaultPrevented).toBe(false);
+  });
 });

@@ -2,7 +2,7 @@ import { render, screen, waitFor, cleanup } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { createMemoryRouter, RouterProvider } from "react-router-dom";
 import MockAdapter from "axios-mock-adapter";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { RootLayout } from "@/app/root-layout";
 import { EmbedRootLayout } from "@/app/embed-root-layout";
 import { notifyAuthSessionChanged } from "@/pages/auth/auth-tokens";
@@ -27,7 +27,26 @@ const operatorSubUser: AuthSubUser = {
   uid: 101,
 };
 
+async function findNotFoundHeading() {
+  await waitFor(() => {
+    expect(
+      screen.queryByRole("status", { name: "正在验证登录状态" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("status", { name: "正在加载页面" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", { name: "页面不存在" }),
+    ).toBeInTheDocument();
+  });
+  return screen.getByRole("heading", { name: "页面不存在" });
+}
+
 describe("auth routes", () => {
+  beforeAll(async () => {
+    await import("@/pages/not-found-page");
+  });
+
   beforeEach(() => {
     setSecureContext(true);
     document.documentElement.classList.remove("dark");
@@ -296,41 +315,47 @@ describe("auth routes", () => {
     render(<RouterProvider router={router} />);
 
     expect(await screen.findByText("嵌入编辑器")).toBeInTheDocument();
-    expect(postMessage).toHaveBeenCalledWith(
-      {
-        channel: "smp-basement-chat-embed",
-        fullscreen: true,
-        path: "/embed/workflows/31",
-        type: "navigate",
-      },
-      "*",
-    );
+    await waitFor(() => {
+      expect(postMessage).toHaveBeenCalledWith(
+        {
+          channel: "smp-basement-chat-embed",
+          fullscreen: true,
+          path: "/embed/workflows/31",
+          type: "navigate",
+        },
+        "*",
+      );
+    });
 
     await router.navigate(-1);
 
     expect(await screen.findByText("嵌入列表")).toBeInTheDocument();
-    expect(postMessage).toHaveBeenCalledWith(
-      {
-        channel: "smp-basement-chat-embed",
-        fullscreen: false,
-        path: "/embed/workflows",
-        type: "navigate",
-      },
-      "*",
-    );
+    await waitFor(() => {
+      expect(postMessage).toHaveBeenCalledWith(
+        {
+          channel: "smp-basement-chat-embed",
+          fullscreen: false,
+          path: "/embed/workflows",
+          type: "navigate",
+        },
+        "*",
+      );
+    });
 
     await router.navigate(1);
 
     expect(await screen.findByText("嵌入编辑器")).toBeInTheDocument();
-    expect(postMessage).toHaveBeenLastCalledWith(
-      {
-        channel: "smp-basement-chat-embed",
-        fullscreen: true,
-        path: "/embed/workflows/31",
-        type: "navigate",
-      },
-      "*",
-    );
+    await waitFor(() => {
+      expect(postMessage).toHaveBeenLastCalledWith(
+        {
+          channel: "smp-basement-chat-embed",
+          fullscreen: true,
+          path: "/embed/workflows/31",
+          type: "navigate",
+        },
+        "*",
+      );
+    });
   });
 
   it("logs in embed workflows with an encrypted handoff token", async () => {
@@ -661,9 +686,7 @@ describe("auth routes", () => {
 
     render(<RouterProvider router={router} />);
 
-    expect(
-      await screen.findByRole("heading", { name: "页面不存在" }),
-    ).toBeInTheDocument();
+    expect(await findNotFoundHeading()).toBeInTheDocument();
     expect(
       screen.queryByRole("alert", { name: "页面加载失败" }),
     ).not.toBeInTheDocument();
@@ -686,9 +709,7 @@ describe("auth routes", () => {
 
     render(<RouterProvider router={router} />);
 
-    expect(
-      await screen.findByRole("heading", { name: "页面不存在" }),
-    ).toBeInTheDocument();
+    expect(await findNotFoundHeading()).toBeInTheDocument();
     expect(
       screen.queryByRole("link", { name: "返回首页" }),
     ).not.toBeInTheDocument();
@@ -705,9 +726,7 @@ describe("auth routes", () => {
 
     render(<RouterProvider router={router} />);
 
-    expect(
-      await screen.findByRole("heading", { name: "页面不存在" }),
-    ).toBeInTheDocument();
+    expect(await findNotFoundHeading()).toBeInTheDocument();
     expect(
       screen.getByRole("link", { name: "返回首页" }),
     ).toBeInTheDocument();

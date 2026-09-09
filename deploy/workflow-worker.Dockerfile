@@ -12,7 +12,9 @@ RUN apt-get update \
 COPY pnpm-workspace.yaml pnpm-lock.yaml package.json tsconfig.base.json ./
 COPY apps/workflow-worker/package.json ./apps/workflow-worker/
 COPY packages/contracts/package.json ./packages/contracts/
+COPY packages/database/package.json ./packages/database/
 COPY packages/llm/package.json ./packages/llm/
+COPY packages/tickets/package.json ./packages/tickets/
 COPY packages/workflow-engine/package.json ./packages/workflow-engine/
 COPY packages/workflow-runtime/package.json ./packages/workflow-runtime/
 
@@ -20,12 +22,16 @@ RUN pnpm install --frozen-lockfile
 
 COPY apps/workflow-worker ./apps/workflow-worker
 COPY packages/contracts ./packages/contracts
+COPY packages/database ./packages/database
 COPY packages/llm ./packages/llm
+COPY packages/tickets ./packages/tickets
 COPY packages/workflow-engine ./packages/workflow-engine
 COPY packages/workflow-runtime ./packages/workflow-runtime
 
 RUN pnpm --filter @chatai/contracts exec tsc -p tsconfig.json \
+  && pnpm --filter @chatai/database exec tsc -p tsconfig.json \
   && pnpm --filter @chatai/llm exec tsc -p tsconfig.json \
+  && pnpm --filter @chatai/tickets exec tsc -p tsconfig.json \
   && pnpm --filter @chatai/workflow-engine exec tsc -p tsconfig.json \
   && pnpm --filter @chatai/workflow-runtime exec tsc -p tsconfig.json \
   && pnpm --filter @chatai/workflow-worker exec tsc -p tsconfig.json
@@ -43,7 +49,9 @@ RUN apt-get update \
 COPY pnpm-workspace.yaml pnpm-lock.yaml package.json ./
 COPY apps/workflow-worker/package.json ./apps/workflow-worker/
 COPY packages/contracts/package.json ./packages/contracts/
+COPY packages/database/package.json ./packages/database/
 COPY packages/llm/package.json ./packages/llm/
+COPY packages/tickets/package.json ./packages/tickets/
 COPY packages/workflow-engine/package.json ./packages/workflow-engine/
 COPY packages/workflow-runtime/package.json ./packages/workflow-runtime/
 
@@ -51,7 +59,9 @@ RUN pnpm install --frozen-lockfile --prod
 
 COPY --from=builder /app/apps/workflow-worker/dist ./apps/workflow-worker/dist
 COPY --from=builder /app/packages/contracts/dist ./packages/contracts/dist
+COPY --from=builder /app/packages/database/dist ./packages/database/dist
 COPY --from=builder /app/packages/llm/dist ./packages/llm/dist
+COPY --from=builder /app/packages/tickets/dist ./packages/tickets/dist
 COPY --from=builder /app/packages/workflow-engine/dist ./packages/workflow-engine/dist
 COPY --from=builder /app/packages/workflow-runtime/dist ./packages/workflow-runtime/dist
 

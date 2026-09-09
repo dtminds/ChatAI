@@ -19,6 +19,7 @@ import {
   type WorkbenchMessageUpdateEventDto,
   type WorkbenchSeatDto,
   type WorkbenchCustomerListResponse,
+  WORKBENCH_ENTERPRISE_MEMBER_MAX_ITEMS,
   type WorkbenchCustomerLastConversationDto,
   type WorkbenchCustomerSeatRelationDto,
   type WorkbenchCustomerRelationConversationDto,
@@ -88,7 +89,7 @@ const POLL_MESSAGE_LOOKBACK_MS = 24 * 60 * 60 * 1000;
 const DEFAULT_HISTORY_MESSAGE_LIMIT = 30;
 const MAX_HISTORY_MESSAGE_LIMIT = 100;
 const DEFAULT_CUSTOMER_LIST_LIMIT = 50;
-const MAX_CUSTOMER_LIST_LIMIT = 100;
+const MAX_CUSTOMER_LIST_LIMIT = 200;
 const QUICK_REPLY_SORT_UPDATE_BATCH_SIZE = 500;
 const SEAT_CONVERSATION_AGGREGATE_BATCH_SIZE = 8;
 const SEAT_CONVERSATION_AGGREGATE_CONCURRENCY = 3;
@@ -284,6 +285,13 @@ export type WorkbenchSeatAccessScope = {
   platform: number;
   subUserId: string;
   uid: number;
+};
+
+export type TenantSeatIdentity = {
+  avatarUrl: string;
+  displayName: string;
+  thirdUserId: string;
+  userId: number | null;
 };
 
 type SeatConversationAggregateRow = {
@@ -2761,6 +2769,82 @@ export class WorkbenchRepository {
       .sort(sortSeatsByLastMessageTimeDesc);
 
     return hydratedSeats.map(mapSeatRow);
+  }
+
+  async listTenantSeatIdentities(scope: { platform: number; uid: number }) {
+    const rows = await this.db
+      .selectFrom("xy_wap_embed_user_seat as seat")
+      .select([
+        "seat.user_id as user_id",
+        "seat.third_userid as third_userid",
+        "seat.third_user_name as third_user_name",
+        "seat.third_avatar as avatar",
+      ])
+      .where("seat.uid", "=", scope.uid)
+      .where("seat.platform", "=", scope.platform)
+      .where("seat.biz_status", "=", BIZ_STATUS_ACTIVE)
+      .limit(WORKBENCH_ENTERPRISE_MEMBER_MAX_ITEMS)
+      .execute();
+
+    return rows.flatMap((row) => {
+      const thirdUserId = row.third_userid?.trim();
+
+      if (!thirdUserId) {
+        return [];
+      }
+
+      return [
+        {
+          avatarUrl: row.avatar?.trim() ?? "",
+          displayName: row.third_user_name?.trim() || thirdUserId,
+          thirdUserId,
+          userId: toOptionalWorkUserId(row.user_id),
+        } satisfies TenantSeatIdentity,
+      ];
+    });
+  }
+
+  async listOwnedCustomerExternalUserIds(input: {
+    platform: number;
+    seatThirdUserId: string;
+    thirdExternalUserIds: string[];
+    uid: number;
+  }) {
+    if (input.thirdExternalUserIds.length === 0) {
+      return [];
+    }
+
+    const rows = await this.db
+      .selectFrom("xy_wap_embed_customer_bind_relation as bind")
+      .select("bind.third_external_userid as third_external_userid")
+      .where("bind.uid", "=", input.uid)
+      .where("bind.platform", "=", input.platform)
+      .where("bind.third_userid", "=", input.seatThirdUserId)
+      .where("bind.third_external_userid", "in", input.thirdExternalUserIds)
+      .execute();
+
+    return uniqueNonEmpty(rows.map((row) => row.third_external_userid));
+  }
+
+  async listOwnedEmployeeThirdUserIds(input: {
+    platform: number;
+    thirdUserIds: string[];
+    uid: number;
+  }) {
+    if (input.thirdUserIds.length === 0) {
+      return [];
+    }
+
+    const rows = await this.db
+      .selectFrom("xy_wap_embed_user_seat as seat")
+      .select("seat.third_userid as third_userid")
+      .where("seat.uid", "=", input.uid)
+      .where("seat.platform", "=", input.platform)
+      .where("seat.biz_status", "=", BIZ_STATUS_ACTIVE)
+      .where("seat.third_userid", "in", input.thirdUserIds)
+      .execute();
+
+    return uniqueNonEmpty(rows.map((row) => row.third_userid));
   }
 
   async listCustomers(input: CustomerListScope): Promise<WorkbenchCustomerListResponse> {
@@ -6128,6 +6212,18 @@ export function parseMySqlId(value: string) {
   }
 
   return numeric;
+}
+
+function toOptionalWorkUserId(value: number | string | null | undefined) {
+  if (typeof value === "number") {
+    return Number.isSafeInteger(value) && value > 0 ? value : null;
+  }
+
+  if (typeof value !== "string") {
+    return null;
+  }
+
+  return parseMySqlId(value) ?? null;
 }
 
 function getMaterialVisibleSubUids(bizType: number, subUserId: string) {

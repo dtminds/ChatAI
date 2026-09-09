@@ -168,5 +168,8 @@ jobs:
       - name: Verify backend worker production imports
         run: pnpm --filter @chatai/backend-worker verify:production-imports
 
+      - name: Verify backend package import boundaries
+        run: pnpm --filter @chatai/backend verify:package-imports
+
       - name: Verify workflow worker production imports
         run: pnpm --filter @chatai/workflow-worker verify:production-imports

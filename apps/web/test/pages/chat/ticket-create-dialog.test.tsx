@@ -119,6 +119,35 @@ describe("TicketCreateDialog", () => {
     expect(ticketCounts.refreshTicketCounts).toHaveBeenCalledTimes(1);
   });
 
+  it("submits the shared local date-time picker value as a timestamp", async () => {
+    const user = userEvent.setup();
+    const now = new Date();
+    const dateLabel = `${now.getFullYear()}年${now.getMonth() + 1}月${now.getDate()}日`;
+
+    render(
+      <TicketCreateDialog
+        conversationId="301"
+        onCreated={vi.fn()}
+        onOpenChange={vi.fn()}
+        open
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "截止时间" }));
+    await user.click(screen.getByRole("button", { name: new RegExp(dateLabel) }));
+    await user.click(screen.getByRole("button", { name: "截止时间时间" }));
+    await user.click(screen.getByRole("button", { name: "23时" }));
+    await user.click(screen.getByRole("button", { name: "59分" }));
+    await user.click(screen.getByRole("button", { name: "截止时间时间确认" }));
+    await user.click(screen.getByRole("button", { name: "确定" }));
+    await user.type(screen.getByRole("textbox", { name: "标题" }), "设置截止时间");
+    await user.click(screen.getByRole("button", { name: "创建" }));
+
+    await waitFor(() => expect(api.createTicket).toHaveBeenCalledWith(expect.objectContaining({
+      dueAt: new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59).getTime(),
+    })));
+  });
+
   it("offers only the returned recent sessions and allows creating without context", async () => {
     const user = userEvent.setup();
 

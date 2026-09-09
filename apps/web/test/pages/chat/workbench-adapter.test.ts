@@ -1,3 +1,5 @@
+// @vitest-environment node
+
 import { describe, expect, it } from "vitest";
 import {
   adaptAccount,
@@ -10,6 +12,7 @@ import type {
   WorkbenchMessageDto,
 } from "@chatai/contracts";
 import { WORKBENCH_MESSAGE_SOURCE } from "@chatai/contracts";
+import { SOP_AVATAR_ORNAMENT_URL } from "@/pages/chat/chat-constants";
 import type { Account, CustomerProfile, EmployeeProfile } from "@/pages/chat/chat-types";
 
 describe("workbench adapter", () => {
@@ -310,16 +313,13 @@ describe("adaptMessage", () => {
     });
   });
 
-  it.each([
-    WORKBENCH_MESSAGE_SOURCE.AGENT,
-    WORKBENCH_MESSAGE_SOURCE.WORKFLOW,
-  ])("marks messages sent by automated source %s", (source) => {
+  it("marks Agent messages for the AI hosting avatar badge", () => {
     expect(
       adaptMessage(
         {
           ...messageDto,
           senderType: "agent",
-          source,
+          source: WORKBENCH_MESSAGE_SOURCE.AGENT,
         } as WorkbenchMessageDto,
         customerProfilesById,
         accountsById,
@@ -327,7 +327,26 @@ describe("adaptMessage", () => {
       ),
     ).toMatchObject({
       isAgentMessage: true,
-      source,
+      source: WORKBENCH_MESSAGE_SOURCE.AGENT,
+    });
+  });
+
+  it("maps Workflow messages to the SOP avatar ornament instead of the Agent badge", () => {
+    expect(
+      adaptMessage(
+        {
+          ...messageDto,
+          senderType: "agent",
+          source: WORKBENCH_MESSAGE_SOURCE.WORKFLOW,
+        } as WorkbenchMessageDto,
+        customerProfilesById,
+        accountsById,
+        me,
+      ),
+    ).toMatchObject({
+      avatarOrnamentUrl: SOP_AVATAR_ORNAMENT_URL,
+      isAgentMessage: undefined,
+      source: WORKBENCH_MESSAGE_SOURCE.WORKFLOW,
     });
   });
 

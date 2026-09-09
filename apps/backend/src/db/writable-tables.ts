@@ -4,6 +4,7 @@
  * 需要修改只读表的数据时，必须通过平台提供的 API 接口，不得直接操作数据库。
  */
 export const WRITABLE_TABLES = [
+  "xy_internal_request_idempotent",
   "xy_wap_embed_analysis_run",
   "xy_wap_embed_agent",
   "xy_wap_embed_agent_history",

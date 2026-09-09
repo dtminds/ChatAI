@@ -1414,6 +1414,15 @@ export function MessageAvatar({
           />
         </AvatarFallback>
       </Avatar>
+      {message.avatarOrnamentUrl ? (
+        <img
+          alt=""
+          aria-hidden="true"
+          className="pointer-events-none absolute inset-0 size-8 rounded-[6px] object-cover"
+          draggable={false}
+          src={message.avatarOrnamentUrl}
+        />
+      ) : null}
       {message.isAgentMessage ? <AIHostingAvatarBadge /> : null}
     </div>
   );

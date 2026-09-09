@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { MysqlDialect } from "kysely";
 import { InsightsRepository } from "../../../src/modules/insights/insights.repository";
-import { MysqlInsightWorkerRepository } from "../../../src/modules/insights/insights-worker.repository";
+import { MysqlInsightWorkerRepository } from "@chatai/insights/worker";
 
 describe("InsightsRepository", () => {
   it("loads quality overview through an aggregate query", async () => {

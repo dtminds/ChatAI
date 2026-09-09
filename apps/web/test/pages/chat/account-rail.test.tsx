@@ -298,6 +298,37 @@ describe("AccountRail", () => {
     ).toBeInTheDocument();
   });
 
+  it("only shows the rail toggle when collapse can change", async () => {
+    const user = userEvent.setup();
+    const onCollapseChange = vi.fn();
+    const { rerender } = render(
+      <AccountRail
+        accounts={accounts}
+        currentEmployee={currentEmployee}
+        isCollapsed
+        onSelectAccount={vi.fn()}
+      />,
+    );
+
+    expect(
+      screen.queryByRole("button", { name: "展开侧栏" }),
+    ).not.toBeInTheDocument();
+
+    rerender(
+      <AccountRail
+        accounts={accounts}
+        currentEmployee={currentEmployee}
+        isCollapsed
+        onCollapseChange={onCollapseChange}
+        onSelectAccount={vi.fn()}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "展开侧栏" }));
+
+    expect(onCollapseChange).toHaveBeenCalledWith(false);
+  });
+
   it("shows the assigned ticket count on the ticket module entry", async () => {
     render(
       <AccountRail

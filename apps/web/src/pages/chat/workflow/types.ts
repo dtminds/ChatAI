@@ -13,6 +13,7 @@ import type {
   WorkflowBranchOperator as SharedWorkflowBranchOperator,
   WorkflowBranchPath as SharedWorkflowBranchPath,
   WorkflowCustomerUpdateDraftConfig,
+  WorkflowCouponDraftConfig,
   WorkflowIntentOption as SharedWorkflowIntentOption,
   WorkflowHandoffDraftConfig,
   WorkflowLlmDraftConfig,
@@ -25,9 +26,12 @@ import type {
   WorkflowMessageQueryConfig,
   WorkflowOrderBindDraftConfig,
   WorkflowOrderConversionDraftConfig,
+  WorkflowOrderQueryDraftConfig,
   WorkflowRatioSplitDraftConfig,
+  WorkflowSmartsheetWriteDraftConfig,
   WorkflowTagDraftConfig,
   WorkflowTagQueryDraftConfig,
+  WorkflowTicketCreateDraftConfig,
   WorkflowNodeKind as SharedWorkflowNodeKind,
   WorkflowNodeOutputUsage as SharedWorkflowNodeOutputUsage,
   WorkflowOutputValueType as SharedWorkflowOutputValueType,
@@ -137,7 +141,7 @@ export type WorkflowWaitEventDelayUnit = "day" | "hour" | "minute" | "second";
 export type WorkflowWaitEventTimeoutUnit = "day" | "hour" | "minute";
 export type WaitEventNodeData = WorkflowNodeDataBase<"wait-event"> & WorkflowWaitEventDraftConfig;
 export type TagNodeData = WorkflowNodeDataBase<"tag"> & WorkflowTagDraftConfig;
-export type CouponNodeData = WorkflowNodeDataBase<"coupon">;
+export type CouponNodeData = WorkflowNodeDataBase<"coupon"> & WorkflowCouponDraftConfig;
 export type HandoffNodeData = WorkflowNodeDataBase<"handoff"> & WorkflowHandoffDraftConfig;
 export type AgentNodeData = WorkflowNodeDataBase<"agent">;
 export type WorkflowLlmInputValue = SharedWorkflowLlmInputValue;
@@ -147,7 +151,7 @@ export type WorkflowLlmOutputField = SharedWorkflowLlmOutputField;
 export type WorkflowLlmOutputConfig = SharedWorkflowLlmOutputConfig;
 export type LlmNodeData = WorkflowNodeDataBase<"llm"> & WorkflowLlmDraftConfig;
 export type OrderBindNodeData = WorkflowNodeDataBase<"order-bind"> & WorkflowOrderBindDraftConfig;
-export type OrderQueryNodeData = WorkflowNodeDataBase<"order-query">;
+export type OrderQueryNodeData = WorkflowNodeDataBase<"order-query"> & WorkflowOrderQueryDraftConfig;
 export type OrderConversionNodeData = WorkflowNodeDataBase<"order-conversion">
   & WorkflowOrderConversionDraftConfig;
 export type TagQueryNodeData = WorkflowNodeDataBase<"tag-query"> & WorkflowTagQueryDraftConfig;
@@ -161,6 +165,10 @@ export type AudienceFilterNodeData = WorkflowNodeDataBase<"audience-filter">
   & WorkflowAudienceFilterDraftConfig;
 export type WorkflowIntentOption = SharedWorkflowIntentOption;
 export type AiIntentNodeData = WorkflowNodeDataBase<"ai-intent"> & WorkflowAiIntentDraftConfig;
+export type SmartsheetWriteNodeData = WorkflowNodeDataBase<"smartsheet-write">
+  & WorkflowSmartsheetWriteDraftConfig;
+export type TicketCreateNodeData = WorkflowNodeDataBase<"ticket-create">
+  & WorkflowTicketCreateDraftConfig;
 export type EndNodeData = WorkflowNodeDataBase<"end">;
 
 export type WorkflowNodeDataMap = {
@@ -180,6 +188,8 @@ export type WorkflowNodeDataMap = {
   "order-query": OrderQueryNodeData;
   "order-conversion": OrderConversionNodeData;
   "ratio-split": RatioSplitNodeData;
+  "smartsheet-write": SmartsheetWriteNodeData;
+  "ticket-create": TicketCreateNodeData;
   start: StartNodeData;
   tag: TagNodeData;
   "tag-query": TagQueryNodeData;

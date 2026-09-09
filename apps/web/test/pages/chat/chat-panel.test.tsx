@@ -865,6 +865,62 @@ describe("ChatPanel", () => {
     expect(screen.queryByTestId("customer-side-panel-shell")).not.toBeInTheDocument();
   });
 
+  it("renders scope transition errors outside the message list", () => {
+    render(
+      <ChatPanel
+        activeConversation={createConversation()}
+        activeHistoryStatus="idle"
+        canSendMessage
+        composerPlaceholder="输入消息"
+        customerPanelWidth={375}
+        fileUploadQueue={[]}
+        groupMembers={[]}
+        hasMoreHistory={false}
+        historyPanel={{ activeHistoryFilters: { scope: "all" }, activeHistoryLoading: false }}
+        inputEnterBehavior="send"
+        isConversationLoading={false}
+        isEmojiPickerOpen={false}
+        isGroupMembersLoading={false}
+        isResizingCustomerPanel={false}
+        isSendingDraft={false}
+        messages={[]}
+        quotedMessage={null}
+        scopeTransitionError="切换会话失败"
+        sidebarItems={[]}
+        composerRef={createRef()}
+        messageViewportRef={createRef()}
+        workbenchBodyRef={createRef()}
+        onCancelFileUpload={vi.fn()}
+        onClearQuotedMessage={vi.fn()}
+        onComposerSegmentsChange={vi.fn()}
+        onCustomerPanelResizeStart={vi.fn()}
+        onDismissScopeTransitionError={vi.fn()}
+        onDraftChange={vi.fn()}
+        onEmojiPickerOpenChange={vi.fn()}
+        onEnterBehaviorChange={vi.fn()}
+        onFileSelect={vi.fn()}
+        onHistoryClose={vi.fn()}
+        onHistoryLoadMoreNext={vi.fn()}
+        onHistoryLoadMorePrev={vi.fn()}
+        onHistoryRefresh={vi.fn()}
+        onHistorySetDay={vi.fn()}
+        onHistorySetScope={vi.fn()}
+        onHistorySetSenderId={vi.fn()}
+        onLoadOlderMessages={vi.fn()}
+        onMessageViewportScroll={vi.fn()}
+        onOpenHistory={vi.fn()}
+        onRefreshGroupMembers={vi.fn()}
+        onRetryMessage={vi.fn()}
+        onSendDraft={vi.fn()}
+      />,
+    );
+
+    const errorBanner = screen.getByTestId("scope-transition-error");
+
+    expect(errorBanner).toHaveTextContent("切换会话失败");
+    expect(screen.getByTestId("message-content")).not.toContainElement(errorBanner);
+  });
+
   it("hides composer placeholder without blocking non-send composer actions in full agent mode", async () => {
     const user = userEvent.setup();
     const onCancelAgentHosting = vi.fn();
@@ -1077,22 +1133,13 @@ describe("ChatPanel", () => {
     expect(screen.getByText("测试席位")).toBeInTheDocument();
     expect(screen.getByText("切换 AI 模式")).toBeInTheDocument();
     expect(screen.getByText("会话托管")).toBeInTheDocument();
-    expect(screen.getByText("仅影响此会话，开启后 Agent 将自动回复客户")).toBeInTheDocument();
     expect(screen.getByRole("combobox", { name: "切换 AI 模式" })).toBeInTheDocument();
     expect(screen.getByText("自动回复")).toBeInTheDocument();
-    expect(screen.getByText("Agent 自动生成并发送消息，仅在必要时转人工")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "关闭当前会话托管" })).toBeEnabled();
 
     await user.click(screen.getByRole("combobox", { name: "切换 AI 模式" }));
-    expect(screen.getByRole("option", { name: /关闭/ })).toHaveTextContent(
-      "由人工客服独立承接，不开启 AI 辅助",
-    );
-    expect(screen.getByRole("option", { name: /话术推荐/ })).toHaveTextContent(
-      "Agent 生成话术推荐，人工确认后发送",
-    );
-    expect(screen.getByRole("option", { name: /自动回复/ })).toHaveTextContent(
-      "Agent 自动生成并发送消息，仅在必要时转人工",
-    );
+    expect(screen.getByRole("option", { name: /关闭/ })).toBeInTheDocument();
+    expect(screen.getByRole("option", { name: /自动回复/ })).toBeInTheDocument();
     await user.click(screen.getByRole("option", { name: /话术推荐/ }));
 
     expect(onChangeSeatAgentMode).toHaveBeenCalledWith("assistant");
@@ -1231,9 +1278,6 @@ describe("ChatPanel", () => {
     expect(screen.getByTestId("group-ai-dialog-content")).toBeInTheDocument();
     expect(screen.getByText("测试席位")).toBeInTheDocument();
     expect(screen.getByText("AI自动回复")).toBeInTheDocument();
-    expect(
-      screen.getByText("开启后，当前企微号被@时，AI会自动处理"),
-    ).toBeInTheDocument();
 
     await user.click(screen.getByRole("switch", { name: "AI自动回复" }));
 

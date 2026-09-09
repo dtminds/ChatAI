@@ -20,6 +20,7 @@ export const TicketPrioritySchema = Type.Union([
 export const TicketSourceTypeSchema = Type.Union([
   Type.Literal("manual"),
   Type.Literal("ai"),
+  Type.Literal("workflow"),
 ]);
 
 export const TicketViewSchema = Type.Union([

@@ -39,6 +39,15 @@ export function projectWorkflowNodeExecutionConfig({
 
   const draftConfig = extractWorkflowNodeDraftConfig(kind, data);
 
+  if (kind === "coupon") {
+    const coupon = draftConfig.coupon;
+    return cloneJsonRecord(compactUndefined({
+      couponId: coupon && typeof coupon === "object" && !Array.isArray(coupon)
+        ? (coupon as Record<string, unknown>).couponId : undefined,
+      number: draftConfig.number,
+    }));
+  }
+
   if (kind === "start") {
     const resolvedWorkflowType = workflowType ?? ("seatIds" in draftConfig
       ? "chatai_sop"
@@ -108,6 +117,14 @@ export function projectWorkflowNodeExecutionConfig({
     });
   }
 
+  if (kind === "ticket-create") {
+    return cloneJsonRecord({
+      description: draftConfig.description,
+      priority: draftConfig.priority,
+      ticketTitle: draftConfig.ticketTitle,
+    });
+  }
+
   if (kind === "ratio-split") {
     return cloneJsonRecord({
       groups: draftConfig.groups,
@@ -163,6 +180,22 @@ export function projectWorkflowNodeExecutionConfig({
     return cloneJsonRecord(compactUndefined({
       orderNumberSelector: draftConfig.orderNumberSelector,
     }));
+  }
+
+  if (kind === "smartsheet-write") {
+    const fieldMappings = Array.isArray(draftConfig.fieldMappings) ? draftConfig.fieldMappings : [];
+    return cloneJsonRecord({
+      fieldMappings: fieldMappings.map((item) => {
+        const record = isRecord(item) ? item : {};
+        return compactUndefined({
+          enumOptions: record.enumOptions,
+          fieldId: record.fieldId,
+          fieldType: record.fieldType,
+          value: record.value,
+        });
+      }),
+      webhookUrl: draftConfig.webhookUrl,
+    });
   }
 
   if (kind === "ai-collect") {
@@ -232,6 +265,8 @@ function getWorkflowNodeInvalidConfigMessage(kind: WorkflowNodeKind) {
       return "Ratio Split node requires 2-5 unique groups whose allocations total 100%";
     case "handoff":
       return "Handoff node requires a valid operator message";
+    case "ticket-create":
+      return "Ticket Create node requires a valid title and priority";
     case "tag":
       return "Tag node requires an operation and at least one valid tag";
     case "tag-query":
@@ -244,6 +279,10 @@ function getWorkflowNodeInvalidConfigMessage(kind: WorkflowNodeKind) {
       return "Order Conversion node requires an order number variable";
     case "order-bind":
       return "Order Bind node requires an order number variable";
+    case "order-query":
+      return "Order Query node requires an order number variable or complete query conditions";
+    case "smartsheet-write":
+      return "Smartsheet Write node requires a valid webhook URL and complete field mappings";
     default:
       return `Node configuration does not match its registered schema: ${kind}`;
   }

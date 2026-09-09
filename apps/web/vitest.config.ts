@@ -1,38 +1,50 @@
-import { defineConfig, mergeConfig } from "vitest/config";
-import { createViteConfig } from "./vite.config.ts";
+import react from "@vitejs/plugin-react";
+import { defineConfig, type ViteUserConfig } from "vitest/config";
+import { getRepoRoot, getWebViteResolveConfig } from "./vite.shared.ts";
 
-const isCi = process.env.CI === "true";
-const testGroup = process.env.VITEST_TEST_GROUP;
-const baseTestInclude = ["test/**/*.test.ts", "test/**/*.test.tsx"];
-const integrationTestInclude = ["test/pages/chat/**/*.int.test.tsx"];
-const testTimeout =
-  testGroup === "integration"
-    ? isCi
-      ? 20_000
-      : 20_000
-    : isCi
-      ? 10_000
-      : 5_000;
+const nodeTestInclude = ["test/**/*.test.ts"];
+const jsdomTestInclude = ["test/**/*.test.tsx"];
 
-const testInclude =
-  testGroup === "integration"
-    ? integrationTestInclude
-    : [...baseTestInclude, ...integrationTestInclude];
-
-const testExclude = testGroup === "unit" ? integrationTestInclude : [];
-
-export default mergeConfig(
-  createViteConfig("test"),
-  defineConfig({
+export function createWebTestViteConfig({
+  isCi = process.env.CI === "true",
+}: {
+  isCi?: boolean;
+} = {}): ViteUserConfig {
+  return {
+    envDir: getRepoRoot(),
+    plugins: [react()],
+    resolve: getWebViteResolveConfig(),
     test: {
-      environment: "jsdom",
-      setupFiles: ["./test/setup.ts"],
-      exclude: testExclude,
-      include: testInclude,
       clearMocks: true,
-      css: true,
-      maxWorkers: isCi ? 2 : undefined,
-      testTimeout,
+      css: false,
+      maxWorkers: isCi ? 4 : undefined,
+      projects: [createNodeProject(), createJsdomProject()],
+      setupFiles: ["./test/setup.ts"],
+      testTimeout: isCi ? 10_000 : 5_000,
     },
-  }),
-);
+  };
+}
+
+function createNodeProject() {
+  return {
+    extends: true as const,
+    test: {
+      environment: "node" as const,
+      include: nodeTestInclude,
+      name: "node",
+    },
+  };
+}
+
+function createJsdomProject() {
+  return {
+    extends: true as const,
+    test: {
+      environment: "jsdom" as const,
+      include: jsdomTestInclude,
+      name: "jsdom",
+    },
+  };
+}
+
+export default defineConfig(createWebTestViteConfig());

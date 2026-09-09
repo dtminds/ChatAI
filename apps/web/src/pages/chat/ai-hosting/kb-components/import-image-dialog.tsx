@@ -17,6 +17,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { clipInputValue } from "@/components/ui/commit-limit-input";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { isRequestError } from "@/lib/request";
@@ -185,7 +186,10 @@ export function ImportImageDialog({
       return;
     }
 
-    const trimmedName = imageName.trim();
+    const trimmedName = clipInputValue(
+      imageName,
+      IMAGE_KNOWLEDGE_NAME_MAX_LENGTH,
+    ).trim();
 
     void runSubmit(async () => {
       try {
@@ -367,7 +371,11 @@ export function ImportImageDialog({
                 className="pr-14"
                 disabled={submitting}
                 id="knowledge-image-name"
-                maxLength={IMAGE_KNOWLEDGE_NAME_MAX_LENGTH}
+                onBlur={() =>
+                  setImageName(
+                    clipInputValue(imageName, IMAGE_KNOWLEDGE_NAME_MAX_LENGTH),
+                  )
+                }
                 onChange={(event) => setImageName(event.target.value)}
                 placeholder="请输入知识名称"
                 value={imageName}

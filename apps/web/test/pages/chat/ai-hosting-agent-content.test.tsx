@@ -1928,6 +1928,28 @@ describe("AI hosting agent content", () => {
       expect(screen.getByLabelText("Agent 名称")).not.toHaveAttribute("aria-invalid");
     });
 
+    it("allows typing an Agent name past 20 characters and clips on save", async () => {
+      const user = userEvent.setup();
+      const nameInput = () => screen.getByLabelText("Agent 名称");
+
+      renderWithRoute("/chat/ai-hosting/agents/new", <AgentSettingsEditor />);
+
+      await screen.findByRole("heading", { level: 1, name: "创建 Agent" });
+      await user.type(nameInput(), "一二三四五六七八九十一二三四五六七八九十甲");
+
+      expect(nameInput()).toHaveValue("一二三四五六七八九十一二三四五六七八九十甲");
+
+      await user.click(screen.getByRole("button", { name: "保存" }));
+
+      await waitFor(() => {
+        expect(agentService.createAiHostingAgent).toHaveBeenCalledWith(
+          expect.objectContaining({
+            name: "一二三四五六七八九十一二三四五六七八九十",
+          }),
+        );
+      });
+    });
+
     it("clears preview chat messages and input draft", async () => {
       const user = userEvent.setup();
 
@@ -2405,6 +2427,35 @@ describe("AI hosting agent content", () => {
       });
 
       expect(await screen.findByRole("heading", { level: 1, name: "护肤专家" })).toBeInTheDocument();
+    });
+
+    it("clips a renamed Agent name to 20 characters when saving", async () => {
+      const user = userEvent.setup();
+
+      renderWithRoute(
+        "/chat/ai-hosting/agents/301",
+        <AgentSettingsEditor />,
+        "/chat/ai-hosting/agents/:agentId",
+      );
+
+      await screen.findByRole("heading", { level: 1, name: "护肤小助理" });
+      await user.click(screen.getByRole("button", { name: "编辑 Agent 名称" }));
+
+      const dialog = screen.getByRole("dialog", { name: "编辑 Agent 名称" });
+      const nameInput = within(dialog).getByLabelText("Agent 名称");
+
+      await user.clear(nameInput);
+      await user.type(nameInput, "一二三四五六七八九十一二三四五六七八九十甲");
+
+      expect(nameInput).toHaveValue("一二三四五六七八九十一二三四五六七八九十甲");
+
+      await user.click(within(dialog).getByRole("button", { name: "保存" }));
+
+      await waitFor(() => {
+        expect(agentService.renameAiHostingAgent).toHaveBeenCalledWith("301", {
+          name: "一二三四五六七八九十一二三四五六七八九十",
+        });
+      });
     });
 
     it("does not publish the previous draft when saving changes fails", async () => {

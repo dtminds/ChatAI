@@ -71,6 +71,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { clipInputValue } from "@/components/ui/commit-limit-input";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -548,7 +549,7 @@ export function AgentSettingsEditor() {
       return;
     }
 
-    const name = renameValue.trim();
+    const name = clipInputValue(renameValue, agentNameMaxLength).trim();
 
     if (!name) {
       setRenameError("请输入 Agent 名称");
@@ -907,7 +908,9 @@ export function AgentSettingsEditor() {
                     aria-invalid={nameError ? true : undefined}
                     disabled={isEditing || controlsDisabled}
                     id="agent-settings-name"
-                    maxLength={agentNameMaxLength}
+                    onBlur={() =>
+                      updateForm("name", clipInputValue(form.name, agentNameMaxLength))
+                    }
                     onChange={(event) => updateForm("name", event.target.value)}
                     placeholder="请输入 Agent 名称"
                     value={form.name}
@@ -1838,7 +1841,7 @@ function RenameAgentDialog({
               aria-invalid={error ? true : undefined}
               disabled={disabled}
               id="agent-rename-name"
-              maxLength={agentNameMaxLength}
+              onBlur={() => onChange(clipInputValue(name, agentNameMaxLength))}
               onChange={(event) => onChange(event.target.value)}
               placeholder="请输入 Agent 名称"
               value={name}
@@ -1970,7 +1973,7 @@ function buildCreatePayload(
   skills: readonly AgentSkillResource[],
 ) {
   const settingsPayload = buildSettingsSavePayload(form, knowledgeBases, skills);
-  const name = form.name.trim();
+  const name = clipInputValue(form.name, agentNameMaxLength).trim();
 
   if (!settingsPayload || !name) {
     return null;

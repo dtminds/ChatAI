@@ -118,13 +118,15 @@ function WorkflowBaseNodeComponent({
 
               const title = renameValue.trim();
 
-              if (renameValue.length > WORKFLOW_NODE_TITLE_MAX_LENGTH) {
+              if (!title || renameValue.length > WORKFLOW_NODE_TITLE_MAX_LENGTH) {
+                setRenameValue(data.title);
+                setIsRenaming(false);
                 return;
               }
 
               setIsRenaming(false);
 
-              if (title && title !== data.title) {
+              if (title !== data.title) {
                 data.onRename?.(id, title);
               }
             }}

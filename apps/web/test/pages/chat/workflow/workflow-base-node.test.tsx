@@ -111,6 +111,26 @@ describe("workflow node chrome", () => {
     expect(screen.queryByRole("textbox", { name: "节点名称" })).not.toBeInTheDocument();
   });
 
+  it("cancels an overlong inline node name on blur", async () => {
+    const user = userEvent.setup();
+    const onRename = vi.fn();
+    renderBaseNode({
+      onRename,
+      selected: true,
+      title: "发送欢迎消息",
+    });
+
+    await user.dblClick(screen.getByText("发送欢迎消息"));
+    const nameInput = screen.getByRole("textbox", { name: "节点名称" });
+    await user.clear(nameInput);
+    await user.type(nameInput, "12345678901");
+    await user.tab();
+
+    expect(onRename).not.toHaveBeenCalled();
+    expect(screen.queryByRole("textbox", { name: "节点名称" })).not.toBeInTheDocument();
+    expect(screen.getByText("发送欢迎消息")).toBeInTheDocument();
+  });
+
   it("keeps start and end nodes protected from menus and double-click rename", async () => {
     const user = userEvent.setup();
     const onDelete = vi.fn();

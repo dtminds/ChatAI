@@ -1938,12 +1938,10 @@ describe("AI hosting agent content", () => {
       await user.type(nameInput(), "一二三四五六七八九十一二三四五六七八九十甲");
 
       expect(nameInput()).toHaveValue("一二三四五六七八九十一二三四五六七八九十甲");
-
-      await user.click(screen.getByRole("button", { name: "保存" }));
-
       expect(nameInput()).toHaveAttribute("aria-invalid", "true");
       expect(screen.getByText("21/20")).toBeInTheDocument();
       expect(screen.queryByText("Agent 名称不能超过20字")).not.toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "保存" })).toBeDisabled();
       expect(agentService.createAiHostingAgent).not.toHaveBeenCalled();
     });
 

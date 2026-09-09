@@ -794,7 +794,11 @@ export function AgentSettingsEditor() {
             {canManage ? (
               <>
                 <Button
-                  disabled={submitting || controlsDisabled}
+                  disabled={
+                    submitting
+                    || controlsDisabled
+                    || (!isEditing && form.name.length > agentNameMaxLength)
+                  }
                   onClick={() => {
                     void handleSave();
                   }}

@@ -65,6 +65,25 @@ describe("workflow node settings chrome", () => {
     expect(within(panel).getByRole("heading", { name: "发送欢迎消息" })).toBeInTheDocument();
   });
 
+  it("cancels an overlong settings node name on blur", async () => {
+    const user = userEvent.setup();
+    const onRenameNode = vi.fn();
+    render(<RenamePanelFixture onRenameNode={onRenameNode} />);
+
+    const panel = screen.getByRole("complementary", { name: "节点配置" });
+    await user.click(within(panel).getByRole("button", { name: "更多节点操作" }));
+    await user.click(within(await screen.findByRole("menu")).getByRole("menuitem", { name: "重命名" }));
+
+    const nameInput = await within(panel).findByRole("textbox", { name: "节点名称" });
+    await user.clear(nameInput);
+    await user.type(nameInput, "12345678901");
+    await user.tab();
+
+    expect(onRenameNode).not.toHaveBeenCalled();
+    expect(within(panel).queryByRole("textbox", { name: "节点名称" })).not.toBeInTheDocument();
+    expect(within(panel).getByRole("heading", { name: "观察期" })).toBeInTheDocument();
+  });
+
   it("does not show the settings menu for protected nodes", () => {
     renderPanel({
       data: createDefaultNodeData("start"),

@@ -184,12 +184,14 @@ function PanelHeader({
 
     const title = renameValue.trim();
 
-    if (renameValue.length > WORKFLOW_NODE_TITLE_MAX_LENGTH) {
+    if (!title || renameValue.length > WORKFLOW_NODE_TITLE_MAX_LENGTH) {
+      setRenameValue(node.data.title);
+      setIsRenaming(false);
       return;
     }
 
     setIsRenaming(false);
-    if (title && title !== node.data.title) {
+    if (title !== node.data.title) {
       onRenameNode(node.id, title);
     }
   }

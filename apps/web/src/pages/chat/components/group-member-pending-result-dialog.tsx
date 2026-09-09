@@ -1,3 +1,4 @@
+import { useRef } from "react";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -23,11 +24,19 @@ export function GroupMemberPendingResultDialog({
   onOpenChange: (open: boolean) => void;
   open: boolean;
 }) {
+  // Keep last kind while closed so the Radix exit animation does not flash pull copy.
+  const displayedKindRef = useRef(kind);
+  if (open) {
+    displayedKindRef.current = kind;
+  }
+
   return (
     <AlertDialog onOpenChange={onOpenChange} open={open}>
       <AlertDialogContent className="max-w-md">
         <AlertDialogHeader>
-          <AlertDialogTitle>{PENDING_RESULT_COPY[kind]}</AlertDialogTitle>
+          <AlertDialogTitle>
+            {PENDING_RESULT_COPY[displayedKindRef.current]}
+          </AlertDialogTitle>
         </AlertDialogHeader>
         <AlertDialogFooter>
           <AlertDialogAction>我知道了</AlertDialogAction>

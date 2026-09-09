@@ -74,8 +74,10 @@ export function GroupMembersSidePanel({
 }) {
   const [isAddOpen, setIsAddOpen] = useState(false);
   const [isSearchOpen, setIsSearchOpen] = useState(false);
+  // Close only toggles open. Clearing kind here would flash pull copy during the exit animation.
   const [pendingResultKind, setPendingResultKind] =
-    useState<GroupMemberPendingResultKind | null>(null);
+    useState<GroupMemberPendingResultKind>("pull");
+  const [isPendingResultOpen, setIsPendingResultOpen] = useState(false);
   const [memberToRemove, setMemberToRemove] = useState<GroupMember | null>(null);
   const [searchKeyword, setSearchKeyword] = useState("");
   const existingMemberIds = useMemo(
@@ -128,6 +130,7 @@ export function GroupMembersSidePanel({
   function handleMembersActionAccepted(kind: GroupMemberPendingResultKind) {
     onRefresh();
     setPendingResultKind(kind);
+    setIsPendingResultOpen(true);
   }
 
   return (
@@ -261,11 +264,9 @@ export function GroupMembersSidePanel({
         open={memberToRemove !== null}
       />
       <GroupMemberPendingResultDialog
-        kind={pendingResultKind ?? "pull"}
-        onOpenChange={(open) => {
-          if (!open) setPendingResultKind(null);
-        }}
-        open={pendingResultKind !== null}
+        kind={pendingResultKind}
+        onOpenChange={setIsPendingResultOpen}
+        open={isPendingResultOpen}
       />
     </>
   );

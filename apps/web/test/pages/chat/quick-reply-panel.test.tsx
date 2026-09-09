@@ -1562,11 +1562,12 @@ describe("QuickReplyPanel", () => {
 
     const titleInput = screen.getByPlaceholderText("请输入短标题，10字以内");
     await user.type(titleInput, "一二三四五六七八九十一");
-    await user.click(screen.getByRole("button", { name: "保存" }));
 
     expect(titleInput).toHaveValue("一二三四五六七八九十一");
     expect(titleInput).toHaveAttribute("aria-invalid", "true");
-    expect(screen.getByText("短标题不能超过10字")).toBeInTheDocument();
+    expect(screen.getByText("11/10")).toBeInTheDocument();
+    expect(screen.queryByText("短标题不能超过10字")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "保存" })).toBeDisabled();
     expect(onSubmit).not.toHaveBeenCalled();
   });
 

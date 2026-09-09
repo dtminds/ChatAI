@@ -221,7 +221,8 @@ describe("ImportImageDialog", () => {
 
     await user.type(screen.getByLabelText(/图片描述/), "晨间护肤套装商品主图");
     expect(nameInput).toHaveAttribute("aria-invalid", "true");
-    expect(screen.getByText("知识名称不能超过16字")).toBeInTheDocument();
+    expect(screen.getByText("17/16")).toBeInTheDocument();
+    expect(screen.queryByText("知识名称不能超过16字")).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "确认提交" })).toBeDisabled();
     expect(importKbImageDoc).not.toHaveBeenCalled();
   });

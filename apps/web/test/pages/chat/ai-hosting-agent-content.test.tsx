@@ -1942,7 +1942,8 @@ describe("AI hosting agent content", () => {
       await user.click(screen.getByRole("button", { name: "保存" }));
 
       expect(nameInput()).toHaveAttribute("aria-invalid", "true");
-      expect(screen.getByText("Agent 名称不能超过20字")).toBeInTheDocument();
+      expect(screen.getByText("21/20")).toBeInTheDocument();
+      expect(screen.queryByText("Agent 名称不能超过20字")).not.toBeInTheDocument();
       expect(agentService.createAiHostingAgent).not.toHaveBeenCalled();
     });
 
@@ -2445,10 +2446,10 @@ describe("AI hosting agent content", () => {
 
       expect(nameInput).toHaveValue("一二三四五六七八九十一二三四五六七八九十甲");
 
-      await user.click(within(dialog).getByRole("button", { name: "保存" }));
-
       expect(nameInput).toHaveAttribute("aria-invalid", "true");
-      expect(within(dialog).getByText("Agent 名称不能超过20字")).toBeInTheDocument();
+      expect(within(dialog).getByText("21/20")).toBeInTheDocument();
+      expect(within(dialog).queryByText("Agent 名称不能超过20字")).not.toBeInTheDocument();
+      expect(within(dialog).getByRole("button", { name: "保存" })).toBeDisabled();
       expect(agentService.renameAiHostingAgent).not.toHaveBeenCalled();
     });
 

@@ -556,7 +556,6 @@ export function AgentSettingsEditor() {
     }
 
     if (renameValue.length > agentNameMaxLength) {
-      setRenameError(`Agent 名称不能超过${agentNameMaxLength}字`);
       return;
     }
 
@@ -877,9 +876,7 @@ export function AgentSettingsEditor() {
 
         <RenameAgentDialog
           disabled={submitting}
-          error={renameValue.length > agentNameMaxLength
-            ? `Agent 名称不能超过${agentNameMaxLength}字`
-            : renameError}
+          error={renameError}
           name={renameValue}
           onChange={(value) => {
             setRenameValue(value);
@@ -923,11 +920,9 @@ export function AgentSettingsEditor() {
                     value={form.name}
                   />
                   <TextCounter maxLength={agentNameMaxLength} value={form.name} />
-                  {nameError || form.name.length > agentNameMaxLength ? (
+                  {nameError ? (
                     <p className="text-xs text-destructive" role="alert">
-                      {form.name.length > agentNameMaxLength
-                        ? `Agent 名称不能超过${agentNameMaxLength}字`
-                        : nameError}
+                      {nameError}
                     </p>
                   ) : null}
                 </div>
@@ -1835,6 +1830,8 @@ function RenameAgentDialog({
   onOpenChange: (open: boolean) => void;
   open: boolean;
 }) {
+  const nameTooLong = name.length > agentNameMaxLength;
+
   return (
     <Dialog onOpenChange={onOpenChange} open={open}>
       <DialogContent
@@ -1853,9 +1850,9 @@ function RenameAgentDialog({
           <div>
             <Input
               aria-label="Agent 名称"
-              aria-invalid={error ? true : undefined}
+              aria-invalid={error || nameTooLong ? true : undefined}
               className={cn(
-                name.length > agentNameMaxLength
+                nameTooLong
                   && "border-destructive focus-visible:border-destructive focus-visible:ring-destructive/15",
               )}
               disabled={disabled}
@@ -1879,7 +1876,11 @@ function RenameAgentDialog({
               取消
             </Button>
           </DialogClose>
-          <Button disabled={disabled} onClick={onConfirm} type="button">
+          <Button
+            disabled={disabled || nameTooLong}
+            onClick={onConfirm}
+            type="button"
+          >
             {disabled ? <ButtonSpinner label="保存中" /> : null}
             保存
           </Button>

@@ -231,11 +231,6 @@ export function QuickReplyFormDialog({
                 {labelText.length}/{QUICK_REPLY_LABEL_TEXT_MAX_LENGTH}
               </span>
             </div>
-            {labelTooLong ? (
-              <p className="text-xs text-destructive" role="alert">
-                短标题不能超过10字
-              </p>
-            ) : null}
           </div>
 
           <div className="min-w-0 space-y-2">
@@ -284,7 +279,11 @@ export function QuickReplyFormDialog({
           >
             取消
           </Button>
-          <Button disabled={isSubmitting} onClick={handleSubmit} type="button">
+          <Button
+            disabled={isSubmitting || labelTooLong}
+            onClick={handleSubmit}
+            type="button"
+          >
             {isSubmitting ? (
               <>
                 <Spinner

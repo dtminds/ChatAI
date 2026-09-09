@@ -93,11 +93,6 @@ export function MaterialGroupFormDialog({
             placeholder="请输入分组名称"
             value={title}
           />
-          {titleTooLong ? (
-            <p className="text-xs text-destructive" role="alert">
-              分组名称不能超过10字
-            </p>
-          ) : null}
         </div>
 
         <DialogFooter>

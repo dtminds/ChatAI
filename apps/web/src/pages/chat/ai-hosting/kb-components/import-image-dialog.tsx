@@ -385,11 +385,6 @@ export function ImportImageDialog({
                 {imageName.length}/{IMAGE_KNOWLEDGE_NAME_MAX_LENGTH}
               </span>
             </div>
-            {imageNameTooLong ? (
-              <p className="text-xs text-destructive" role="alert">
-                知识名称不能超过16字
-              </p>
-            ) : null}
           </div>
 
           <div className="space-y-2.5">

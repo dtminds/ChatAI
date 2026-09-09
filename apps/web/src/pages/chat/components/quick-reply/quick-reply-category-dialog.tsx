@@ -42,7 +42,6 @@ export function QuickReplyCategoryDialog({
 
   const copy = getQuickReplyCategoryDialogCopy(variant, Boolean(initialTitle));
   const titleTooLong = title.length > QUICK_REPLY_CATEGORY_TITLE_MAX_LENGTH;
-  const visibleTitleError = titleTooLong ? copy.maxLengthError : titleError;
 
   const handleSubmit = async () => {
     const normalizedTitle = title.trim();
@@ -53,7 +52,6 @@ export function QuickReplyCategoryDialog({
     }
 
     if (titleTooLong) {
-      setTitleError(copy.maxLengthError);
       return;
     }
 
@@ -81,7 +79,7 @@ export function QuickReplyCategoryDialog({
         <div className="space-y-2">
           <div className="relative">
             <Input
-              aria-invalid={visibleTitleError ? true : undefined}
+              aria-invalid={titleError || titleTooLong ? true : undefined}
               className={cn(
                 "pr-14",
                 titleTooLong && "border-destructive focus-visible:border-destructive focus-visible:ring-destructive/15",
@@ -100,9 +98,9 @@ export function QuickReplyCategoryDialog({
               {title.length}/{QUICK_REPLY_CATEGORY_TITLE_MAX_LENGTH}
             </span>
           </div>
-          {visibleTitleError ? (
+          {titleError ? (
             <p className="text-xs text-destructive" role="alert">
-              {visibleTitleError}
+              {titleError}
             </p>
           ) : null}
         </div>
@@ -115,7 +113,11 @@ export function QuickReplyCategoryDialog({
           >
             取消
           </Button>
-          <Button disabled={isSubmitting} onClick={handleSubmit} type="button">
+          <Button
+            disabled={isSubmitting || titleTooLong}
+            onClick={handleSubmit}
+            type="button"
+          >
             保存
           </Button>
         </DialogFooter>
@@ -133,7 +135,6 @@ function getQuickReplyCategoryDialogCopy(
       description:
         "用于收纳同类话术，主题要比分类更具体，如报价、改址；不要再用售前、售后这类大类名",
       emptyError: "请输入话术分组名称",
-      maxLengthError: "话术分组名称不能超过10字",
       placeholder: "请输入话术分组名称，10字以内",
       title: isEditing ? "编辑话术分组" : "创建话术分组",
     };
@@ -142,7 +143,6 @@ function getQuickReplyCategoryDialogCopy(
   return {
     description: "按客户服务场景划分大类，如售前、售后、物流；具体主题请建话术分组",
     emptyError: "请输入分类名称",
-    maxLengthError: "分类名称不能超过10字",
     placeholder: "请输入分类名称，10字以内",
     title: isEditing ? "编辑分类" : "新建分类",
   };

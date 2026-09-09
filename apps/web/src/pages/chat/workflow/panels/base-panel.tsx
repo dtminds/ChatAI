@@ -9,13 +9,13 @@ import {
 import { HugeiconsIcon } from "@hugeicons/react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { CommitLimitInput } from "@/components/ui/commit-limit-input";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import { canRenameNodeKind, nodeVisuals } from "../node-definitions";
 import type { WorkflowNode } from "../types";
@@ -70,7 +70,6 @@ function PanelHeader({
   const showNodeType = node.data.title !== visual.label;
   const canRename = canRenameNodeKind(node.data.kind);
   const [isRenaming, setIsRenaming] = useState(false);
-  const [renameValue, setRenameValue] = useState(node.data.title);
   const renameCancelledRef = useRef(false);
 
   return (
@@ -87,13 +86,11 @@ function PanelHeader({
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
             {isRenaming ? (
-              <Input
+              <CommitLimitInput
                 aria-label="节点名称"
                 autoFocus
                 className="h-8 min-w-0 rounded px-2.5 text-sm font-normal"
                 maxLength={WORKFLOW_NODE_TITLE_MAX_LENGTH}
-                onBlur={commitRename}
-                onChange={(event) => setRenameValue(event.target.value)}
                 onKeyDown={(event) => {
                   if (event.key === "Enter") {
                     event.preventDefault();
@@ -103,11 +100,11 @@ function PanelHeader({
                     event.preventDefault();
                     event.stopPropagation();
                     renameCancelledRef.current = true;
-                    setRenameValue(node.data.title);
                     setIsRenaming(false);
                   }
                 }}
-                value={renameValue}
+                onValueCommit={commitRename}
+                value={node.data.title}
               />
             ) : (
               <h2 className="truncate text-base font-semibold">{node.data.title}</h2>
@@ -136,7 +133,6 @@ function PanelHeader({
                 <DropdownMenuItem
                   onSelect={() => {
                     renameCancelledRef.current = false;
-                    setRenameValue(node.data.title);
                     queueMicrotask(() => setIsRenaming(true));
                   }}
                 >
@@ -160,18 +156,16 @@ function PanelHeader({
     </div>
   );
 
-  function commitRename() {
+  function commitRename(next: string) {
     if (renameCancelledRef.current) {
       renameCancelledRef.current = false;
       return;
     }
 
-    const title = renameValue.trim();
+    const title = next.trim();
     setIsRenaming(false);
     if (title && title !== node.data.title) {
       onRenameNode(node.id, title);
-      return;
     }
-    setRenameValue(node.data.title);
   }
 }

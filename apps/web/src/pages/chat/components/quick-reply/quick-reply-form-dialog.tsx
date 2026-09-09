@@ -2,11 +2,13 @@ import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import {
   QUICK_REPLY_ATTACHMENT_MAX_COUNT,
+  QUICK_REPLY_LABEL_TEXT_MAX_LENGTH,
   validateQuickReplyPayload,
   type WorkbenchQuickReplyAttachment,
   type WorkbenchQuickReplyCategoryDto,
 } from "@chatai/contracts";
 import { Button } from "@/components/ui/button";
+import { clipInputValue } from "@/components/ui/commit-limit-input";
 import { Spinner } from "@/components/ui/spinner";
 import {
   Dialog,
@@ -100,7 +102,10 @@ export function QuickReplyFormDialog({
 
   const handleSubmit = async () => {
     const normalizedContentText = contentText.trim();
-    const normalizedLabelText = labelText.trim();
+    const normalizedLabelText = clipInputValue(
+      labelText,
+      QUICK_REPLY_LABEL_TEXT_MAX_LENGTH,
+    ).trim();
 
     if (!normalizedContentText && attachments.length === 0) {
       setContentError(QUICK_REPLY_CONTENT_REQUIRED_ERROR);
@@ -109,11 +114,6 @@ export function QuickReplyFormDialog({
 
     if (normalizedContentText.length > 1000) {
       setContentError("话术内容不能超过1000字");
-      return;
-    }
-
-    if (normalizedLabelText.length > 10) {
-      setLabelError("短标题不能超过10个字");
       return;
     }
 
@@ -216,7 +216,10 @@ export function QuickReplyFormDialog({
             </div>
             <Input
               aria-invalid={labelError ? true : undefined}
-              maxLength={10}
+              onBlur={() => setLabelText(clipInputValue(
+                labelText,
+                QUICK_REPLY_LABEL_TEXT_MAX_LENGTH,
+              ))}
               onChange={(event) => {
                 setLabelText(event.target.value);
                 setLabelError("");

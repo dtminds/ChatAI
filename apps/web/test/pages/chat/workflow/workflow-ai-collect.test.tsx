@@ -117,6 +117,7 @@ describe("workflow AI Collect", () => {
     expect(fieldName).toHaveValue("订单号");
     await user.clear(fieldName);
     await user.type(fieldName, "交易单号");
+    fireEvent.blur(fieldName);
     expect(onNodeChange).toHaveBeenLastCalledWith(expect.objectContaining({
       fields: [expect.objectContaining({ name: "交易单号" })],
     }));
@@ -166,6 +167,36 @@ describe("workflow AI Collect", () => {
       .toHaveLength(AI_COLLECT_FIELD_MAX_COUNT);
     expect(screen.getByRole("button", { name: "添加字段" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "从模板选择" })).toBeDisabled();
+  });
+
+  it("allows typing a field name beyond 10 characters and trims after blur", async () => {
+    const user = userEvent.setup();
+    const onNodeChange = vi.fn();
+    const collect = createAiCollectNode({
+      fields: [{ id: "field-city", instruction: "提取所在城市", name: "", type: "text" }],
+    });
+
+    render(
+      <StatefulAiCollectConfig
+        edges={[]}
+        initialNode={collect}
+        nodes={[collect]}
+        onNodeChange={onNodeChange}
+      />,
+    );
+
+    const fieldName = screen.getByRole("textbox", { name: "字段 1 名称" });
+    await user.type(fieldName, "所在 chengshi");
+
+    expect(fieldName).toHaveValue("所在 chengshi");
+    expect(onNodeChange).not.toHaveBeenCalled();
+
+    fireEvent.blur(fieldName);
+
+    expect(fieldName).toHaveValue("所在 chengsh");
+    expect(onNodeChange).toHaveBeenLastCalledWith(expect.objectContaining({
+      fields: [expect.objectContaining({ name: "所在 chengsh" })],
+    }));
   });
 
   it("enforces the 10-minute to 24-hour wait range and offers no day unit", async () => {

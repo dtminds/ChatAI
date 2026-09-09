@@ -4,7 +4,7 @@ import { describe, expect, it, vi } from "vitest";
 import { QuickReplyCategoryDialog } from "@/pages/chat/components/quick-reply/quick-reply-category-dialog";
 
 describe("QuickReplyCategoryDialog", () => {
-  it("rejects category names longer than ten characters", async () => {
+  it("clips category names to ten characters when saving", async () => {
     const user = userEvent.setup();
     const onSubmit = vi.fn();
 
@@ -19,12 +19,6 @@ describe("QuickReplyCategoryDialog", () => {
 
     await user.click(screen.getByRole("button", { name: "保存" }));
 
-    expect(await screen.findByText("分类名称不能超过10字")).toBeInTheDocument();
-    expect(onSubmit).not.toHaveBeenCalled();
-
-    await user.clear(screen.getByRole("textbox"));
-    await user.type(screen.getByRole("textbox"), "新分类");
-
-    expect(screen.queryByText("分类名称不能超过10字")).not.toBeInTheDocument();
+    expect(onSubmit).toHaveBeenCalledWith("一二三四五六七八九十");
   });
 });

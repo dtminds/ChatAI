@@ -20,7 +20,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { CommitLimitInput } from "@/components/ui/commit-limit-input";
 import {
   InputGroup,
   InputGroupAddon,
@@ -78,10 +78,10 @@ export function RatioSplitConfig({ edges, node, onNodeChange }: NodeSettingsProp
             <Label htmlFor={`ratio-split-label-${node.id}-${group.id}`}>
               分组 {String.fromCharCode(65 + index)}
             </Label>
-            <Input
+            <CommitLimitInput
               id={`ratio-split-label-${node.id}-${group.id}`}
               maxLength={WORKFLOW_RATIO_SPLIT_GROUP_LABEL_MAX_LENGTH}
-              onChange={event => updateGroup(group.id, { label: event.target.value })}
+              onValueCommit={label => updateGroup(group.id, { label })}
               value={group.label}
             />
             <Button

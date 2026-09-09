@@ -8,6 +8,7 @@ import {
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { Button } from "@/components/ui/button";
+import { CommitLimitInput } from "@/components/ui/commit-limit-input";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -375,7 +376,7 @@ function AiCollectFieldEditor({ field, fields, index, onChange, onDelete }: {
         >
           <HugeiconsIcon icon={DragDropVerticalIcon} size={16} strokeWidth={1.8} />
         </SortableItemHandle>
-        <Input
+        <CommitLimitInput
           aria-label={`字段 ${index + 1} 名称`}
           aria-invalid={!field.name.trim() || duplicateName}
           className={cn(
@@ -383,7 +384,7 @@ function AiCollectFieldEditor({ field, fields, index, onChange, onDelete }: {
             duplicateName && "border-destructive",
           )}
           maxLength={AI_COLLECT_FIELD_NAME_MAX_LENGTH}
-          onChange={event => onChange({ name: event.target.value })}
+          onValueCommit={name => onChange({ name })}
           placeholder="字段名称"
           value={field.name}
         />

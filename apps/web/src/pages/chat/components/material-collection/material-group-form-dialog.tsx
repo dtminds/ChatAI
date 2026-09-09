@@ -1,5 +1,6 @@
 import { useEffect, useId, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
+import { clipInputValue } from "@/components/ui/commit-limit-input";
 import {
   Dialog,
   DialogContent,
@@ -46,11 +47,12 @@ export function MaterialGroupFormDialog({
   const submitLabel = mode === "edit" ? "保存" : "新建";
 
   function handleSubmit() {
-    if (!normalizedTitle) {
+    const nextTitle = clipInputValue(title, MATERIAL_GROUP_TITLE_MAX_LENGTH).trim();
+    if (!nextTitle) {
       return;
     }
 
-    onSubmit(normalizedTitle);
+    onSubmit(nextTitle);
   }
 
   return (
@@ -75,7 +77,7 @@ export function MaterialGroupFormDialog({
             autoFocus
             disabled={isSubmitting}
             id={inputId}
-            maxLength={MATERIAL_GROUP_TITLE_MAX_LENGTH}
+            onBlur={() => setTitle(clipInputValue(title, MATERIAL_GROUP_TITLE_MAX_LENGTH))}
             onChange={(event) => setTitle(event.target.value)}
             onKeyDown={(event) => {
               if (event.key === "Enter") {

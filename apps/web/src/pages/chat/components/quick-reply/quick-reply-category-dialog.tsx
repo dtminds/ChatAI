@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
+import { clipInputValue } from "@/components/ui/commit-limit-input";
 import {
   Dialog,
   DialogContent,
@@ -42,15 +43,10 @@ export function QuickReplyCategoryDialog({
   const copy = getQuickReplyCategoryDialogCopy(variant, Boolean(initialTitle));
 
   const handleSubmit = async () => {
-    const normalizedTitle = title.trim();
+    const normalizedTitle = clipInputValue(title, QUICK_REPLY_CATEGORY_TITLE_MAX_LENGTH).trim();
 
     if (!normalizedTitle) {
       setTitleError(copy.emptyError);
-      return;
-    }
-
-    if (normalizedTitle.length > QUICK_REPLY_CATEGORY_TITLE_MAX_LENGTH) {
-      setTitleError(copy.maxLengthError);
       return;
     }
 
@@ -78,7 +74,7 @@ export function QuickReplyCategoryDialog({
         <div className="space-y-2">
           <Input
             aria-invalid={titleError ? true : undefined}
-            maxLength={QUICK_REPLY_CATEGORY_TITLE_MAX_LENGTH}
+            onBlur={() => setTitle(clipInputValue(title, QUICK_REPLY_CATEGORY_TITLE_MAX_LENGTH))}
             onChange={(event) => {
               setTitle(event.target.value);
               setTitleError("");
@@ -119,7 +115,6 @@ function getQuickReplyCategoryDialogCopy(
       description:
         "用于收纳同类话术，主题要比分类更具体，如报价、改址；不要再用售前、售后这类大类名",
       emptyError: "请输入话术分组名称",
-      maxLengthError: "话术分组名称不能超过10字",
       placeholder: "请输入话术分组名称，10字以内",
       title: isEditing ? "编辑话术分组" : "创建话术分组",
     };
@@ -128,7 +123,6 @@ function getQuickReplyCategoryDialogCopy(
   return {
     description: "按客户服务场景划分大类，如售前、售后、物流；具体主题请建话术分组",
     emptyError: "请输入分类名称",
-    maxLengthError: "分类名称不能超过10字",
     placeholder: "请输入分类名称，10字以内",
     title: isEditing ? "编辑分类" : "新建分类",
   };

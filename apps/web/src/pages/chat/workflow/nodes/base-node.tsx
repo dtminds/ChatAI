@@ -15,7 +15,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Input } from "@/components/ui/input";
+import { CommitLimitInput } from "@/components/ui/commit-limit-input";
 import { cn } from "@/lib/utils";
 import { WORKFLOW_AI_BADGE_URL } from "../constants";
 import {
@@ -47,7 +47,6 @@ function WorkflowBaseNodeComponent({
   const isSelected = Boolean(data.selected);
   const [actionMenuOpen, setActionMenuOpen] = useState(false);
   const [isRenaming, setIsRenaming] = useState(false);
-  const [renameValue, setRenameValue] = useState(data.title);
   const renameCancelledRef = useRef(false);
   const canRename = definition.canRename && Boolean(data.onRename);
   const nodeCardStyle = {
@@ -107,28 +106,22 @@ function WorkflowBaseNodeComponent({
             isRenaming={isRenaming}
             onCancelRename={() => {
               renameCancelledRef.current = true;
-              setRenameValue(data.title);
               setIsRenaming(false);
             }}
-            onCommitRename={() => {
+            onCommitRename={(next) => {
               if (renameCancelledRef.current) {
                 renameCancelledRef.current = false;
                 return;
               }
 
-              const title = renameValue.trim();
+              const title = next.trim();
               setIsRenaming(false);
 
               if (title && title !== data.title) {
                 data.onRename?.(id, title);
               }
-              else {
-                setRenameValue(data.title);
-              }
             }}
-            onRenameValueChange={setRenameValue}
             onStartRename={startRenaming}
-            renameValue={renameValue}
             visual={visual}
           />
           {body}
@@ -142,7 +135,6 @@ function WorkflowBaseNodeComponent({
     if (!canRename) return;
 
     renameCancelledRef.current = false;
-    setRenameValue(data.title);
     setIsRenaming(true);
   }
 }
@@ -155,19 +147,15 @@ function NodeHeader({
   isRenaming,
   onCancelRename,
   onCommitRename,
-  onRenameValueChange,
   onStartRename,
-  renameValue,
   visual,
 }: {
   canRename: boolean;
   data: WorkflowNodeRenderData;
   isRenaming: boolean;
   onCancelRename: () => void;
-  onCommitRename: () => void;
-  onRenameValueChange: (value: string) => void;
+  onCommitRename: (next: string) => void;
   onStartRename: () => void;
-  renameValue: string;
   visual: NodeVisual;
 }) {
   return (
@@ -183,13 +171,11 @@ function NodeHeader({
       <span className="flex min-h-7 min-w-0 flex-1 items-center">
         {isRenaming ? (
           <span className="flex min-w-0 flex-1 items-center gap-2">
-            <Input
+            <CommitLimitInput
               aria-label="节点名称"
               autoFocus
               className="nodrag nopan h-7 min-w-0 rounded px-2.5 text-xs font-normal"
               maxLength={WORKFLOW_NODE_TITLE_MAX_LENGTH}
-              onBlur={onCommitRename}
-              onChange={(event) => onRenameValueChange(event.target.value)}
               onClick={(event) => event.stopPropagation()}
               onKeyDown={(event) => {
                 event.stopPropagation();
@@ -205,7 +191,8 @@ function NodeHeader({
                 }
               }}
               onPointerDown={(event) => event.stopPropagation()}
-              value={renameValue}
+              onValueCommit={onCommitRename}
+              value={data.title}
             />
             <NodeAiBadge visual={visual} />
           </span>

@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { useState } from "react";
 import { HierarchySquare08Icon } from "@hugeicons/core-free-icons";
@@ -85,6 +85,8 @@ describe("workflow Ratio Split node", () => {
     await user.clear(firstGroupName);
     await user.type(firstGroupName, "一二三四五六七八九十一");
 
+    expect(firstGroupName).toHaveValue("一二三四五六七八九十一");
+    fireEvent.blur(firstGroupName);
     expect(firstGroupName).toHaveValue("一二三四五六七八九十");
   });
 

@@ -4,10 +4,10 @@ import {
   type WorkflowMessageQueryCommand,
   type WorkflowMessageQueryResult,
 } from "@chatai/contracts";
+import type { Database } from "@chatai/database";
 import { WorkflowCapabilityExecutionError } from "@chatai/workflow-engine";
 import {
   fitWorkflowMessagesOutput,
-  type WorkflowDatabase,
   type WorkflowMessageQueryPort,
   type WorkflowMessageQueryRequest,
 } from "@chatai/workflow-runtime";
@@ -33,38 +33,8 @@ type MessageQueryResultInput = {
   take: WorkflowMessageQueryCommand["take"];
 };
 
-interface WorkflowMessageQueryMessageTable {
-  chat_type: number;
-  content: string | null;
-  from_type: number | null;
-  id: number | string;
-  msgtime: number | string;
-  msgtype: string;
-  platform: number;
-  revoke_status: number | null;
-  status: number;
-  third_external_id: string;
-  third_user_id: string;
-  uid: number;
-  user_id: number;
-}
-
-interface WorkflowMessageQuerySeatTable {
-  biz_status: number;
-  id: number;
-  platform: number;
-  third_userid: string;
-  uid: number;
-  user_id: number;
-}
-
-type WorkflowMessageQueryDatabase = WorkflowDatabase & {
-  xy_wap_embed_msg_audit_info: WorkflowMessageQueryMessageTable;
-  xy_wap_embed_user_seat: WorkflowMessageQuerySeatTable;
-};
-
 export class MysqlWorkflowMessageQueryPort implements WorkflowMessageQueryPort {
-  constructor(private readonly database: Kysely<WorkflowDatabase>) {}
+  constructor(private readonly database: Kysely<Database>) {}
 
   async execute(request: WorkflowMessageQueryRequest): Promise<unknown> {
     if (request.subjectType !== "chatai_contact") {
@@ -111,7 +81,7 @@ export type WorkflowEntryMessageReader = {
 };
 
 export class MysqlWorkflowEntryMessageReader implements WorkflowEntryMessageReader {
-  constructor(private readonly database: Kysely<WorkflowDatabase>) {}
+  constructor(private readonly database: Kysely<Database>) {}
 
   async findById(input: Parameters<WorkflowEntryMessageReader["findById"]>[0]) {
     const row = await buildEntryMessageQuery(this.database, input).executeTakeFirst();
@@ -120,7 +90,7 @@ export class MysqlWorkflowEntryMessageReader implements WorkflowEntryMessageRead
 }
 
 export async function executeMessageQuery(
-  database: Kysely<WorkflowDatabase>,
+  database: Kysely<Database>,
   input: {
     command: WorkflowMessageQueryCommand;
     signal: AbortSignal;
@@ -160,10 +130,10 @@ export async function executeMessageQuery(
 }
 
 export function buildMessageQuerySeatQuery(
-  database: Kysely<WorkflowDatabase>,
+  database: Kysely<Database>,
   input: { seatId: number; uid: number },
 ) {
-  return asMessageQueryDatabase(database)
+  return database
     .selectFrom("xy_wap_embed_user_seat")
     .select("third_userid")
     .where("uid", "=", input.uid)
@@ -173,7 +143,7 @@ export function buildMessageQuerySeatQuery(
 }
 
 export function buildMessageQueryMessagesQuery(
-  database: Kysely<WorkflowDatabase>,
+  database: Kysely<Database>,
   input: WorkflowMessageQueryCommand & {
     subjectId: string;
     thirdUserId: string;
@@ -181,7 +151,7 @@ export function buildMessageQueryMessagesQuery(
   },
 ) {
   const direction = input.take === "earliest" ? "asc" : "desc";
-  return asMessageQueryDatabase(database)
+  return database
     .selectFrom("xy_wap_embed_msg_audit_info")
     .select(["content", "from_type", "id", "msgtype"])
     .where("uid", "=", input.uid)
@@ -202,7 +172,7 @@ export function buildMessageQueryMessagesQuery(
 }
 
 export function buildEntryMessageQuery(
-  database: Kysely<WorkflowDatabase>,
+  database: Kysely<Database>,
   input: {
     messageId: number;
     seatId: number;
@@ -211,7 +181,7 @@ export function buildEntryMessageQuery(
     workUserId: number;
   },
 ) {
-  return asMessageQueryDatabase(database)
+  return database
     .selectFrom("xy_wap_embed_msg_audit_info as message")
     .innerJoin("xy_wap_embed_user_seat as seat", join => join
       .onRef("seat.uid", "=", "message.uid")
@@ -231,11 +201,6 @@ export function buildEntryMessageQuery(
     .where("seat.id", "=", input.seatId)
     .where("seat.user_id", "=", input.workUserId)
     .limit(1);
-}
-
-function asMessageQueryDatabase(database: Kysely<WorkflowDatabase>) {
-  // Platform tables are a worker-local read boundary, not part of the Runtime repository schema.
-  return database as unknown as Kysely<WorkflowMessageQueryDatabase>;
 }
 
 export function formatMessageQueryRow(row: MessageQueryRow) {

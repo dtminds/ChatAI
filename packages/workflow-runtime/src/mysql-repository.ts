@@ -17,6 +17,16 @@ import {
   type WorkflowTriggerBindingFilter,
 } from "@chatai/contracts";
 import { Value } from "@sinclair/typebox/value";
+import type {
+  Database,
+  DatabaseId,
+  WorkflowAiCollectStateTable,
+  WorkflowEventSubscriptionTable,
+  WorkflowInferenceJobTable,
+  WorkflowRunTable,
+  WorkflowTaskTable,
+  WorkflowTaskTransitionTable,
+} from "@chatai/database";
 import { sql, type Kysely, type Selectable, type Transaction } from "kysely";
 import {
   getWorkflowExecutionBoundaryDecision,
@@ -38,16 +48,6 @@ import {
   encodeWorkflowSubjectType,
   encodeWorkflowType,
 } from "./persistence-codecs.js";
-import type {
-  DatabaseId,
-  WorkflowDatabase,
-  WorkflowAiCollectStateTable,
-  WorkflowEventSubscriptionTable,
-  WorkflowInferenceJobTable,
-  WorkflowRunTable,
-  WorkflowTaskTable,
-  WorkflowTaskTransitionTable,
-} from "./db.js";
 import type {
   WorkflowCapabilityExecutionFailureInput,
   WorkflowAiCollectStateRecord,
@@ -106,14 +106,14 @@ const ACTIVE_TASK_STATUSES = [
 // Any new Run status or status update path must maintain both fields together.
 const TERMINAL_RUN_STATUSES = ["cancelled", "completed", "failed"] as const;
 const RUNTIME_STATE_INCONSISTENT = "WORKFLOW_RUNTIME_STATE_INCONSISTENT" as const;
-type RuntimeTransaction = Transaction<WorkflowDatabase>;
-type RuntimeDbExecutor = Kysely<WorkflowDatabase> | RuntimeTransaction;
+type RuntimeTransaction = Transaction<Database>;
+type RuntimeDbExecutor = Kysely<Database> | RuntimeTransaction;
 
 export class MysqlWorkflowRuntimeRepository implements
   WorkflowRuntimeControlReader,
   WorkflowRuntimeRepository,
   WorkflowTriggerBindingReader {
-  constructor(private readonly db: Kysely<WorkflowDatabase>) {}
+  constructor(private readonly db: Kysely<Database>) {}
 
   async deactivateWorkflowForEntitlementLoss(
     input: Parameters<WorkflowRuntimeControlReader["deactivateWorkflowForEntitlementLoss"]>[0],
@@ -4517,7 +4517,7 @@ type MysqlWorkflowTaskTransitionClaim =
   | { kind: "dead" };
 
 async function claimMysqlWorkflowTaskTransition(
-  db: Kysely<WorkflowDatabase>,
+  db: Kysely<Database>,
   input: {
     leaseExpiresAt: Date;
     leaseOwner: string;
@@ -4882,7 +4882,7 @@ function isActiveRunStatus(status: WorkflowRunStatus) {
   return status === "queued" || status === "running" || status === "waiting";
 }
 
-function mapOutbox(row: Selectable<WorkflowDatabase[typeof OUTBOX_TABLE]>): WorkflowOutboxRecord {
+function mapOutbox(row: Selectable<Database[typeof OUTBOX_TABLE]>): WorkflowOutboxRecord {
   const status = row.status;
   if (status !== "pending"
     && status !== "leased"
@@ -5211,7 +5211,7 @@ function mapTask(row: Selectable<WorkflowTaskTable>): WorkflowTaskRecord {
   };
 }
 
-function mapNodeExecution(row: Selectable<WorkflowDatabase[typeof EXECUTION_TABLE]>): WorkflowNodeExecutionRecord {
+function mapNodeExecution(row: Selectable<Database[typeof EXECUTION_TABLE]>): WorkflowNodeExecutionRecord {
   return {
     errorCode: row.error_code,
     errorMessage: row.error_message,
@@ -5231,7 +5231,7 @@ function mapNodeExecution(row: Selectable<WorkflowDatabase[typeof EXECUTION_TABL
 }
 
 function mapRevisionCleanup(
-  row: Selectable<WorkflowDatabase[typeof REVISION_CLEANUP_TABLE]>,
+  row: Selectable<Database[typeof REVISION_CLEANUP_TABLE]>,
 ): WorkflowRevisionCleanupRecord {
   const status = row.status;
   if (status !== "pending" && status !== "leased" && status !== "done"

@@ -10,7 +10,6 @@ import {
   type WorkflowCapabilityKind,
   type WorkflowCapabilityPort,
   type WorkflowCapabilityRequest,
-  type WorkflowDatabase,
 } from "@chatai/workflow-runtime";
 import type { Static, TSchema } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
@@ -33,25 +32,11 @@ const throwIfAborted = createAbortGuard(
   "Workflow Ticket Create execution was aborted",
 );
 
-interface TicketConversationTable {
-  biz_status: number;
-  chat_type: number;
-  id: number | string;
-  platform: number;
-  third_external_userid: string;
-  third_userid: string;
-  uid: number;
-}
-
-type TicketConversationDatabase = WorkflowDatabase & {
-  xy_wap_embed_conversation: TicketConversationTable;
-};
-
 export class MysqlWorkflowTicketCreateCapabilityPort implements WorkflowCapabilityPort {
   private readonly tickets: TicketsRepository;
 
-  constructor(private readonly database: Kysely<WorkflowDatabase>) {
-    this.tickets = new TicketsRepository(database as unknown as Kysely<Database>);
+  constructor(private readonly database: Kysely<Database>) {
+    this.tickets = new TicketsRepository(database);
   }
 
   async execute<
@@ -138,7 +123,7 @@ export class MysqlWorkflowTicketCreateCapabilityPort implements WorkflowCapabili
       });
       throwIfAborted(input.signal);
       if (seat?.platform === CHATAI_PLATFORM) {
-        row = await asTicketConversationDatabase(this.database)
+        row = await this.database
           .selectFrom("xy_wap_embed_conversation")
           .select("id")
           .where("uid", "=", input.uid)
@@ -176,8 +161,4 @@ export class MysqlWorkflowTicketCreateCapabilityPort implements WorkflowCapabili
     }
     return conversationId as number;
   }
-}
-
-function asTicketConversationDatabase(database: Kysely<WorkflowDatabase>) {
-  return database as unknown as Kysely<TicketConversationDatabase>;
 }

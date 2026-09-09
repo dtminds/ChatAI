@@ -1,5 +1,5 @@
 import { sql, type Kysely } from "kysely";
-import type { WorkflowDatabase } from "@chatai/workflow-runtime";
+import type { Database } from "@chatai/database";
 import type {
   WorkflowObservabilityListState,
   WorkflowObservabilityRole,
@@ -102,7 +102,7 @@ export type WorkflowListRow = {
 };
 
 export class WorkflowObservabilityRepository {
-  constructor(private readonly db: Kysely<WorkflowDatabase>) {}
+  constructor(private readonly db: Kysely<Database>) {}
 
   async getObservedAt() {
     const result = await sql<{ observed_at: Date }>`

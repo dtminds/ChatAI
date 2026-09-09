@@ -1,5 +1,6 @@
 import { sql, type Kysely } from "kysely";
-import { decodeWorkflowType, encodeWorkflowType, type WorkflowDatabase } from "@chatai/workflow-runtime";
+import type { Database } from "@chatai/database";
+import { decodeWorkflowType, encodeWorkflowType } from "@chatai/workflow-runtime";
 import { escapeLikePattern } from "../ai-hosting/sql-like-utils.js";
 import type { WorkflowTemplateRepository, WorkflowTemplateRecord } from "./workflow-template-repository-types.js";
 
@@ -8,7 +9,7 @@ const json = (v: unknown) => JSON.stringify(v);
 const parse = <T>(v: unknown): T => typeof v === "string" ? JSON.parse(v) as T : v as T;
 
 export class MysqlWorkflowTemplateRepository implements WorkflowTemplateRepository {
-  constructor(private readonly db: Kysely<WorkflowDatabase>) {}
+  constructor(private readonly db: Kysely<Database>) {}
   async create(input: Omit<WorkflowTemplateRecord, "id" | "createdAt" | "updatedAt">) {
     const result = await this.db.insertInto(TABLE).values({
       workflow_type: encodeWorkflowType(input.workflowType),

@@ -1,9 +1,9 @@
 import type { WorkflowMessage } from "@chatai/contracts";
+import type { Database } from "@chatai/database";
 import {
   fitWorkflowMessageOutput,
   fitWorkflowMessagesOutput,
   type WorkflowAiCollectConversationPort,
-  type WorkflowDatabase,
 } from "@chatai/workflow-runtime";
 import { WorkflowCapabilityExecutionError } from "@chatai/workflow-engine";
 import type { Kysely } from "kysely";
@@ -18,43 +18,13 @@ const CUSTOMER_FROM_TYPE = 2;
 const SENT_MESSAGE_STATUS = 1;
 const QUERY_LIMIT = 51;
 
-interface AiCollectConversationTable {
-  biz_status: number;
-  chat_type: number;
-  id: number | string;
-  platform: number;
-  third_external_userid: string;
-  third_userid: string;
-  uid: number;
-}
-
-interface AiCollectMessageTable {
-  chat_type: number;
-  content: string | null;
-  from_type: number | null;
-  id: number | string;
-  msgtime: number | string;
-  msgtype: string;
-  platform: number;
-  revoke_status: number | null;
-  status: number;
-  third_external_id: string;
-  third_user_id: string;
-  uid: number;
-}
-
-type AiCollectConversationDatabase = WorkflowDatabase & {
-  xy_wap_embed_conversation: AiCollectConversationTable;
-  xy_wap_embed_msg_audit_info: AiCollectMessageTable;
-};
-
 type AiCollectMessageRow = MessageQueryRow & { msgtime: number | string };
 
 export class MysqlWorkflowAiCollectConversationPort implements WorkflowAiCollectConversationPort {
   private readonly fetch: typeof fetch;
 
   constructor(
-    private readonly database: Kysely<WorkflowDatabase>,
+    private readonly database: Kysely<Database>,
     private readonly options: {
       baseUrl: string;
       fetch?: typeof fetch;
@@ -72,7 +42,7 @@ export class MysqlWorkflowAiCollectConversationPort implements WorkflowAiCollect
     try {
       seat = await findWorkflowSeat(this.database, input);
       if (seat?.platform === CHATAI_PLATFORM) {
-        row = await asAiCollectDatabase(this.database)
+        row = await this.database
           .selectFrom("xy_wap_embed_conversation")
           .select("id")
           .where("uid", "=", input.uid)
@@ -118,7 +88,7 @@ export class MysqlWorkflowAiCollectConversationPort implements WorkflowAiCollect
     if (!seat || seat.platform !== CHATAI_PLATFORM) {
       throw terminal("WORKFLOW_AI_COLLECT_MESSAGE_QUERY_FAILED", "AI Collect seat is unavailable");
     }
-    let query = asAiCollectDatabase(this.database)
+    let query = this.database
       .selectFrom("xy_wap_embed_msg_audit_info")
       .select(["content", "from_type", "id", "msgtime", "msgtype"])
       .where("uid", "=", input.uid)
@@ -197,10 +167,6 @@ export class MysqlWorkflowAiCollectConversationPort implements WorkflowAiCollect
       workflowId: input.workflowId,
     });
   }
-}
-
-function asAiCollectDatabase(database: Kysely<WorkflowDatabase>) {
-  return database as unknown as Kysely<AiCollectConversationDatabase>;
 }
 
 function normalizePositiveInteger(value: unknown, name: string) {

@@ -5,13 +5,13 @@ import {
   WorkflowHandoffCommandSchema,
   type WorkflowHandoffCommand,
 } from "@chatai/contracts";
+import type { Database } from "@chatai/database";
 import {
   WORKFLOW_HANDOFF_CAPABILITY_BINDING,
   type WorkflowCapabilityDefinition,
   type WorkflowCapabilityKind,
   type WorkflowCapabilityPort,
   type WorkflowCapabilityRequest,
-  type WorkflowDatabase,
 } from "@chatai/workflow-runtime";
 import type { Static, TSchema } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
@@ -35,7 +35,7 @@ export class MysqlWorkflowHandoffCapabilityPort implements WorkflowCapabilityPor
   private readonly fetch: typeof fetch;
 
   constructor(
-    private readonly database: Kysely<WorkflowDatabase>,
+    private readonly database: Kysely<Database>,
     private readonly options: {
       baseUrl: string;
       fetch?: typeof fetch;
@@ -87,7 +87,7 @@ export class MysqlWorkflowHandoffCapabilityPort implements WorkflowCapabilityPor
 }
 
 export async function executeWorkflowHandoff(
-  database: Kysely<WorkflowDatabase>,
+  database: Kysely<Database>,
   input: {
     baseUrl: string;
     command: WorkflowHandoffCommand;

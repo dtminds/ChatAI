@@ -3,9 +3,9 @@ import type {
   WorkflowInferenceMessageListRequest,
   WorkflowInferenceMessageListResult,
 } from "@chatai/contracts";
+import type { Database } from "@chatai/database";
 import { WorkflowCapabilityExecutionError } from "@chatai/workflow-engine";
 import type {
-  WorkflowDatabase,
   WorkflowChatCompletionPort,
   WorkflowChatCompletionRequest,
 } from "@chatai/workflow-runtime";
@@ -24,7 +24,7 @@ type ProviderDiagnosticsLogger = {
 
 export class VolcengineChatCompletionAdapter implements WorkflowChatCompletionPort {
   constructor(
-    private readonly database: Kysely<WorkflowDatabase>,
+    private readonly database: Kysely<Database>,
     private readonly apiKey: string,
     private readonly fetchImpl: typeof fetch = fetch,
     private readonly modelResolver?: ModelResolver,
@@ -148,7 +148,7 @@ export class VolcengineChatCompletionAdapter implements WorkflowChatCompletionPo
 }
 
 export function createVolcengineChatCompletionAdapter(
-  database: Kysely<WorkflowDatabase>,
+  database: Kysely<Database>,
   env: NodeJS.ProcessEnv = process.env,
   logger?: ProviderDiagnosticsLogger,
 ) {

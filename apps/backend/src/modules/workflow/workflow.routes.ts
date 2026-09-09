@@ -32,8 +32,6 @@ import {
 } from "@chatai/contracts";
 import { Type, type Static } from "@sinclair/typebox";
 import type { FastifyInstance, FastifyRequest } from "fastify";
-import type { Kysely } from "kysely";
-import type { WorkflowDatabase } from "@chatai/workflow-runtime";
 import {
   createWorkflowEntitlementPort,
   HttpWorkflowContactIdentityPort,
@@ -115,7 +113,7 @@ export async function registerWorkflowRoutes(
     service?: WorkflowService;
   } = {},
 ) {
-  const workflowDatabase = app.db as unknown as Kysely<WorkflowDatabase>;
+  const workflowDatabase = app.db;
   const entitlementPort = createWorkflowEntitlementPort({
     activeRunLimit: getWorkflowActiveRunLimit(),
     baseUrl: process.env.JAVA_INTERNAL_API_BASE_URL,

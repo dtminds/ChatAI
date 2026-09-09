@@ -4,13 +4,13 @@ import {
   WorkflowMessageCommandSchema,
   type WorkflowMessageCommand,
 } from "@chatai/contracts";
+import type { Database } from "@chatai/database";
 import {
   WORKFLOW_MESSAGE_CAPABILITY_BINDING,
   type WorkflowCapabilityDefinition,
   type WorkflowCapabilityKind,
   type WorkflowCapabilityPort,
   type WorkflowCapabilityRequest,
-  type WorkflowDatabase,
 } from "@chatai/workflow-runtime";
 import type { Static, TSchema } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
@@ -44,7 +44,7 @@ export class MysqlWorkflowMessageCapabilityPort implements WorkflowCapabilityPor
   private readonly fetch: typeof fetch;
 
   constructor(
-    private readonly database: Kysely<WorkflowDatabase>,
+    private readonly database: Kysely<Database>,
     private readonly options: {
       baseUrl: string;
       fetch?: typeof fetch;
@@ -96,7 +96,7 @@ export class MysqlWorkflowMessageCapabilityPort implements WorkflowCapabilityPor
 }
 
 export async function executeWorkflowMessage(
-  database: Kysely<WorkflowDatabase>,
+  database: Kysely<Database>,
   input: {
     baseUrl: string;
     command: WorkflowMessageCommand;
@@ -137,7 +137,7 @@ export async function executeWorkflowMessage(
 }
 
 export async function resolveWorkflowMessageSeat(
-  database: Kysely<WorkflowDatabase>,
+  database: Kysely<Database>,
   input: {
     seatId: number;
     uid: number;

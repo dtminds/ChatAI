@@ -2,7 +2,7 @@
 
 ## Shape
 
-- `apps/web` 前端，`apps/backend` 后端，`packages/contracts` 共享契约。设计文档在 `docs/superpowers/specs`，数据库文档在 `docs/db`。
+- `apps/web` 前端，`apps/backend` 后端，`packages/contracts` 共享契约。新增或移动文档先按 `docs/README.md` 分类；设计文档在 `docs/specs`，实施计划在 `docs/plans`，数据库文档在 `docs/db`。
 - Node.js 24 LTS + pnpm。Web：Vite、React、TypeScript、Tailwind、shadcn/ui、Hugeicons、React Router、Zustand、Axios。Backend：Fastify、Kysely、mysql2、`@fastify/jwt`、TypeBox。测试：Vitest。
 
 ## Execution

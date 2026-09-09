@@ -5,9 +5,9 @@
 - 适用范围：聊天工作台、工单中心、会话洞察、Insights Worker、共享契约与数据库
 - 目标入口：`/chat/tickets`
 - 关联方案：
-  - [会话洞察底座设计](./2026-06-01-conversation-insights-design.md)
-  - [会话洞察页面设计](./2026-06-01-conversation-insights-page-design.md)
-  - [会话基础数据持续生成与会话洞察分层需求](../../specs/insights-always-on-sessionization.md)
+  - [会话洞察底座设计](./2026-06-01-conversation-insights.md)
+  - [会话洞察页面设计](./2026-06-01-conversation-insights-page.md)
+  - [会话基础数据持续生成与会话洞察分层需求](./2026-07-24-insights-always-on-sessionization.md)
 
 本文是“智能待办升级为工单系统”的当前有效设计。与上述旧文档中的“待处理页”“行动项只影响洞察模块”等约定冲突时，以本文为准。旧文档保留为历史设计记录，本期不回改旧文档。
 

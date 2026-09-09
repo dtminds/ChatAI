@@ -56,7 +56,9 @@ See [LICENSE](LICENSE) for the full terms.
 │   └── workflow-runtime/    # Workflow 运行时和持久化接口
 ├── docs/
 │   ├── db/                  # 数据库相关文档
-│   └── superpowers/specs/   # 设计和架构文档
+│   ├── specs/              # 技术设计和接口契约
+│   ├── plans/              # 实施计划
+│   └── README.md           # 文档导航和分类规则
 ├── .env.development         # 本地前端 -> 本地 backend
 ├── .env.dev-test-api        # 本地前端 -> 测试环境 API
 ├── .env.test

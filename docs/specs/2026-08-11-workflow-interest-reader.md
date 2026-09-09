@@ -4,7 +4,7 @@
 - 状态：Ready for Joint Review
 - 适用对象：Java 平台团队、DBA、测试与运维
 - 目标：让 Java 团队独立实现 Workflow 事件预过滤、Event Outbox 和 Pulsar Producer
-- 上位方案：[营销 Workflow 当前实现与 Java 协作落地方案](./2026-08-05-marketing-workflow-java-integration-design.md)
+- 上位方案：[营销 Workflow 当前实现与 Java 协作落地方案](./2026-08-05-marketing-workflow-java-integration.md)
 
 本文只描述 Java 需要遵守的跨服务契约。Java 不需要理解 Node 的画布、Compiler、Revision 内容、Run 或 Task。
 

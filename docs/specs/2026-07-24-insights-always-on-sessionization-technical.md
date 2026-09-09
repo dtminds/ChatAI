@@ -2,7 +2,7 @@
 
 - 日期：2026-07-22
 - 状态：已实现，待发布
-- 上游需求：`docs/specs/insights-always-on-sessionization.md`
+- 上游需求：`docs/specs/2026-07-24-insights-always-on-sessionization.md`
 - 适用代码：`apps/backend`、`packages/contracts`、`apps/web`
 
 ## 1. 设计结论

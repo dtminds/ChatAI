@@ -354,6 +354,7 @@ export type SystemMessage = BaseMessage & {
 export type ChatMessage = BaseMessage & {
   role: "customer" | "agent";
   sender: MessageSender;
+  avatarOrnamentUrl?: string;
   isGroupConversation?: boolean;
   isAgentMessage?: boolean;
   isOwnMessage?: boolean;

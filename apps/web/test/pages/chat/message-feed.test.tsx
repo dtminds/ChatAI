@@ -9,6 +9,7 @@ import {
   resolveMessageAvatarUrl,
 } from "@/pages/chat/components/message-feed";
 import type { ChatMessage } from "@/pages/chat/chat-types";
+import { SOP_AVATAR_ORNAMENT_URL } from "@/pages/chat/chat-constants";
 import { getMessageFeedItemKey } from "@/pages/chat/lib/message-feed-key";
 
 vi.mock("sonner", async (importOriginal) => {
@@ -1399,6 +1400,22 @@ describe("message feed row actions", () => {
     );
 
     expect(screen.getByLabelText("AI托管")).toBeInTheDocument();
+  });
+
+  it("overlays the SOP ornament on Workflow message avatars without the Agent badge", () => {
+    const { container } = render(
+      <MessageRow
+        message={{
+          ...createTextMessage("SOP 自动发送"),
+          avatarOrnamentUrl: SOP_AVATAR_ORNAMENT_URL,
+        }}
+      />,
+    );
+
+    expect(
+      container.querySelector(`img[src="${SOP_AVATAR_ORNAMENT_URL}"]`),
+    ).toBeInTheDocument();
+    expect(screen.queryByLabelText("AI托管")).not.toBeInTheDocument();
   });
 
   it("does not mark regular outbound messages as agent-hosted", () => {

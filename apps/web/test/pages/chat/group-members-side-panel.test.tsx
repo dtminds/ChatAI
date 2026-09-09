@@ -656,7 +656,10 @@ describe("GroupMembersSidePanel", () => {
     expect(onRefresh).toHaveBeenCalledTimes(1);
     expect(toast.success).not.toHaveBeenCalled();
     expect(screen.queryByRole("heading", { name: "添加群成员" })).not.toBeInTheDocument();
-    expect(await screen.findByRole("button", { name: "我知道了" })).toBeInTheDocument();
+    expect(
+      await screen.findByRole("alertdialog", { name: /已发出入群邀请/ }),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "我知道了" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "取消" })).not.toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "我知道了" }));
@@ -912,7 +915,10 @@ describe("GroupMembersSidePanel", () => {
     });
     expect(toast.success).not.toHaveBeenCalled();
     expect(onRefresh).toHaveBeenCalledTimes(1);
-    expect(await screen.findByRole("button", { name: "我知道了" })).toBeInTheDocument();
+    expect(
+      await screen.findByRole("alertdialog", { name: /已发起移出群聊请求/ }),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "我知道了" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "确定" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "取消" })).not.toBeInTheDocument();
 

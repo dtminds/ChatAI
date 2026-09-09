@@ -23,7 +23,10 @@ import { cn } from "@/lib/utils";
 import { getWorkbenchService } from "@/pages/chat/api/workbench-service";
 import { AddGroupMembersDialog } from "@/pages/chat/components/add-group-members-dialog";
 import { CustomerSeatRelationList } from "@/pages/chat/components/customer-seat-relation-list";
-import { GroupMemberPendingResultDialog } from "@/pages/chat/components/group-member-pending-result-dialog";
+import {
+  GroupMemberPendingResultDialog,
+  type GroupMemberPendingResultKind,
+} from "@/pages/chat/components/group-member-pending-result-dialog";
 import { RemoveGroupMemberDialog } from "@/pages/chat/components/remove-group-member-dialog";
 import { DelayedHoverPopover } from "@/pages/chat/components/delayed-hover-popover";
 import type {
@@ -71,7 +74,8 @@ export function GroupMembersSidePanel({
 }) {
   const [isAddOpen, setIsAddOpen] = useState(false);
   const [isSearchOpen, setIsSearchOpen] = useState(false);
-  const [isPendingResultOpen, setIsPendingResultOpen] = useState(false);
+  const [pendingResultKind, setPendingResultKind] =
+    useState<GroupMemberPendingResultKind | null>(null);
   const [memberToRemove, setMemberToRemove] = useState<GroupMember | null>(null);
   const [searchKeyword, setSearchKeyword] = useState("");
   const existingMemberIds = useMemo(
@@ -121,9 +125,9 @@ export function GroupMembersSidePanel({
     [filteredGroupMembers],
   );
 
-  function handleMembersActionAccepted() {
+  function handleMembersActionAccepted(kind: GroupMemberPendingResultKind) {
     onRefresh();
-    setIsPendingResultOpen(true);
+    setPendingResultKind(kind);
   }
 
   return (
@@ -241,7 +245,7 @@ export function GroupMembersSidePanel({
           conversationId={conversationId}
           currentSeatThirdUserId={currentSeatThirdUserId}
           excludeMemberIds={existingMemberIds}
-          onAdded={handleMembersActionAccepted}
+          onAdded={() => handleMembersActionAccepted("pull")}
           onOpenChange={setIsAddOpen}
           open={isAddOpen}
           seatId={seatId}
@@ -253,12 +257,15 @@ export function GroupMembersSidePanel({
         onOpenChange={(open) => {
           if (!open) setMemberToRemove(null);
         }}
-        onRemoved={handleMembersActionAccepted}
+        onRemoved={() => handleMembersActionAccepted("kick")}
         open={memberToRemove !== null}
       />
       <GroupMemberPendingResultDialog
-        onOpenChange={setIsPendingResultOpen}
-        open={isPendingResultOpen}
+        kind={pendingResultKind ?? "pull"}
+        onOpenChange={(open) => {
+          if (!open) setPendingResultKind(null);
+        }}
+        open={pendingResultKind !== null}
       />
     </>
   );

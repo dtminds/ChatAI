@@ -23,6 +23,7 @@ import { cn } from "@/lib/utils";
 import { getWorkbenchService } from "@/pages/chat/api/workbench-service";
 import { AddGroupMembersDialog } from "@/pages/chat/components/add-group-members-dialog";
 import { CustomerSeatRelationList } from "@/pages/chat/components/customer-seat-relation-list";
+import { GroupMemberPendingResultDialog } from "@/pages/chat/components/group-member-pending-result-dialog";
 import { RemoveGroupMemberDialog } from "@/pages/chat/components/remove-group-member-dialog";
 import { DelayedHoverPopover } from "@/pages/chat/components/delayed-hover-popover";
 import type {
@@ -70,6 +71,7 @@ export function GroupMembersSidePanel({
 }) {
   const [isAddOpen, setIsAddOpen] = useState(false);
   const [isSearchOpen, setIsSearchOpen] = useState(false);
+  const [isPendingResultOpen, setIsPendingResultOpen] = useState(false);
   const [memberToRemove, setMemberToRemove] = useState<GroupMember | null>(null);
   const [searchKeyword, setSearchKeyword] = useState("");
   const existingMemberIds = useMemo(
@@ -118,6 +120,11 @@ export function GroupMembersSidePanel({
     },
     [filteredGroupMembers],
   );
+
+  function handleMembersActionAccepted() {
+    onRefresh();
+    setIsPendingResultOpen(true);
+  }
 
   return (
     <>
@@ -234,7 +241,7 @@ export function GroupMembersSidePanel({
           conversationId={conversationId}
           currentSeatThirdUserId={currentSeatThirdUserId}
           excludeMemberIds={existingMemberIds}
-          onAdded={onRefresh}
+          onAdded={handleMembersActionAccepted}
           onOpenChange={setIsAddOpen}
           open={isAddOpen}
           seatId={seatId}
@@ -246,8 +253,12 @@ export function GroupMembersSidePanel({
         onOpenChange={(open) => {
           if (!open) setMemberToRemove(null);
         }}
-        onRemoved={onRefresh}
+        onRemoved={handleMembersActionAccepted}
         open={memberToRemove !== null}
+      />
+      <GroupMemberPendingResultDialog
+        onOpenChange={setIsPendingResultOpen}
+        open={isPendingResultOpen}
       />
     </>
   );

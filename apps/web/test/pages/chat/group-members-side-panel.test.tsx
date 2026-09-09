@@ -654,8 +654,13 @@ describe("GroupMembersSidePanel", () => {
       });
     });
     expect(onRefresh).toHaveBeenCalledTimes(1);
-    expect(toast.success).toHaveBeenCalledWith("已添加，请稍后刷新查看");
+    expect(toast.success).not.toHaveBeenCalled();
     expect(screen.queryByRole("heading", { name: "添加群成员" })).not.toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: "我知道了" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "取消" })).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "我知道了" }));
+    expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
   });
 
   it("keeps the add-members dialog open when inviting members fails", async () => {
@@ -905,8 +910,13 @@ describe("GroupMembersSidePanel", () => {
         kickOutThirdUserId: "member-xiaoming",
       });
     });
-    expect(toast.success).toHaveBeenCalledWith("已移出，请稍后刷新查看");
+    expect(toast.success).not.toHaveBeenCalled();
     expect(onRefresh).toHaveBeenCalledTimes(1);
+    expect(await screen.findByRole("button", { name: "我知道了" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "确定" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "取消" })).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "我知道了" }));
     expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
   });
 

@@ -324,9 +324,10 @@ describe("material collection components", () => {
     expect(screen.getByText("0/10")).toBeInTheDocument();
     await user.type(screen.getByRole("textbox", { name: "分组名称" }), "一二三四五六七八九十甲");
     expect(screen.getByRole("textbox", { name: "分组名称" })).toHaveValue("一二三四五六七八九十甲");
+    expect(screen.getByText("分组名称不能超过10字")).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "新建" }));
 
-    expect(handleCreateGroup).toHaveBeenCalledWith("一二三四五六七八九十");
+    expect(handleCreateGroup).not.toHaveBeenCalled();
   });
 
   it("locks file extension while editing the collected file name", async () => {

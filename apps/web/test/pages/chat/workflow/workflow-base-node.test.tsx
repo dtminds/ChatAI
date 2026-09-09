@@ -62,7 +62,7 @@ describe("workflow node chrome", () => {
     expect(onDuplicate).toHaveBeenCalledTimes(1);
   });
 
-  it("renames editable nodes inline without opening settings and limits names to 10 characters", async () => {
+  it("keeps an overlong inline node name visible and rejects Enter until it is fixed", async () => {
     const user = userEvent.setup();
     const onRename = vi.fn();
     const onSelect = vi.fn();
@@ -80,8 +80,16 @@ describe("workflow node chrome", () => {
     await user.clear(nameInput);
     await user.type(nameInput, "12345678901{Enter}");
 
-    expect(onRename).toHaveBeenCalledWith("message-welcome", "1234567890");
+    expect(nameInput).toHaveValue("12345678901");
+    expect(nameInput).toHaveAttribute("aria-invalid", "true");
+    expect(screen.getByText("11/10")).toBeInTheDocument();
+    expect(onRename).not.toHaveBeenCalled();
     expect(onSelect).not.toHaveBeenCalled();
+
+    await user.clear(nameInput);
+    await user.type(nameInput, "1234567890{Enter}");
+
+    expect(onRename).toHaveBeenCalledWith("message-welcome", "1234567890");
   });
 
   it("starts inline node renaming by double-clicking the title and cancels with Escape", async () => {

@@ -8,7 +8,6 @@ import {
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { Button } from "@/components/ui/button";
-import { CommitLimitInput } from "@/components/ui/commit-limit-input";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -367,6 +366,8 @@ function AiCollectFieldEditor({ field, fields, index, onChange, onDelete }: {
 }) {
   const duplicateName = Boolean(field.name.trim()) && fields.some(item =>
     item.id !== field.id && item.name.trim() === field.name.trim());
+  const nameTooLong = field.name.length > AI_COLLECT_FIELD_NAME_MAX_LENGTH;
+  const nameInvalid = !field.name.trim() || duplicateName || nameTooLong;
   return (
     <section className="space-y-2.5 rounded-[8px] bg-secondary/50 p-3 pl-2">
       <div className="grid grid-cols-[28px_minmax(0,1fr)_5rem_32px] items-start gap-2">
@@ -376,18 +377,27 @@ function AiCollectFieldEditor({ field, fields, index, onChange, onDelete }: {
         >
           <HugeiconsIcon icon={DragDropVerticalIcon} size={16} strokeWidth={1.8} />
         </SortableItemHandle>
-        <CommitLimitInput
-          aria-label={`字段 ${index + 1} 名称`}
-          aria-invalid={!field.name.trim() || duplicateName}
-          className={cn(
-            "h-9 text-[13px] md:text-[13px]",
-            duplicateName && "border-destructive",
-          )}
-          maxLength={AI_COLLECT_FIELD_NAME_MAX_LENGTH}
-          onValueCommit={name => onChange({ name })}
-          placeholder="字段名称"
-          value={field.name}
-        />
+        <div className="relative min-w-0">
+          <Input
+            aria-label={`字段 ${index + 1} 名称`}
+            aria-invalid={nameInvalid || undefined}
+            className={cn(
+              "h-9 pr-12 text-[13px] md:text-[13px]",
+              nameInvalid && "border-destructive focus-visible:border-destructive focus-visible:ring-destructive/15",
+            )}
+            onChange={event => onChange({ name: event.target.value })}
+            placeholder="字段名称"
+            value={field.name}
+          />
+          <span
+            className={cn(
+              "pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-[11px] tabular-nums text-muted-foreground",
+              nameTooLong && "text-destructive",
+            )}
+          >
+            {field.name.length}/{AI_COLLECT_FIELD_NAME_MAX_LENGTH}
+          </span>
+        </div>
         <Select
           onValueChange={(type: WorkflowAiCollectFieldType) => onChange({ type })}
           value={field.type}

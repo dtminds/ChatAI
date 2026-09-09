@@ -71,7 +71,6 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { clipInputValue } from "@/components/ui/commit-limit-input";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -549,10 +548,15 @@ export function AgentSettingsEditor() {
       return;
     }
 
-    const name = clipInputValue(renameValue, agentNameMaxLength).trim();
+    const name = renameValue.trim();
 
     if (!name) {
       setRenameError("请输入 Agent 名称");
+      return;
+    }
+
+    if (renameValue.length > agentNameMaxLength) {
+      setRenameError(`Agent 名称不能超过${agentNameMaxLength}字`);
       return;
     }
 
@@ -873,7 +877,9 @@ export function AgentSettingsEditor() {
 
         <RenameAgentDialog
           disabled={submitting}
-          error={renameError}
+          error={renameValue.length > agentNameMaxLength
+            ? `Agent 名称不能超过${agentNameMaxLength}字`
+            : renameError}
           name={renameValue}
           onChange={(value) => {
             setRenameValue(value);
@@ -905,19 +911,23 @@ export function AgentSettingsEditor() {
                 <div className="flex flex-col gap-2">
                   <Label htmlFor="agent-settings-name">Agent 名称</Label>
                   <Input
-                    aria-invalid={nameError ? true : undefined}
+                    aria-invalid={nameError || form.name.length > agentNameMaxLength ? true : undefined}
+                    className={cn(
+                      form.name.length > agentNameMaxLength
+                        && "border-destructive focus-visible:border-destructive focus-visible:ring-destructive/15",
+                    )}
                     disabled={isEditing || controlsDisabled}
                     id="agent-settings-name"
-                    onBlur={() =>
-                      updateForm("name", clipInputValue(form.name, agentNameMaxLength))
-                    }
                     onChange={(event) => updateForm("name", event.target.value)}
                     placeholder="请输入 Agent 名称"
                     value={form.name}
                   />
-                  {nameError ? (
+                  <TextCounter maxLength={agentNameMaxLength} value={form.name} />
+                  {nameError || form.name.length > agentNameMaxLength ? (
                     <p className="text-xs text-destructive" role="alert">
-                      {nameError}
+                      {form.name.length > agentNameMaxLength
+                        ? `Agent 名称不能超过${agentNameMaxLength}字`
+                        : nameError}
                     </p>
                   ) : null}
                 </div>
@@ -1419,8 +1429,13 @@ function OptionChipGroup({
 }
 
 function TextCounter({ maxLength, value }: { maxLength: number; value: string }) {
+  const tooLong = value.length > maxLength;
+
   return (
-    <div className="mt-1 text-right text-xs tabular-nums text-muted-foreground">
+    <div className={cn(
+      "mt-1 text-right text-xs tabular-nums text-muted-foreground",
+      tooLong && "text-destructive",
+    )}>
       {value.length}/{maxLength}
     </div>
   );
@@ -1839,9 +1854,12 @@ function RenameAgentDialog({
             <Input
               aria-label="Agent 名称"
               aria-invalid={error ? true : undefined}
+              className={cn(
+                name.length > agentNameMaxLength
+                  && "border-destructive focus-visible:border-destructive focus-visible:ring-destructive/15",
+              )}
               disabled={disabled}
               id="agent-rename-name"
-              onBlur={() => onChange(clipInputValue(name, agentNameMaxLength))}
               onChange={(event) => onChange(event.target.value)}
               placeholder="请输入 Agent 名称"
               value={name}
@@ -1973,9 +1991,9 @@ function buildCreatePayload(
   skills: readonly AgentSkillResource[],
 ) {
   const settingsPayload = buildSettingsSavePayload(form, knowledgeBases, skills);
-  const name = clipInputValue(form.name, agentNameMaxLength).trim();
+  const name = form.name.trim();
 
-  if (!settingsPayload || !name) {
+  if (!settingsPayload || !name || name.length > agentNameMaxLength) {
     return null;
   }
 

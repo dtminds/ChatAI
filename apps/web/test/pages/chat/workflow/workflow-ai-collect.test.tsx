@@ -117,7 +117,6 @@ describe("workflow AI Collect", () => {
     expect(fieldName).toHaveValue("订单号");
     await user.clear(fieldName);
     await user.type(fieldName, "交易单号");
-    fireEvent.blur(fieldName);
     expect(onNodeChange).toHaveBeenLastCalledWith(expect.objectContaining({
       fields: [expect.objectContaining({ name: "交易单号" })],
     }));
@@ -169,7 +168,7 @@ describe("workflow AI Collect", () => {
     expect(screen.getByRole("button", { name: "从模板选择" })).toBeDisabled();
   });
 
-  it("allows typing a field name beyond 10 characters and trims after blur", async () => {
+  it("keeps field validation in sync while typing and marks an overlong name invalid", async () => {
     const user = userEvent.setup();
     const onNodeChange = vi.fn();
     const collect = createAiCollectNode({
@@ -189,14 +188,17 @@ describe("workflow AI Collect", () => {
     await user.type(fieldName, "所在 chengshi");
 
     expect(fieldName).toHaveValue("所在 chengshi");
-    expect(onNodeChange).not.toHaveBeenCalled();
-
-    fireEvent.blur(fieldName);
-
-    expect(fieldName).toHaveValue("所在 chengsh");
+    expect(fieldName).toHaveAttribute("aria-invalid", "true");
+    expect(screen.getByText("11/10")).toBeInTheDocument();
     expect(onNodeChange).toHaveBeenLastCalledWith(expect.objectContaining({
-      fields: [expect.objectContaining({ name: "所在 chengsh" })],
+      fields: [expect.objectContaining({ name: "所在 chengshi" })],
     }));
+
+    await user.clear(fieldName);
+    await user.type(fieldName, "所在城市");
+
+    expect(fieldName).not.toHaveAttribute("aria-invalid");
+    expect(screen.getByText("4/10")).toBeInTheDocument();
   });
 
   it("enforces the 10-minute to 24-hour wait range and offers no day unit", async () => {

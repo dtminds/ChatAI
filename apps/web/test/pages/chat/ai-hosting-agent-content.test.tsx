@@ -1928,7 +1928,7 @@ describe("AI hosting agent content", () => {
       expect(screen.getByLabelText("Agent 名称")).not.toHaveAttribute("aria-invalid");
     });
 
-    it("allows typing an Agent name past 20 characters and clips on save", async () => {
+    it("keeps an overlong Agent name visible and rejects saving", async () => {
       const user = userEvent.setup();
       const nameInput = () => screen.getByLabelText("Agent 名称");
 
@@ -1941,13 +1941,9 @@ describe("AI hosting agent content", () => {
 
       await user.click(screen.getByRole("button", { name: "保存" }));
 
-      await waitFor(() => {
-        expect(agentService.createAiHostingAgent).toHaveBeenCalledWith(
-          expect.objectContaining({
-            name: "一二三四五六七八九十一二三四五六七八九十",
-          }),
-        );
-      });
+      expect(nameInput()).toHaveAttribute("aria-invalid", "true");
+      expect(screen.getByText("Agent 名称不能超过20字")).toBeInTheDocument();
+      expect(agentService.createAiHostingAgent).not.toHaveBeenCalled();
     });
 
     it("clears preview chat messages and input draft", async () => {
@@ -2429,7 +2425,7 @@ describe("AI hosting agent content", () => {
       expect(await screen.findByRole("heading", { level: 1, name: "护肤专家" })).toBeInTheDocument();
     });
 
-    it("clips a renamed Agent name to 20 characters when saving", async () => {
+    it("keeps an overlong renamed Agent name visible and rejects saving", async () => {
       const user = userEvent.setup();
 
       renderWithRoute(
@@ -2451,11 +2447,9 @@ describe("AI hosting agent content", () => {
 
       await user.click(within(dialog).getByRole("button", { name: "保存" }));
 
-      await waitFor(() => {
-        expect(agentService.renameAiHostingAgent).toHaveBeenCalledWith("301", {
-          name: "一二三四五六七八九十一二三四五六七八九十",
-        });
-      });
+      expect(nameInput).toHaveAttribute("aria-invalid", "true");
+      expect(within(dialog).getByText("Agent 名称不能超过20字")).toBeInTheDocument();
+      expect(agentService.renameAiHostingAgent).not.toHaveBeenCalled();
     });
 
     it("does not publish the previous draft when saving changes fails", async () => {

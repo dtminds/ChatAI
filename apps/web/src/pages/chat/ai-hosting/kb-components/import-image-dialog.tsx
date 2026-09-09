@@ -17,10 +17,10 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { clipInputValue } from "@/components/ui/commit-limit-input";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { isRequestError } from "@/lib/request";
+import { cn } from "@/lib/utils";
 import { fetchAiHostingQuota } from "@/pages/chat/ai-hosting/ai-hosting-quota-store";
 import { importKbImageDoc } from "@/pages/chat/ai-hosting/api/kb-doc-service";
 import {
@@ -75,6 +75,7 @@ export function ImportImageDialog({
   const [imageDescription, setImageDescription] = useState("");
   const [imageError, setImageError] = useState("");
   const [isCheckingImage, setIsCheckingImage] = useState(false);
+  const imageNameTooLong = imageName.length > IMAGE_KNOWLEDGE_NAME_MAX_LENGTH;
 
   useEffect(() => {
     isMountedRef.current = true;
@@ -182,14 +183,11 @@ export function ImportImageDialog({
   };
 
   const handleSubmit = () => {
-    if (!selectedImage) {
+    if (!selectedImage || imageNameTooLong) {
       return;
     }
 
-    const trimmedName = clipInputValue(
-      imageName,
-      IMAGE_KNOWLEDGE_NAME_MAX_LENGTH,
-    ).trim();
+    const trimmedName = imageName.trim();
 
     void runSubmit(async () => {
       try {
@@ -254,6 +252,7 @@ export function ImportImageDialog({
     selectedImage &&
       imageName.trim() &&
       imageDescription.trim() &&
+      !imageNameTooLong &&
       !isCheckingImage,
   );
 
@@ -368,22 +367,29 @@ export function ImportImageDialog({
             <RequiredLabel htmlFor="knowledge-image-name">知识名称</RequiredLabel>
             <div className="relative">
               <Input
-                className="pr-14"
+                aria-invalid={imageNameTooLong || undefined}
+                className={cn(
+                  "pr-14",
+                  imageNameTooLong && "border-destructive focus-visible:border-destructive focus-visible:ring-destructive/15",
+                )}
                 disabled={submitting}
                 id="knowledge-image-name"
-                onBlur={() =>
-                  setImageName(
-                    clipInputValue(imageName, IMAGE_KNOWLEDGE_NAME_MAX_LENGTH),
-                  )
-                }
                 onChange={(event) => setImageName(event.target.value)}
                 placeholder="请输入知识名称"
                 value={imageName}
               />
-              <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">
+              <span className={cn(
+                "pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-xs tabular-nums text-muted-foreground",
+                imageNameTooLong && "text-destructive",
+              )}>
                 {imageName.length}/{IMAGE_KNOWLEDGE_NAME_MAX_LENGTH}
               </span>
             </div>
+            {imageNameTooLong ? (
+              <p className="text-xs text-destructive" role="alert">
+                知识名称不能超过16字
+              </p>
+            ) : null}
           </div>
 
           <div className="space-y-2.5">

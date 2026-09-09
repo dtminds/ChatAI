@@ -1543,6 +1543,33 @@ describe("QuickReplyPanel", () => {
     expect(screen.queryByText("请填写话术内容或添加附件")).not.toBeInTheDocument();
   });
 
+  it("keeps an overlong short title visible and rejects saving", async () => {
+    const user = userEvent.setup();
+    const onSubmit = vi.fn();
+
+    render(
+      <QuickReplyFormDialog
+        categories={categories}
+        initialValues={{
+          ...createQuickReplyInitialValues(),
+          contentText: "您好",
+        }}
+        onOpenChange={vi.fn()}
+        onSubmit={onSubmit}
+        open
+      />,
+    );
+
+    const titleInput = screen.getByPlaceholderText("请输入短标题，10字以内");
+    await user.type(titleInput, "一二三四五六七八九十一");
+    await user.click(screen.getByRole("button", { name: "保存" }));
+
+    expect(titleInput).toHaveValue("一二三四五六七八九十一");
+    expect(titleInput).toHaveAttribute("aria-invalid", "true");
+    expect(screen.getByText("短标题不能超过10字")).toBeInTheDocument();
+    expect(onSubmit).not.toHaveBeenCalled();
+  });
+
   it("clears empty quick reply validation when adding an attachment", async () => {
     const user = userEvent.setup();
 

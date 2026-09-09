@@ -203,7 +203,7 @@ describe("ImportImageDialog", () => {
     expect(screen.getByRole("button", { name: "确认提交" })).toBeDisabled();
   });
 
-  it("allows typing an image knowledge name past 16 characters and clips on submit", async () => {
+  it("keeps an overlong image knowledge name visible and rejects submit", async () => {
     const user = userEvent.setup();
     const imageFile = new File(["image"], "商品主图.png", { type: "image/png" });
 
@@ -220,15 +220,10 @@ describe("ImportImageDialog", () => {
     expect(nameInput).toHaveValue("一二三四五六七八九十一二三四五六甲");
 
     await user.type(screen.getByLabelText(/图片描述/), "晨间护肤套装商品主图");
-    await user.click(screen.getByRole("button", { name: "确认提交" }));
-
-    await waitFor(() => {
-      expect(importKbImageDoc).toHaveBeenCalledWith(
-        expect.objectContaining({
-          name: "一二三四五六七八九十一二三四五六",
-        }),
-      );
-    });
+    expect(nameInput).toHaveAttribute("aria-invalid", "true");
+    expect(screen.getByText("知识名称不能超过16字")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "确认提交" })).toBeDisabled();
+    expect(importKbImageDoc).not.toHaveBeenCalled();
   });
 });
 

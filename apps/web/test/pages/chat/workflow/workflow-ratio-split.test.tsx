@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { useState } from "react";
 import { HierarchySquare08Icon } from "@hugeicons/core-free-icons";
@@ -77,7 +77,7 @@ describe("workflow Ratio Split node", () => {
     expect(screen.getByRole("button", { name: "添加分组" })).toBeDisabled();
   });
 
-  it("limits group names to ten characters", async () => {
+  it("keeps overlong group names visible and marks them invalid", async () => {
     const user = userEvent.setup();
     render(<StatefulRatioSplitConfig />);
 
@@ -86,8 +86,8 @@ describe("workflow Ratio Split node", () => {
     await user.type(firstGroupName, "一二三四五六七八九十一");
 
     expect(firstGroupName).toHaveValue("一二三四五六七八九十一");
-    fireEvent.blur(firstGroupName);
-    expect(firstGroupName).toHaveValue("一二三四五六七八九十");
+    expect(firstGroupName).toHaveAttribute("aria-invalid", "true");
+    expect(screen.getByText("11/10")).toBeInTheDocument();
   });
 
   it("confirms deletion when the removable group already has a downstream edge", async () => {

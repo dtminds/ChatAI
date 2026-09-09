@@ -23,7 +23,7 @@ describe("workflow node settings chrome", () => {
       .toBeInTheDocument();
   });
 
-  it("renames a node from the settings menu and limits names to 10 characters", async () => {
+  it("keeps an overlong settings node name visible and rejects Enter until it is fixed", async () => {
     const user = userEvent.setup();
     const onRenameNode = vi.fn();
     render(<RenamePanelFixture onRenameNode={onRenameNode} />);
@@ -35,6 +35,14 @@ describe("workflow node settings chrome", () => {
     const nameInput = await within(panel).findByRole("textbox", { name: "节点名称" });
     await user.clear(nameInput);
     await user.type(nameInput, "12345678901{Enter}");
+
+    expect(nameInput).toHaveValue("12345678901");
+    expect(nameInput).toHaveAttribute("aria-invalid", "true");
+    expect(within(panel).getByText("11/10")).toBeInTheDocument();
+    expect(onRenameNode).not.toHaveBeenCalled();
+
+    await user.clear(nameInput);
+    await user.type(nameInput, "1234567890{Enter}");
 
     expect(onRenameNode).toHaveBeenCalledWith("wait-2d", "1234567890");
     expect(within(panel).getByRole("heading", { name: "1234567890" })).toBeInTheDocument();

@@ -6,4 +6,4 @@ export const COMPOSER_TEXT_MAX_LENGTH = 1000;
 export const MESSAGE_REVOKE_WINDOW_MS = 180 * 1000;
 
 export const SOP_AVATAR_ORNAMENT_URL =
-  "https://b5.bokr.com.cn/dist/ui/0909/sop_avatar.png!230x230.webp";
+  "https://b5.bokr.com.cn/dist/ui/0909/sop_avatar2.png!230x230.webp";

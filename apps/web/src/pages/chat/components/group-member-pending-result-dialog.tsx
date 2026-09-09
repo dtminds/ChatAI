@@ -2,7 +2,6 @@ import {
   AlertDialog,
   AlertDialogAction,
   AlertDialogContent,
-  AlertDialogDescription,
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
@@ -29,7 +28,6 @@ export function GroupMemberPendingResultDialog({
       <AlertDialogContent className="max-w-md">
         <AlertDialogHeader>
           <AlertDialogTitle>{PENDING_RESULT_COPY[kind]}</AlertDialogTitle>
-          <AlertDialogDescription>并不能保证执行成功。</AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
           <AlertDialogAction>我知道了</AlertDialogAction>

@@ -1928,16 +1928,16 @@ describe("AI hosting agent content", () => {
       expect(screen.getByLabelText("Agent 名称")).not.toHaveAttribute("aria-invalid");
     });
 
-    it("keeps an overlong Agent name visible and rejects saving", async () => {
+    it("rejects an Agent name whose raw input exceeds the limit", async () => {
       const user = userEvent.setup();
       const nameInput = () => screen.getByLabelText("Agent 名称");
 
       renderWithRoute("/chat/ai-hosting/agents/new", <AgentSettingsEditor />);
 
       await screen.findByRole("heading", { level: 1, name: "创建 Agent" });
-      await user.type(nameInput(), "一二三四五六七八九十一二三四五六七八九十甲");
+      await user.type(nameInput(), "一二三四五六七八九十一二三四五六七八九十 ");
 
-      expect(nameInput()).toHaveValue("一二三四五六七八九十一二三四五六七八九十甲");
+      expect(nameInput()).toHaveValue("一二三四五六七八九十一二三四五六七八九十 ");
       expect(nameInput()).toHaveAttribute("aria-invalid", "true");
       expect(screen.getByText("21/20")).toBeInTheDocument();
       expect(screen.queryByText("Agent 名称不能超过20字")).not.toBeInTheDocument();

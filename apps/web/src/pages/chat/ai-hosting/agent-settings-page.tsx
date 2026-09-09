@@ -1998,7 +1998,7 @@ function buildCreatePayload(
   const settingsPayload = buildSettingsSavePayload(form, knowledgeBases, skills);
   const name = form.name.trim();
 
-  if (!settingsPayload || !name || name.length > agentNameMaxLength) {
+  if (!settingsPayload || !name || form.name.length > agentNameMaxLength) {
     return null;
   }
 

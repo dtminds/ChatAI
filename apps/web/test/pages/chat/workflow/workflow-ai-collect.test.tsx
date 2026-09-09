@@ -13,6 +13,7 @@ import {
   AI_COLLECT_COMPLETED_HANDLE_ID,
   AI_COLLECT_FIELD_MAX_COUNT,
   AI_COLLECT_INCOMPLETE_HANDLE_ID,
+  getAiCollectStatus,
   normalizeAiCollectTimeout,
 } from "@/pages/chat/workflow/nodes/ai-collect/config";
 import { AiCollectNodeBody } from "@/pages/chat/workflow/nodes/ai-collect/body";
@@ -310,6 +311,22 @@ describe("workflow AI Collect", () => {
 
     expect(issueCodes).toContain("ai-collect-field-name-required");
     expect(issueCodes).not.toContain("ai-collect-field-name-duplicate");
+  });
+
+  it("blocks publishing and warns when a field name exceeds the limit", () => {
+    const collect = createAiCollectNode({
+      fields: [{
+        id: "field-order",
+        instruction: "提取订单号",
+        name: "一二三四五六七八九十一",
+        type: "text",
+      }],
+    });
+
+    expect(getAiCollectStatus(collect.data)).toBe("warning");
+    expect(validateWorkflowNodeConfig(collect, [collect], [])).toContainEqual(
+      expect.objectContaining({ code: "ai-collect-field-name-too-long" }),
+    );
   });
 
   it("derives warning status when a configured input becomes unavailable", () => {

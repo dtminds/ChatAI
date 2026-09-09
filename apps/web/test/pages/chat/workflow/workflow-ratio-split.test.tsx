@@ -9,6 +9,7 @@ import { createDefaultNodeData, getNodeDefinition } from "@/pages/chat/workflow/
 import { RatioSplitConfig } from "@/pages/chat/workflow/nodes/ratio-split/panel";
 import {
   addWorkflowRatioSplitGroup,
+  isWorkflowRatioSplitLocallyComplete,
   removeWorkflowRatioSplitGroup,
 } from "@/pages/chat/workflow/nodes/ratio-split/groups";
 import type {
@@ -16,6 +17,7 @@ import type {
   WorkflowNode,
   WorkflowNodeConfigPatch,
 } from "@/pages/chat/workflow/types";
+import { validateWorkflowNodeConfig } from "@/pages/chat/workflow/validation/workflow-validation";
 
 describe("workflow Ratio Split node", () => {
   it("registers the requested visual and two complete default groups", () => {
@@ -88,6 +90,22 @@ describe("workflow Ratio Split node", () => {
     expect(firstGroupName).toHaveValue("一二三四五六七八九十一");
     expect(firstGroupName).toHaveAttribute("aria-invalid", "true");
     expect(screen.getByText("11/10")).toBeInTheDocument();
+  });
+
+  it("blocks publishing and warns when a group name exceeds the limit", () => {
+    const node = createRatioSplitNode();
+    const groups = node.data.groups.map((group, index) => index === 0
+      ? { ...group, label: "一二三四五六七八九十一" }
+      : group);
+    const invalidNode: WorkflowNode<"ratio-split"> = {
+      ...node,
+      data: { ...node.data, groups },
+    };
+
+    expect(isWorkflowRatioSplitLocallyComplete(groups)).toBe(false);
+    expect(validateWorkflowNodeConfig(invalidNode, [invalidNode], [])).toContainEqual(
+      expect.objectContaining({ code: "ratio-split-label-too-long" }),
+    );
   });
 
   it("confirms deletion when the removable group already has a downstream edge", async () => {

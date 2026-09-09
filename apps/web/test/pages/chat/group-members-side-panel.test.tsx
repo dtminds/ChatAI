@@ -654,8 +654,17 @@ describe("GroupMembersSidePanel", () => {
       });
     });
     expect(onRefresh).toHaveBeenCalledTimes(1);
-    expect(toast.success).toHaveBeenCalledWith("已添加，请稍后刷新查看");
+    expect(toast.success).not.toHaveBeenCalled();
     expect(screen.queryByRole("heading", { name: "添加群成员" })).not.toBeInTheDocument();
+    expect(
+      await screen.findByRole("alertdialog", { name: /已发出入群邀请/ }),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "我知道了" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "取消" })).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "我知道了" }));
+    expect(screen.queryByText(/已发起移出群聊请求/)).not.toBeInTheDocument();
+    expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
   });
 
   it("keeps the add-members dialog open when inviting members fails", async () => {
@@ -905,9 +914,93 @@ describe("GroupMembersSidePanel", () => {
         kickOutThirdUserId: "member-xiaoming",
       });
     });
-    expect(toast.success).toHaveBeenCalledWith("已移出，请稍后刷新查看");
+    expect(toast.success).not.toHaveBeenCalled();
     expect(onRefresh).toHaveBeenCalledTimes(1);
+    expect(
+      await screen.findByRole("alertdialog", { name: /已发起移出群聊请求/ }),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "我知道了" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "确定" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "取消" })).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "我知道了" }));
+    expect(screen.queryByText(/已发出入群邀请/)).not.toBeInTheDocument();
     expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
+  });
+
+  it("keeps kick success copy on close and shows pull copy the next time", async () => {
+    const user = userEvent.setup();
+    const getCustomers = vi.fn().mockResolvedValue(
+      createCustomerPage([createCustomerSummary("external-wang", "王二")]),
+    );
+    const kickGroupMember = vi.fn().mockResolvedValue({ conversationId: "conv-004" });
+    const pullGroupMembers = vi.fn().mockResolvedValue({ conversationId: "conv-004" });
+    setWorkbenchService({
+      ...createMockWorkbenchService(),
+      getCustomers,
+      kickGroupMember,
+      pullGroupMembers,
+    });
+
+    render(
+      <GroupMembersSidePanel
+        canAddMembers
+        conversationId="conv-004"
+        currentSeatThirdUserId="seat-owner"
+        groupMembers={[
+          {
+            avatarUrl: "",
+            displayName: "群主席位",
+            id: "seat-owner",
+            isReceptionAccount: true,
+            type: GROUP_MEMBER_TYPE.OWNER,
+          },
+          {
+            avatarUrl: "",
+            displayName: "小明",
+            id: "member-xiaoming",
+            type: GROUP_MEMBER_TYPE.NORMAL,
+          },
+        ]}
+        isLoading={false}
+        onRefresh={vi.fn()}
+        seatId="seat-001"
+      />,
+    );
+
+    await user.hover(screen.getByRole("button", { name: "查看 小明 的好友关系" }));
+    await user.click(await screen.findByRole("button", { name: "将 小明 移出群聊" }));
+    await user.click(screen.getByRole("button", { name: "确定" }));
+
+    expect(
+      await screen.findByRole("alertdialog", { name: /已发起移出群聊请求/ }),
+    ).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "我知道了" }));
+    expect(screen.queryByText(/已发出入群邀请/)).not.toBeInTheDocument();
+    expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "添加群成员" }));
+    await user.click(await screen.findByRole("checkbox", { name: "选择 王二" }));
+    await user.click(screen.getByRole("button", { name: "确认" }));
+
+    expect(
+      await screen.findByRole("alertdialog", { name: /已发出入群邀请/ }),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/已发起移出群聊请求/)).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "我知道了" }));
+    expect(screen.queryByText(/已发起移出群聊请求/)).not.toBeInTheDocument();
+    expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
+
+    await user.hover(screen.getByRole("button", { name: "查看 小明 的好友关系" }));
+    await user.click(await screen.findByRole("button", { name: "将 小明 移出群聊" }));
+    await user.click(screen.getByRole("button", { name: "确定" }));
+
+    expect(
+      await screen.findByRole("alertdialog", { name: /已发起移出群聊请求/ }),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/已发出入群邀请/)).not.toBeInTheDocument();
   });
 
   it("keeps the remove dialog open when kicking a member fails", async () => {

@@ -350,7 +350,6 @@ export function AddGroupMembersDialog({
         ...(contactThirdUserIds.length ? { contactThirdUserIds } : {}),
         ...(thirdUserIds.length ? { thirdUserIds } : {}),
       });
-      toast.success("已添加，请稍后刷新查看");
       onAdded?.();
       setIsSubmitting(false);
       onOpenChange(false);

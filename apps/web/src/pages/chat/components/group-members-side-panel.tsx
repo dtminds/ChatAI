@@ -23,6 +23,10 @@ import { cn } from "@/lib/utils";
 import { getWorkbenchService } from "@/pages/chat/api/workbench-service";
 import { AddGroupMembersDialog } from "@/pages/chat/components/add-group-members-dialog";
 import { CustomerSeatRelationList } from "@/pages/chat/components/customer-seat-relation-list";
+import {
+  GroupMemberPendingResultDialog,
+  type GroupMemberPendingResultKind,
+} from "@/pages/chat/components/group-member-pending-result-dialog";
 import { RemoveGroupMemberDialog } from "@/pages/chat/components/remove-group-member-dialog";
 import { DelayedHoverPopover } from "@/pages/chat/components/delayed-hover-popover";
 import type {
@@ -70,6 +74,10 @@ export function GroupMembersSidePanel({
 }) {
   const [isAddOpen, setIsAddOpen] = useState(false);
   const [isSearchOpen, setIsSearchOpen] = useState(false);
+  // Close only toggles open. Clearing kind here would flash pull copy during the exit animation.
+  const [pendingResultKind, setPendingResultKind] =
+    useState<GroupMemberPendingResultKind>("pull");
+  const [isPendingResultOpen, setIsPendingResultOpen] = useState(false);
   const [memberToRemove, setMemberToRemove] = useState<GroupMember | null>(null);
   const [searchKeyword, setSearchKeyword] = useState("");
   const existingMemberIds = useMemo(
@@ -118,6 +126,12 @@ export function GroupMembersSidePanel({
     },
     [filteredGroupMembers],
   );
+
+  function handleMembersActionAccepted(kind: GroupMemberPendingResultKind) {
+    onRefresh();
+    setPendingResultKind(kind);
+    setIsPendingResultOpen(true);
+  }
 
   return (
     <>
@@ -234,7 +248,7 @@ export function GroupMembersSidePanel({
           conversationId={conversationId}
           currentSeatThirdUserId={currentSeatThirdUserId}
           excludeMemberIds={existingMemberIds}
-          onAdded={onRefresh}
+          onAdded={() => handleMembersActionAccepted("pull")}
           onOpenChange={setIsAddOpen}
           open={isAddOpen}
           seatId={seatId}
@@ -246,8 +260,13 @@ export function GroupMembersSidePanel({
         onOpenChange={(open) => {
           if (!open) setMemberToRemove(null);
         }}
-        onRemoved={onRefresh}
+        onRemoved={() => handleMembersActionAccepted("kick")}
         open={memberToRemove !== null}
+      />
+      <GroupMemberPendingResultDialog
+        kind={pendingResultKind}
+        onOpenChange={setIsPendingResultOpen}
+        open={isPendingResultOpen}
       />
     </>
   );

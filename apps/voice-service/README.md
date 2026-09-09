@@ -94,5 +94,5 @@ artifacts/voice-service/voice-service-scf.zip
 Full deployment notes:
 
 ```txt
-docs/superpowers/specs/2026-05-25-voice-service-scf-deployment.md
+docs/specs/2026-05-25-voice-service-scf-deployment.md
 ```

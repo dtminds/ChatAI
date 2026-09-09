@@ -1,14 +1,14 @@
 # 营销 Workflow 当前实现与 Java 协作落地方案
 
-> Revision 运行语义更新：本文中“已运行 Run 始终固定使用进入时 Revision”的描述已由 [Workflow 在途 Run 前向 Revision 路由设计](./2026-08-14-workflow-live-revision-routing-design.md) 替代。Java 与 Node 的职责边界、不可变 Revision、Trigger Binding 和 Capability Contract 继续有效。
+> Revision 运行语义更新：本文中“已运行 Run 始终固定使用进入时 Revision”的描述已由 [Workflow 在途 Run 前向 Revision 路由设计](./2026-08-14-workflow-live-revision-routing.md) 替代。Java 与 Node 的职责边界、不可变 Revision、Trigger Binding 和 Capability Contract 继续有效。
 
 - 日期：2026-08-05
 - 最后更新：2026-08-14
 - 状态：Meeting Draft
 - 适用对象：Java 平台团队、ChatAI Node 团队、产品与测试
 - 会议目标：让团队快速理解当前 Workflow 已完成的设计和实现，确定 Java / Node 边界，并形成可以立即领取的开发任务
-- 关联文档：[营销 Workflow 1.0 执行引擎设计](./2026-07-10-marketing-workflow-execution-engine-design.md)
-- 最新入口契约：[Workflow Interest Reader 与入口事件身份契约](./2026-08-11-workflow-interest-reader-design.md)
+- 关联文档：[营销 Workflow 1.0 执行引擎设计](./2026-07-10-marketing-workflow-execution-engine.md)
+- 最新入口契约：[Workflow Interest Reader 与入口事件身份契约](./2026-08-11-workflow-interest-reader.md)
 
 > **2026-08-11 确认更新：**首批企微事件不再按 Subject Type 拆成多条消息。`contact.friend_added`、`contact.tag_added` 各自只生产一条源事件，携带 `workUserId`、`externalUserId` 以及可用的 `seatId`、`thirdExternalUserId`；Node 匹配 Binding 后再确定每个 Run 的唯一 Subject。本文中旧的“Entry Event 顶层固定一个 `subjectType + subjectId`”“Java 按 `subjectType + eventType` 查询”“同一事实按 Subject 投影多条消息”“Partition Key 固定为 `uid:subjectType:subjectId`”等入口细节，均由最新入口契约替代。Java 实现 Interest Reader 时必须以该文档为准。
 
@@ -535,7 +535,7 @@ Node 在以下边界查询权益：
 
 ## 6. 标准事件契约
 
-> 本节描述首批事件的当前公共边界。逐事件字段、Interest Reader SQL 和 Filter 规则以 [Workflow Interest Reader 与入口事件身份契约](./2026-08-11-workflow-interest-reader-design.md) 为准。
+> 本节描述首批事件的当前公共边界。逐事件字段、Interest Reader SQL 和 Filter 规则以 [Workflow Interest Reader 与入口事件身份契约](./2026-08-11-workflow-interest-reader.md) 为准。
 
 ### 6.1 目标事件信封
 
@@ -669,7 +669,7 @@ Pulsar Message ID 只用于识别一次传输，不能代替业务 `eventId`。P
 
 Java 与 Node 当前共用 MySQL 实例，因此 1.0 不建设兴趣同步服务、缓存投影或注册 API。
 
-最终实施契约见 [Workflow Interest Reader 与入口事件身份契约](./2026-08-11-workflow-interest-reader-design.md)。本节只冻结架构边界：
+最终实施契约见 [Workflow Interest Reader 与入口事件身份契约](./2026-08-11-workflow-interest-reader.md)。本节只冻结架构边界：
 
 - Java 只读 `workflow_definition`、`workflow_trigger_binding` 和 `workflow_event_subscription` 三张表。
 - 本期一个 Workflow 只能选择一个 Start Event；发布契约和持久化仍使用 Binding 数组，为未来多事件保留扩展空间。

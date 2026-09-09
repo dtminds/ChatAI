@@ -87,7 +87,7 @@ Every node kind is registered through `WorkflowNodeDefinition<TKind>` and must p
 - optional data migration and sanitization
 - optional validation and output variables
 
-Draft/Execution Schema、当前 Draft Schema Version、持久化字段白名单和成熟度统一由 `packages/contracts/src/workflow/node-contract.ts` 管理。Draft 到 Execution 的唯一投影位于 `packages/workflow-engine/src/node-contract-registry.ts`，Web 节点 Definition 不生成 Execution Config。完整协议见 `docs/superpowers/specs/2026-08-11-workflow-node-contract-registry-design.md`。
+Draft/Execution Schema、当前 Draft Schema Version、持久化字段白名单和成熟度统一由 `packages/contracts/src/workflow/node-contract.ts` 管理。Draft 到 Execution 的唯一投影位于 `packages/workflow-engine/src/node-contract-registry.ts`，Web 节点 Definition 不生成 Execution Config。完整协议见 `docs/specs/2026-08-11-workflow-node-contract-registry.md`。
 
 Persisted node data always includes `kind` and `schemaVersion`. Runtime-only fields such as selection state, callbacks, hover state, insert menu state, and render z-index are stripped by hydration/export boundaries.
 

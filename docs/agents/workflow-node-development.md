@@ -66,7 +66,7 @@
 | Runtime | 在 `packages/workflow-runtime` 完成类型化命令投影、Context 解析、结果解码、生命周期、稳定 Execution Key、错误分类和 Live Revision 前向路由兼容检查。 |
 | Worker | 在 `apps/workflow-worker` 完成真实 Port / Adapter 组合、超时与取消传播、错误策略和生产启动组合校验；只有生产执行链路完整才允许 runtime-ready。 |
 | Backend | 仅在编辑器资源、批量回显、发布校验或 Java 代理确有需要时修改 `apps/backend`；遵守数据归属、批量和跨层契约规则。 |
-| Documentation | Java 协作节点在 `docs/superpowers/specs` 维护请求、响应、幂等、错误和上线前置条件；变更既有 Runtime 语义时同步对应 Spec / ADR / Context。 |
+| Documentation | Java 协作节点在 `docs/specs` 维护请求、响应、幂等、错误和上线前置条件；变更既有 Runtime 语义时同步对应 Spec / ADR / Context。 |
 
 新增 Node Kind 时，至少搜索并核对共享 Kind 联合、Contract Registry、Compiler、Web Node Registry、默认 Draft、设置面板、输出定义、Runtime Dispatch、Worker Composition、数据页标题映射和测试夹具。以实际引用搜索结果为准，不维护另一份容易过期的文件清单。
 

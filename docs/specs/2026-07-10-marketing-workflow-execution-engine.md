@@ -1,6 +1,6 @@
 # 营销 Workflow 1.0 执行引擎设计
 
-> 后续决策更新：本文中“Run 始终固定在进入时 Revision”的决策已由 [Workflow 在途 Run 前向 Revision 路由设计](./2026-08-14-workflow-live-revision-routing-design.md) 替代；发布检查、首次发布与启用规则已由 [Issue #607](https://github.com/dtminds/ChatAI/issues/607) 的 Workflow 发布审核与独立发布方案替代。
+> 后续决策更新：本文中“Run 始终固定在进入时 Revision”的决策已由 [Workflow 在途 Run 前向 Revision 路由设计](./2026-08-14-workflow-live-revision-routing.md) 替代；发布检查、首次发布与启用规则已由 [Issue #607](https://github.com/dtminds/ChatAI/issues/607) 的 Workflow 发布审核与独立发布方案替代。
 
 - 日期：2026-07-10
 - 状态：Draft
@@ -54,7 +54,7 @@ Node.js 24 LTS + TypeScript
 - Redis 不作为 1.0 必需依赖；即使复用现有 Redis，也只能用于缓存或辅助限流，不能参与正确性保证。
 - 长期等待保存为数据库中的 `due_at`，不使用进程内 Timer、Redis ZSet、BullMQ delayed job 或 MQ 长延迟消息作为事实来源。
 - 采用 at-least-once 投递与端到端幂等，不承诺 exactly-once。
-- 首次启用产生 Revision 1；首次启用后只有执行语义变化的发布才产生新的不可变 Revision。Run 的当前节点固定使用到达该节点时的 Revision，节点完成后按最新发布 Revision 解析下一跳，详见 [Workflow 在途 Run 前向 Revision 路由设计](./2026-08-14-workflow-live-revision-routing-design.md)。
+- 首次启用产生 Revision 1；首次启用后只有执行语义变化的发布才产生新的不可变 Revision。Run 的当前节点固定使用到达该节点时的 Revision，节点完成后按最新发布 Revision 解析下一跳，详见 [Workflow 在途 Run 前向 Revision 路由设计](./2026-08-14-workflow-live-revision-routing.md)。
 - 1.0 不引入 Temporal、Inngest、CKafka、ClickHouse 或专用归档服务。
 
 ## 3. 目标与非目标
@@ -74,7 +74,7 @@ Node.js 24 LTS + TypeScript
 
 - 通用 BPMN 或任意代码工作流。
 - 并行分支、Join、循环、子流程、补偿事务和人工审批。
-- 发布时批量迁移或重写整个运行中实例到新 Revision；节点边界上的前向路由按 [Workflow 在途 Run 前向 Revision 路由设计](./2026-08-14-workflow-live-revision-routing-design.md) 执行，不属于此处的批量迁移。
+- 发布时批量迁移或重写整个运行中实例到新 Revision；节点边界上的前向路由按 [Workflow 在途 Run 前向 Revision 路由设计](./2026-08-14-workflow-live-revision-routing.md) 执行，不属于此处的批量迁移。
 - 毫秒级营销调度。
 - 使用 MQ 或 Redis 实现 exactly-once。
 - 1.0 建设统一客户事件平台或实时数仓。
@@ -303,7 +303,7 @@ Viewport、坐标、卡片样式、Metric、Summary、图标和 UI Runtime 回�
 - Stopped 或已逻辑删除的 Workflow 不允许继续发布。
 - Revision 发布后不可修改，只能发布下一 Revision。
 - 新进入客户使用当前已发布 Revision。
-- 已有 Run 的当前节点保持到达该节点时的 Revision；节点完成后按最新发布 Revision 解析下一跳，不在发布时批量迁移 Run。详见 [Workflow 在途 Run 前向 Revision 路由设计](./2026-08-14-workflow-live-revision-routing-design.md)。
+- 已有 Run 的当前节点保持到达该节点时的 Revision；节点完成后按最新发布 Revision 解析下一跳，不在发布时批量迁移 Run。详见 [Workflow 在途 Run 前向 Revision 路由设计](./2026-08-14-workflow-live-revision-routing.md)。
 - 发布使用乐观锁，客户端必须提交其读取到的草稿版本或 Revision 条件。
 - DSL Schema Version 与 Node Schema Version 分开演进。
 

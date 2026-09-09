@@ -2,7 +2,7 @@
 
 - 状态：已确认首期范围，随独立观测页落地
 - 日期：2026-08-28
-- 关联：`docs/superpowers/specs/2026-07-10-marketing-workflow-execution-engine-design.md`（§18 可观测性、§19 安全与租户隔离）
+- 关联：`docs/specs/2026-07-10-marketing-workflow-execution-engine.md`（§18 可观测性、§19 安全与租户隔离）
 - 范围说明：本方案不新增、不修改任何 Workflow 节点，不触及节点运行语义；`docs/agents/workflow-node-development.md` 的 Readiness Gate 对本方案 N/A。实现涉及列表、分页、数据库、Worker 和跨层契约，遵循 `CODING_STANDARDS.md`。
 
 ## 1. 背景与目标

@@ -3,7 +3,7 @@
 - 日期：2026-06-01
 - 状态：Draft
 - 适用范围：AI 客服工作台会话洞察频道页面、导航、关键交互和前端验收
-- 关联底座：[2026-06-01-conversation-insights-design.md](./2026-06-01-conversation-insights-design.md)
+- 关联底座：[2026-06-01-conversation-insights.md](./2026-06-01-conversation-insights.md)
 - 目标入口：`/chat/insights`
 
 ## 1. 背景

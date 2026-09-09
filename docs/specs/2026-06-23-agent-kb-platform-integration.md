@@ -8,7 +8,7 @@
 2. **写路径**：创建/删除文档、手动增删改切片由 Node 代理调用 Java `third-internal` 接口；Node **不直接 INSERT/UPDATE/DELETE** 平台表。**例外**：知识库集创建（`POST /api/server/ai-hosting/kbs`）由 Node 直写 `xy_wap_embed_agent_kb`（见下文「写路径例外」）。
 3. **上传路径**：文件仍由前端 COS/TOS 直传（`type: kb` 凭证），创建文档时只传 `docUrl` + 元信息。
 
-本文是 [kb 文档导入 design](./2026-06-23-knowledge-document-import-design.md) 的上位 spec：导入交互、策略语义映射、TOS 直传细节仍以该文档为准；本文补齐 **全量读写边界、表字段映射、Chunk 管理、Doc 删除、列表读接口**。
+本文是 [kb 文档导入 design](./2026-06-23-knowledge-document-import.md) 的上位 spec：导入交互、策略语义映射、TOS 直传细节仍以该文档为准；本文补齐 **全量读写边界、表字段映射、Chunk 管理、Doc 删除、列表读接口**。
 
 ## 命名与模块边界
 
@@ -29,7 +29,7 @@
 | `addMockKnowledgeRecord` 等 | `addMockKbDoc` 等 |
 | `knowledge-documents` | `kb-docs` |
 
-**例外（仅隔离说明，不扩展、不复用）**：智能回复遗留 `knowledge-*` 路由与 `workbench-java-client` 内 knowledge 方法；已发布 spec 文件名 `knowledge-document-import-design.md` 暂保留，新文档统一 `kb-*` 命名。
+**例外（仅隔离说明，不扩展、不复用）**：智能回复遗留 `knowledge-*` 路由与 `workbench-java-client` 内 knowledge 方法；既有文档 `2026-06-23-knowledge-document-import.md` 保留 knowledge 主题名，新文档统一 `kb-*` 命名。
 
 **路由前缀**
 
@@ -600,5 +600,5 @@ Envelope 见上文「响应规范 · Java 内部接口」：`{ success, error, e
 
 | 文档 | 关系 |
 | --- | --- |
-| [kb 文档导入 design](./2026-06-23-knowledge-document-import-design.md)（文件名暂保留 `knowledge`） | 文档导入 UI、parseMode、TOS 直传、策略 8 组映射；P0 mock 章节在 PR2 完成后作废 |
+| [kb 文档导入 design](./2026-06-23-knowledge-document-import.md)（文件名暂保留 `knowledge`） | 文档导入 UI、parseMode、TOS 直传、策略 8 组映射；P0 mock 章节在 PR2 完成后作废 |
 | 本文 | 全平台读表 + 全量写接口 + Chunk 管理 + PR 拆分 |

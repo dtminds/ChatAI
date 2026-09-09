@@ -4,7 +4,7 @@
 - 状态：已实现 / 待 Review
 - 范围：用户记忆 Worker 的候选客户识别、客户消息取数和消息 Token 裁剪
 - 现状代码：`apps/backend/src/modules/ai-hosting/user-memory/user-memory-worker.ts`
-- 冲突处理：本文件与 `docs/specs/user-memory.md`、既有实施计划中的候选查询或消息范围描述冲突时，以本文件为准
+- 冲突处理：本文件与 `docs/specs/2026-08-05-user-memory.md`、既有实施计划中的候选查询或消息范围描述冲突时，以本文件为准
 
 本文是独立 handoff 文档。Review 和开发不得依赖此前聊天记录补充设计。
 
@@ -183,7 +183,7 @@ WHERE uid = :uid
 
 ### 5.3 人工更新时间不参与运行时判断
 
-本文件废除 `docs/specs/user-memory.md` §4.6 的准备期来源会话屏障，也不引入消息级人工时间屏障：
+本文件废除 `docs/specs/2026-08-05-user-memory.md` §4.6 的准备期来源会话屏障，也不引入消息级人工时间屏障：
 
 ```text
 废除：排除 last_message_at <= manual_updated_at 的来源会话

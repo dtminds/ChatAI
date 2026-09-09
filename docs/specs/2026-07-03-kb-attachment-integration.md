@@ -9,7 +9,7 @@
 3. **字段承载**：切片新增 `attachmentType` + `attachmentContent`（Object），用于挂载图片 / 视频 / 文件 / 链接 / 小程序。
 4. **批量删除**：**首版不做**；无专用批量接口、不做删除后轮询；后续若做，仍为循环单删 + 刷新列表（单次最多 20 条）。
 
-本文是 [AI 托管知识库平台集成设计](./2026-06-23-agent-kb-platform-integration-design.md) 的增量 spec，仅覆盖 **附件库** 场景；FAQ / 文档 / 图片 doc 与 chunk 行为不变。
+本文是 [AI 托管知识库平台集成设计](./2026-06-23-agent-kb-platform-integration.md) 的增量 spec，仅覆盖 **附件库** 场景；FAQ / 文档 / 图片 doc 与 chunk 行为不变。
 
 ## 现状
 

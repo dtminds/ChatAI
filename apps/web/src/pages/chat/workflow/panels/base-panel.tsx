@@ -9,7 +9,7 @@ import {
 import { HugeiconsIcon } from "@hugeicons/react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { LimitedInput } from "@/components/ui/limited-input";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -72,7 +72,8 @@ function PanelHeader({
   const [isRenaming, setIsRenaming] = useState(false);
   const [renameValue, setRenameValue] = useState(node.data.title);
   const renameCancelledRef = useRef(false);
-  const renameTooLong = renameValue.length > WORKFLOW_NODE_TITLE_MAX_LENGTH;
+  const renameLength = renameValue.length;
+  const renameTooLong = renameLength > WORKFLOW_NODE_TITLE_MAX_LENGTH;
 
   return (
     <div className="p-4">
@@ -89,7 +90,7 @@ function PanelHeader({
           <div className="flex items-center gap-2">
             {isRenaming ? (
               <div className="relative min-w-0 flex-1">
-                <Input
+                <LimitedInput
                   aria-invalid={renameTooLong || undefined}
                   aria-label="节点名称"
                   autoFocus
@@ -98,11 +99,15 @@ function PanelHeader({
                     renameTooLong && "border-destructive focus-visible:border-destructive focus-visible:ring-destructive/15",
                   )}
                   onBlur={commitRename}
-                  onChange={(event) => setRenameValue(event.target.value)}
+                  maxLength={WORKFLOW_NODE_TITLE_MAX_LENGTH}
                   onKeyDown={(event) => {
                     if (event.key === "Enter") {
                       event.preventDefault();
-                      if (!renameTooLong) {
+                      if (
+                        !event.nativeEvent.isComposing
+                        && event.keyCode !== 229
+                        && !renameTooLong
+                      ) {
                         event.currentTarget.blur();
                       }
                     }
@@ -114,6 +119,7 @@ function PanelHeader({
                       setIsRenaming(false);
                     }
                   }}
+                  onValueChange={setRenameValue}
                   value={renameValue}
                 />
                 <span
@@ -122,7 +128,7 @@ function PanelHeader({
                     renameTooLong && "text-destructive",
                   )}
                 >
-                  {renameValue.length}/{WORKFLOW_NODE_TITLE_MAX_LENGTH}
+                  {renameLength}/{WORKFLOW_NODE_TITLE_MAX_LENGTH}
                 </span>
               </div>
             ) : (

@@ -8,7 +8,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
+import { LimitedInput } from "@/components/ui/limited-input";
 import { cn } from "@/lib/utils";
 
 const QUICK_REPLY_CATEGORY_TITLE_MAX_LENGTH = 10;
@@ -41,7 +41,8 @@ export function QuickReplyCategoryDialog({
   }, [initialTitle, open]);
 
   const copy = getQuickReplyCategoryDialogCopy(variant, Boolean(initialTitle));
-  const titleTooLong = title.length > QUICK_REPLY_CATEGORY_TITLE_MAX_LENGTH;
+  const titleLength = title.length;
+  const titleTooLong = titleLength > QUICK_REPLY_CATEGORY_TITLE_MAX_LENGTH;
 
   const handleSubmit = async () => {
     const normalizedTitle = title.trim();
@@ -78,14 +79,15 @@ export function QuickReplyCategoryDialog({
         </DialogHeader>
         <div className="space-y-2">
           <div className="relative">
-            <Input
+            <LimitedInput
               aria-invalid={titleError || titleTooLong ? true : undefined}
               className={cn(
                 "pr-14",
                 titleTooLong && "border-destructive focus-visible:border-destructive focus-visible:ring-destructive/15",
               )}
-              onChange={(event) => {
-                setTitle(event.target.value);
+              maxLength={QUICK_REPLY_CATEGORY_TITLE_MAX_LENGTH}
+              onValueChange={(value) => {
+                setTitle(value);
                 setTitleError("");
               }}
               placeholder={copy.placeholder}
@@ -95,7 +97,7 @@ export function QuickReplyCategoryDialog({
               "pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-xs tabular-nums text-muted-foreground",
               titleTooLong && "text-destructive",
             )}>
-              {title.length}/{QUICK_REPLY_CATEGORY_TITLE_MAX_LENGTH}
+              {titleLength}/{QUICK_REPLY_CATEGORY_TITLE_MAX_LENGTH}
             </span>
           </div>
           {titleError ? (

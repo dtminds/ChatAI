@@ -16,7 +16,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
+import { LimitedInput } from "@/components/ui/limited-input";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
 import { uploadWorkbenchImageFile } from "@/pages/chat/api/media-upload-service";
@@ -62,7 +62,8 @@ export function QuickReplyFormDialog({
   const [attachmentError, setAttachmentError] = useState("");
   const [contentError, setContentError] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const labelTooLong = labelText.length > QUICK_REPLY_LABEL_TEXT_MAX_LENGTH;
+  const labelLength = labelText.length;
+  const labelTooLong = labelLength > QUICK_REPLY_LABEL_TEXT_MAX_LENGTH;
 
   useEffect(() => {
     if (open) {
@@ -214,13 +215,14 @@ export function QuickReplyFormDialog({
               </div>
             </div>
             <div className="relative">
-              <Input
+              <LimitedInput
                 aria-invalid={labelTooLong || undefined}
                 className={cn(
                   "pr-14",
                   labelTooLong && "border-destructive focus-visible:border-destructive focus-visible:ring-destructive/15",
                 )}
-                onChange={(event) => setLabelText(event.target.value)}
+                maxLength={QUICK_REPLY_LABEL_TEXT_MAX_LENGTH}
+                onValueChange={setLabelText}
                 placeholder="请输入短标题，10字以内"
                 value={labelText}
               />
@@ -228,7 +230,7 @@ export function QuickReplyFormDialog({
                 "pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-xs tabular-nums text-muted-foreground",
                 labelTooLong && "text-destructive",
               )}>
-                {labelText.length}/{QUICK_REPLY_LABEL_TEXT_MAX_LENGTH}
+                {labelLength}/{QUICK_REPLY_LABEL_TEXT_MAX_LENGTH}
               </span>
             </div>
           </div>

@@ -169,11 +169,15 @@ describe("workflow AI Collect", () => {
     expect(screen.getByRole("button", { name: "从模板选择" })).toBeDisabled();
   });
 
-  it("keeps field validation in sync while typing and marks an overlong name invalid", async () => {
-    const user = userEvent.setup();
+  it("keeps composition drafts local and commits a limited field name", () => {
     const onNodeChange = vi.fn();
     const collect = createAiCollectNode({
-      fields: [{ id: "field-city", instruction: "提取所在城市", name: "", type: "text" }],
+      fields: [{
+        id: "field-city",
+        instruction: "提取所在城市",
+        name: "一二三四五六七八九",
+        type: "text",
+      }],
     });
 
     render(
@@ -186,20 +190,20 @@ describe("workflow AI Collect", () => {
     );
 
     const fieldName = screen.getByRole("textbox", { name: "字段 1 名称" });
-    await user.type(fieldName, "所在 chengshi");
+    fireEvent.compositionStart(fieldName);
+    fireEvent.change(fieldName, { target: { value: "一二三四五六七八九城市" } });
 
-    expect(fieldName).toHaveValue("所在 chengshi");
-    expect(fieldName).toHaveAttribute("aria-invalid", "true");
-    expect(screen.getByText("11/10")).toBeInTheDocument();
-    expect(onNodeChange).toHaveBeenLastCalledWith(expect.objectContaining({
-      fields: [expect.objectContaining({ name: "所在 chengshi" })],
-    }));
+    expect(fieldName).toHaveValue("一二三四五六七八九城市");
+    expect(onNodeChange).not.toHaveBeenCalled();
 
-    await user.clear(fieldName);
-    await user.type(fieldName, "所在城市");
+    fireEvent.compositionEnd(fieldName);
 
+    expect(fieldName).toHaveValue("一二三四五六七八九城");
     expect(fieldName).not.toHaveAttribute("aria-invalid");
-    expect(screen.getByText("4/10")).toBeInTheDocument();
+    expect(screen.getByText("10/10")).toBeInTheDocument();
+    expect(onNodeChange).toHaveBeenLastCalledWith(expect.objectContaining({
+      fields: [expect.objectContaining({ name: "一二三四五六七八九城" })],
+    }));
   });
 
   it("enforces the 10-minute to 24-hour wait range and offers no day unit", async () => {

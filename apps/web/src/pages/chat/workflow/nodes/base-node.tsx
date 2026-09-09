@@ -15,7 +15,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Input } from "@/components/ui/input";
+import { LimitedInput } from "@/components/ui/limited-input";
 import { cn } from "@/lib/utils";
 import { WORKFLOW_AI_BADGE_URL } from "../constants";
 import {
@@ -174,7 +174,8 @@ function NodeHeader({
   renameValue: string;
   visual: NodeVisual;
 }) {
-  const renameTooLong = renameValue.length > WORKFLOW_NODE_TITLE_MAX_LENGTH;
+  const renameLength = renameValue.length;
+  const renameTooLong = renameLength > WORKFLOW_NODE_TITLE_MAX_LENGTH;
 
   return (
     <span className="workflow-node-header flex items-center rounded-t-2xl py-3 pl-4 pr-10">
@@ -190,7 +191,7 @@ function NodeHeader({
         {isRenaming ? (
           <span className="flex min-w-0 flex-1 items-center gap-2">
             <span className="relative min-w-0 flex-1">
-              <Input
+              <LimitedInput
                 aria-invalid={renameTooLong || undefined}
                 aria-label="节点名称"
                 autoFocus
@@ -199,14 +200,18 @@ function NodeHeader({
                   renameTooLong && "border-destructive focus-visible:border-destructive focus-visible:ring-destructive/15",
                 )}
                 onBlur={onCommitRename}
-                onChange={(event) => onRenameValueChange(event.target.value)}
+                maxLength={WORKFLOW_NODE_TITLE_MAX_LENGTH}
                 onClick={(event) => event.stopPropagation()}
                 onKeyDown={(event) => {
                   event.stopPropagation();
 
                   if (event.key === "Enter") {
                     event.preventDefault();
-                    if (!renameTooLong) {
+                    if (
+                      !event.nativeEvent.isComposing
+                      && event.keyCode !== 229
+                      && !renameTooLong
+                    ) {
                       event.currentTarget.blur();
                     }
                   }
@@ -216,6 +221,7 @@ function NodeHeader({
                     onCancelRename();
                   }
                 }}
+                onValueChange={onRenameValueChange}
                 onPointerDown={(event) => event.stopPropagation()}
                 value={renameValue}
               />
@@ -225,7 +231,7 @@ function NodeHeader({
                   renameTooLong && "text-destructive",
                 )}
               >
-                {renameValue.length}/{WORKFLOW_NODE_TITLE_MAX_LENGTH}
+                {renameLength}/{WORKFLOW_NODE_TITLE_MAX_LENGTH}
               </span>
             </span>
             <NodeAiBadge visual={visual} />

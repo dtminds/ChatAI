@@ -1543,7 +1543,7 @@ describe("QuickReplyPanel", () => {
     expect(screen.queryByText("请填写话术内容或添加附件")).not.toBeInTheDocument();
   });
 
-  it("keeps an overlong short title visible and rejects saving", async () => {
+  it("limits a short title before saving", async () => {
     const user = userEvent.setup();
     const onSubmit = vi.fn();
 
@@ -1563,12 +1563,16 @@ describe("QuickReplyPanel", () => {
     const titleInput = screen.getByPlaceholderText("请输入短标题，10字以内");
     await user.type(titleInput, "一二三四五六七八九十一");
 
-    expect(titleInput).toHaveValue("一二三四五六七八九十一");
-    expect(titleInput).toHaveAttribute("aria-invalid", "true");
-    expect(screen.getByText("11/10")).toBeInTheDocument();
+    expect(titleInput).toHaveValue("一二三四五六七八九十");
+    expect(titleInput).not.toHaveAttribute("aria-invalid");
+    expect(screen.getByText("10/10")).toBeInTheDocument();
     expect(screen.queryByText("短标题不能超过10字")).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "保存" })).toBeDisabled();
-    expect(onSubmit).not.toHaveBeenCalled();
+    expect(screen.getByRole("button", { name: "保存" })).toBeEnabled();
+
+    await user.click(screen.getByRole("button", { name: "保存" }));
+    expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({
+      labelText: "一二三四五六七八九十",
+    }));
   });
 
   it("clears empty quick reply validation when adding an attachment", async () => {

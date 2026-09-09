@@ -71,7 +71,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Input } from "@/components/ui/input";
+import { LimitedInput } from "@/components/ui/limited-input";
 import { Label } from "@/components/ui/label";
 import {
   Select,
@@ -911,15 +911,18 @@ export function AgentSettingsEditor() {
               <div className="grid gap-5 md:grid-cols-2">
                 <div className="flex flex-col gap-2">
                   <Label htmlFor="agent-settings-name">Agent 名称</Label>
-                  <Input
-                    aria-invalid={nameError || form.name.length > agentNameMaxLength ? true : undefined}
+                  <LimitedInput
+                    aria-invalid={nameError || form.name.length > agentNameMaxLength
+                      ? true
+                      : undefined}
                     className={cn(
                       form.name.length > agentNameMaxLength
                         && "border-destructive focus-visible:border-destructive focus-visible:ring-destructive/15",
                     )}
                     disabled={isEditing || controlsDisabled}
                     id="agent-settings-name"
-                    onChange={(event) => updateForm("name", event.target.value)}
+                    maxLength={agentNameMaxLength}
+                    onValueChange={(name) => updateForm("name", name)}
                     placeholder="请输入 Agent 名称"
                     value={form.name}
                   />
@@ -1428,14 +1431,15 @@ function OptionChipGroup({
 }
 
 function TextCounter({ maxLength, value }: { maxLength: number; value: string }) {
-  const tooLong = value.length > maxLength;
+  const valueLength = value.length;
+  const tooLong = valueLength > maxLength;
 
   return (
     <div className={cn(
       "mt-1 text-right text-xs tabular-nums text-muted-foreground",
       tooLong && "text-destructive",
     )}>
-      {value.length}/{maxLength}
+      {valueLength}/{maxLength}
     </div>
   );
 }
@@ -1852,7 +1856,7 @@ function RenameAgentDialog({
 
         <div className="px-6 pt-5">
           <div>
-            <Input
+            <LimitedInput
               aria-label="Agent 名称"
               aria-invalid={error || nameTooLong ? true : undefined}
               className={cn(
@@ -1861,7 +1865,8 @@ function RenameAgentDialog({
               )}
               disabled={disabled}
               id="agent-rename-name"
-              onChange={(event) => onChange(event.target.value)}
+              maxLength={agentNameMaxLength}
+              onValueChange={onChange}
               placeholder="请输入 Agent 名称"
               value={name}
             />

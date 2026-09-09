@@ -1,4 +1,4 @@
-import { render, screen, within } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { ComponentProps, ReactNode } from "react";
 import { describe, expect, it, vi } from "vitest";
@@ -62,7 +62,7 @@ describe("workflow node chrome", () => {
     expect(onDuplicate).toHaveBeenCalledTimes(1);
   });
 
-  it("keeps an overlong inline node name visible and rejects Enter until it is fixed", async () => {
+  it("limits an inline node name after composition and ignores the IME Enter", async () => {
     const user = userEvent.setup();
     const onRename = vi.fn();
     const onSelect = vi.fn();
@@ -78,16 +78,21 @@ describe("workflow node chrome", () => {
 
     const nameInput = screen.getByRole("textbox", { name: "节点名称" });
     await user.clear(nameInput);
-    await user.type(nameInput, "12345678901{Enter}");
+    await user.type(nameInput, "123456789");
+    fireEvent.compositionStart(nameInput);
+    fireEvent.change(nameInput, { target: { value: "12345678901" } });
+    fireEvent.keyDown(nameInput, { isComposing: true, key: "Enter", keyCode: 229 });
 
     expect(nameInput).toHaveValue("12345678901");
-    expect(nameInput).toHaveAttribute("aria-invalid", "true");
-    expect(screen.getByText("11/10")).toBeInTheDocument();
     expect(onRename).not.toHaveBeenCalled();
     expect(onSelect).not.toHaveBeenCalled();
 
-    await user.clear(nameInput);
-    await user.type(nameInput, "1234567890{Enter}");
+    fireEvent.compositionEnd(nameInput);
+    expect(nameInput).toHaveValue("1234567890");
+    expect(nameInput).not.toHaveAttribute("aria-invalid");
+    expect(screen.getByText("10/10")).toBeInTheDocument();
+
+    await user.type(nameInput, "{Enter}");
 
     expect(onRename).toHaveBeenCalledWith("message-welcome", "1234567890");
   });
@@ -111,7 +116,7 @@ describe("workflow node chrome", () => {
     expect(screen.queryByRole("textbox", { name: "节点名称" })).not.toBeInTheDocument();
   });
 
-  it("cancels an overlong inline node name on blur", async () => {
+  it("cancels a blank inline node name on blur", async () => {
     const user = userEvent.setup();
     const onRename = vi.fn();
     renderBaseNode({
@@ -123,7 +128,6 @@ describe("workflow node chrome", () => {
     await user.dblClick(screen.getByText("发送欢迎消息"));
     const nameInput = screen.getByRole("textbox", { name: "节点名称" });
     await user.clear(nameInput);
-    await user.type(nameInput, "12345678901");
     await user.tab();
 
     expect(onRename).not.toHaveBeenCalled();

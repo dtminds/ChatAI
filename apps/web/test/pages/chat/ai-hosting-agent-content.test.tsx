@@ -1928,7 +1928,7 @@ describe("AI hosting agent content", () => {
       expect(screen.getByLabelText("Agent 名称")).not.toHaveAttribute("aria-invalid");
     });
 
-    it("rejects an Agent name whose raw input exceeds the limit", async () => {
+    it("limits an Agent name as soon as raw input exceeds the limit", async () => {
       const user = userEvent.setup();
       const nameInput = () => screen.getByLabelText("Agent 名称");
 
@@ -1937,11 +1937,11 @@ describe("AI hosting agent content", () => {
       await screen.findByRole("heading", { level: 1, name: "创建 Agent" });
       await user.type(nameInput(), "一二三四五六七八九十一二三四五六七八九十 ");
 
-      expect(nameInput()).toHaveValue("一二三四五六七八九十一二三四五六七八九十 ");
-      expect(nameInput()).toHaveAttribute("aria-invalid", "true");
-      expect(screen.getByText("21/20")).toBeInTheDocument();
+      expect(nameInput()).toHaveValue("一二三四五六七八九十一二三四五六七八九十");
+      expect(nameInput()).not.toHaveAttribute("aria-invalid");
+      expect(screen.getByText("20/20")).toBeInTheDocument();
       expect(screen.queryByText("Agent 名称不能超过20字")).not.toBeInTheDocument();
-      expect(screen.getByRole("button", { name: "保存" })).toBeDisabled();
+      expect(screen.getByRole("button", { name: "保存" })).toBeEnabled();
       expect(agentService.createAiHostingAgent).not.toHaveBeenCalled();
     });
 
@@ -2424,7 +2424,7 @@ describe("AI hosting agent content", () => {
       expect(await screen.findByRole("heading", { level: 1, name: "护肤专家" })).toBeInTheDocument();
     });
 
-    it("keeps an overlong renamed Agent name visible and rejects saving", async () => {
+    it("limits a renamed Agent name before saving", async () => {
       const user = userEvent.setup();
 
       renderWithRoute(
@@ -2442,13 +2442,19 @@ describe("AI hosting agent content", () => {
       await user.clear(nameInput);
       await user.type(nameInput, "一二三四五六七八九十一二三四五六七八九十甲");
 
-      expect(nameInput).toHaveValue("一二三四五六七八九十一二三四五六七八九十甲");
+      expect(nameInput).toHaveValue("一二三四五六七八九十一二三四五六七八九十");
 
-      expect(nameInput).toHaveAttribute("aria-invalid", "true");
-      expect(within(dialog).getByText("21/20")).toBeInTheDocument();
+      expect(nameInput).not.toHaveAttribute("aria-invalid");
+      expect(within(dialog).getByText("20/20")).toBeInTheDocument();
       expect(within(dialog).queryByText("Agent 名称不能超过20字")).not.toBeInTheDocument();
-      expect(within(dialog).getByRole("button", { name: "保存" })).toBeDisabled();
-      expect(agentService.renameAiHostingAgent).not.toHaveBeenCalled();
+      expect(within(dialog).getByRole("button", { name: "保存" })).toBeEnabled();
+
+      await user.click(within(dialog).getByRole("button", { name: "保存" }));
+      await waitFor(() => {
+        expect(agentService.renameAiHostingAgent).toHaveBeenCalledWith("301", {
+          name: "一二三四五六七八九十一二三四五六七八九十",
+        });
+      });
     });
 
     it("does not publish the previous draft when saving changes fails", async () => {

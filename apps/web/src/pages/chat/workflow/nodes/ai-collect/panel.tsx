@@ -16,6 +16,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
+import { LimitedInput } from "@/components/ui/limited-input";
 import {
   Select,
   SelectContent,
@@ -366,7 +367,8 @@ function AiCollectFieldEditor({ field, fields, index, onChange, onDelete }: {
 }) {
   const duplicateName = Boolean(field.name.trim()) && fields.some(item =>
     item.id !== field.id && item.name.trim() === field.name.trim());
-  const nameTooLong = field.name.length > AI_COLLECT_FIELD_NAME_MAX_LENGTH;
+  const nameLength = field.name.length;
+  const nameTooLong = nameLength > AI_COLLECT_FIELD_NAME_MAX_LENGTH;
   const nameInvalid = !field.name.trim() || duplicateName || nameTooLong;
   return (
     <section className="space-y-2.5 rounded-[8px] bg-secondary/50 p-3 pl-2">
@@ -378,14 +380,15 @@ function AiCollectFieldEditor({ field, fields, index, onChange, onDelete }: {
           <HugeiconsIcon icon={DragDropVerticalIcon} size={16} strokeWidth={1.8} />
         </SortableItemHandle>
         <div className="relative min-w-0">
-          <Input
+          <LimitedInput
             aria-label={`字段 ${index + 1} 名称`}
             aria-invalid={nameInvalid || undefined}
             className={cn(
               "h-9 pr-12 text-[13px] md:text-[13px]",
               nameInvalid && "border-destructive focus-visible:border-destructive focus-visible:ring-destructive/15",
             )}
-            onChange={event => onChange({ name: event.target.value })}
+            maxLength={AI_COLLECT_FIELD_NAME_MAX_LENGTH}
+            onValueChange={name => onChange({ name })}
             placeholder="字段名称"
             value={field.name}
           />
@@ -395,7 +398,7 @@ function AiCollectFieldEditor({ field, fields, index, onChange, onDelete }: {
               nameTooLong && "text-destructive",
             )}
           >
-            {field.name.length}/{AI_COLLECT_FIELD_NAME_MAX_LENGTH}
+            {nameLength}/{AI_COLLECT_FIELD_NAME_MAX_LENGTH}
           </span>
         </div>
         <Select

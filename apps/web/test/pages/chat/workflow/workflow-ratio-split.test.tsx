@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { useState } from "react";
 import { HierarchySquare08Icon } from "@hugeicons/core-free-icons";
@@ -79,17 +79,25 @@ describe("workflow Ratio Split node", () => {
     expect(screen.getByRole("button", { name: "添加分组" })).toBeDisabled();
   });
 
-  it("keeps overlong group names visible and marks them invalid", async () => {
-    const user = userEvent.setup();
-    render(<StatefulRatioSplitConfig />);
+  it("keeps composition drafts local and commits a limited group name", () => {
+    const onNodeChange = vi.fn();
+    render(<StatefulRatioSplitConfig onNodeChange={onNodeChange} />);
 
     const firstGroupName = screen.getAllByRole("textbox", { name: /分组 [A-E]/ })[0]!;
-    await user.clear(firstGroupName);
-    await user.type(firstGroupName, "一二三四五六七八九十一");
+    fireEvent.compositionStart(firstGroupName);
+    fireEvent.change(firstGroupName, { target: { value: "一二三四五六七八九十一" } });
 
     expect(firstGroupName).toHaveValue("一二三四五六七八九十一");
-    expect(firstGroupName).toHaveAttribute("aria-invalid", "true");
-    expect(screen.getByText("11/10")).toBeInTheDocument();
+    expect(onNodeChange).not.toHaveBeenCalled();
+
+    fireEvent.compositionEnd(firstGroupName);
+
+    expect(firstGroupName).toHaveValue("一二三四五六七八九十");
+    expect(firstGroupName).not.toHaveAttribute("aria-invalid");
+    expect(screen.getByText("10/10")).toBeInTheDocument();
+    expect(onNodeChange).toHaveBeenLastCalledWith(expect.objectContaining({
+      groups: [expect.objectContaining({ label: "一二三四五六七八九十" }), expect.anything()],
+    }));
   });
 
   it("blocks publishing and warns when a group name exceeds the limit", () => {

@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { render, screen, within } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import { createNodeFromKind } from "@/pages/chat/workflow/graph";
@@ -23,7 +23,7 @@ describe("workflow node settings chrome", () => {
       .toBeInTheDocument();
   });
 
-  it("keeps an overlong settings node name visible and rejects Enter until it is fixed", async () => {
+  it("limits a settings node name after composition and ignores the IME Enter", async () => {
     const user = userEvent.setup();
     const onRenameNode = vi.fn();
     render(<RenamePanelFixture onRenameNode={onRenameNode} />);
@@ -34,15 +34,20 @@ describe("workflow node settings chrome", () => {
 
     const nameInput = await within(panel).findByRole("textbox", { name: "节点名称" });
     await user.clear(nameInput);
-    await user.type(nameInput, "12345678901{Enter}");
+    await user.type(nameInput, "123456789");
+    fireEvent.compositionStart(nameInput);
+    fireEvent.change(nameInput, { target: { value: "12345678901" } });
+    fireEvent.keyDown(nameInput, { isComposing: true, key: "Enter", keyCode: 229 });
 
     expect(nameInput).toHaveValue("12345678901");
-    expect(nameInput).toHaveAttribute("aria-invalid", "true");
-    expect(within(panel).getByText("11/10")).toBeInTheDocument();
     expect(onRenameNode).not.toHaveBeenCalled();
 
-    await user.clear(nameInput);
-    await user.type(nameInput, "1234567890{Enter}");
+    fireEvent.compositionEnd(nameInput);
+    expect(nameInput).toHaveValue("1234567890");
+    expect(nameInput).not.toHaveAttribute("aria-invalid");
+    expect(within(panel).getByText("10/10")).toBeInTheDocument();
+
+    await user.type(nameInput, "{Enter}");
 
     expect(onRenameNode).toHaveBeenCalledWith("wait-2d", "1234567890");
     expect(within(panel).getByRole("heading", { name: "1234567890" })).toBeInTheDocument();
@@ -65,7 +70,7 @@ describe("workflow node settings chrome", () => {
     expect(within(panel).getByRole("heading", { name: "发送欢迎消息" })).toBeInTheDocument();
   });
 
-  it("cancels an overlong settings node name on blur", async () => {
+  it("cancels a blank settings node name on blur", async () => {
     const user = userEvent.setup();
     const onRenameNode = vi.fn();
     render(<RenamePanelFixture onRenameNode={onRenameNode} />);
@@ -76,7 +81,6 @@ describe("workflow node settings chrome", () => {
 
     const nameInput = await within(panel).findByRole("textbox", { name: "节点名称" });
     await user.clear(nameInput);
-    await user.type(nameInput, "12345678901");
     await user.tab();
 
     expect(onRenameNode).not.toHaveBeenCalled();

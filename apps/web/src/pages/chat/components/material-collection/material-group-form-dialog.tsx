@@ -8,7 +8,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
+import { LimitedInput } from "@/components/ui/limited-input";
 import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";
 
@@ -43,7 +43,8 @@ export function MaterialGroupFormDialog({
   }, [open]);
 
   const normalizedTitle = title.trim();
-  const titleTooLong = title.length > MATERIAL_GROUP_TITLE_MAX_LENGTH;
+  const titleLength = title.length;
+  const titleTooLong = titleLength > MATERIAL_GROUP_TITLE_MAX_LENGTH;
   const dialogTitle = mode === "edit" ? "编辑分组" : "新建分组";
   const submitLabel = mode === "edit" ? "保存" : "新建";
 
@@ -72,10 +73,10 @@ export function MaterialGroupFormDialog({
               "text-xs tabular-nums text-muted-foreground",
               titleTooLong && "text-destructive",
             )}>
-              {title.length}/{MATERIAL_GROUP_TITLE_MAX_LENGTH}
+              {titleLength}/{MATERIAL_GROUP_TITLE_MAX_LENGTH}
             </span>
           </div>
-          <Input
+          <LimitedInput
             aria-invalid={titleTooLong || undefined}
             aria-label="分组名称"
             autoFocus
@@ -84,12 +85,17 @@ export function MaterialGroupFormDialog({
             )}
             disabled={isSubmitting}
             id={inputId}
-            onChange={(event) => setTitle(event.target.value)}
+            maxLength={MATERIAL_GROUP_TITLE_MAX_LENGTH}
             onKeyDown={(event) => {
-              if (event.key === "Enter") {
+              if (
+                event.key === "Enter"
+                && !event.nativeEvent.isComposing
+                && event.keyCode !== 229
+              ) {
                 handleSubmit();
               }
             }}
+            onValueChange={setTitle}
             placeholder="请输入分组名称"
             value={title}
           />

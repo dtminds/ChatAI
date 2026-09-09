@@ -203,7 +203,7 @@ describe("ImportImageDialog", () => {
     expect(screen.getByRole("button", { name: "确认提交" })).toBeDisabled();
   });
 
-  it("keeps an overlong image knowledge name visible and rejects submit", async () => {
+  it("limits an image knowledge name before submit", async () => {
     const user = userEvent.setup();
     const imageFile = new File(["image"], "商品主图.png", { type: "image/png" });
 
@@ -217,14 +217,20 @@ describe("ImportImageDialog", () => {
     await user.clear(nameInput);
     await user.type(nameInput, "一二三四五六七八九十一二三四五六甲");
 
-    expect(nameInput).toHaveValue("一二三四五六七八九十一二三四五六甲");
+    expect(nameInput).toHaveValue("一二三四五六七八九十一二三四五六");
 
     await user.type(screen.getByLabelText(/图片描述/), "晨间护肤套装商品主图");
-    expect(nameInput).toHaveAttribute("aria-invalid", "true");
-    expect(screen.getByText("17/16")).toBeInTheDocument();
+    expect(nameInput).not.toHaveAttribute("aria-invalid");
+    expect(screen.getByText("16/16")).toBeInTheDocument();
     expect(screen.queryByText("知识名称不能超过16字")).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "确认提交" })).toBeDisabled();
-    expect(importKbImageDoc).not.toHaveBeenCalled();
+    expect(screen.getByRole("button", { name: "确认提交" })).toBeEnabled();
+
+    await user.click(screen.getByRole("button", { name: "确认提交" }));
+    await waitFor(() => {
+      expect(importKbImageDoc).toHaveBeenCalledWith(expect.objectContaining({
+        name: "一二三四五六七八九十一二三四五六",
+      }));
+    });
   });
 });
 

@@ -20,7 +20,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { LimitedInput } from "@/components/ui/limited-input";
 import {
   InputGroup,
   InputGroupAddon,
@@ -72,7 +72,8 @@ export function RatioSplitConfig({ edges, node, onNodeChange }: NodeSettingsProp
     >
       <div className="space-y-3">
         {groups.map((group, index) => {
-          const labelTooLong = group.label.length > WORKFLOW_RATIO_SPLIT_GROUP_LABEL_MAX_LENGTH;
+          const labelLength = group.label.length;
+          const labelTooLong = labelLength > WORKFLOW_RATIO_SPLIT_GROUP_LABEL_MAX_LENGTH;
 
           return (
           <section
@@ -83,14 +84,15 @@ export function RatioSplitConfig({ edges, node, onNodeChange }: NodeSettingsProp
               分组 {String.fromCharCode(65 + index)}
             </Label>
             <div className="relative min-w-0">
-              <Input
+              <LimitedInput
                 aria-invalid={labelTooLong || undefined}
                 className={cn(
                   "pr-12",
                   labelTooLong && "border-destructive focus-visible:border-destructive focus-visible:ring-destructive/15",
                 )}
                 id={`ratio-split-label-${node.id}-${group.id}`}
-                onChange={event => updateGroup(group.id, { label: event.target.value })}
+                maxLength={WORKFLOW_RATIO_SPLIT_GROUP_LABEL_MAX_LENGTH}
+                onValueChange={label => updateGroup(group.id, { label })}
                 value={group.label}
               />
               <span
@@ -99,7 +101,7 @@ export function RatioSplitConfig({ edges, node, onNodeChange }: NodeSettingsProp
                   labelTooLong && "text-destructive",
                 )}
               >
-                {group.label.length}/{WORKFLOW_RATIO_SPLIT_GROUP_LABEL_MAX_LENGTH}
+                {labelLength}/{WORKFLOW_RATIO_SPLIT_GROUP_LABEL_MAX_LENGTH}
               </span>
             </div>
             <Button

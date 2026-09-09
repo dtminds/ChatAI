@@ -11,6 +11,7 @@ export interface LimitedInputProps
 
 const LimitedInput = React.forwardRef<HTMLInputElement, LimitedInputProps>(({
   maxLength,
+  onBlur,
   onCompositionEnd,
   onCompositionStart,
   onValueChange,
@@ -32,11 +33,12 @@ const LimitedInput = React.forwardRef<HTMLInputElement, LimitedInputProps>(({
     const nextValue = limitInputEdit(committedValueRef.current, rawValue, maxLength);
     setDraftValue(nextValue);
     if (nextValue === committedValueRef.current) {
-      return;
+      return nextValue;
     }
 
     committedValueRef.current = nextValue;
     onValueChange(nextValue);
+    return nextValue;
   }, [maxLength, onValueChange]);
 
   return (
@@ -49,6 +51,12 @@ const LimitedInput = React.forwardRef<HTMLInputElement, LimitedInputProps>(({
           return;
         }
         commitValue(event.target.value);
+      }}
+      onBlur={(event) => {
+        isComposingRef.current = false;
+        const nextValue = commitValue(event.currentTarget.value);
+        event.currentTarget.value = nextValue;
+        onBlur?.(event);
       }}
       onCompositionEnd={(event) => {
         isComposingRef.current = false;

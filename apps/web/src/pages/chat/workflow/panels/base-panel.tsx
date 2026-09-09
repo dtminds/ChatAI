@@ -98,16 +98,16 @@ function PanelHeader({
                     "h-8 min-w-0 rounded px-2.5 pr-12 text-sm font-normal",
                     renameTooLong && "border-destructive focus-visible:border-destructive focus-visible:ring-destructive/15",
                   )}
-                  onBlur={commitRename}
+                  onBlur={(event) => commitRename(event.currentTarget.value)}
                   maxLength={WORKFLOW_NODE_TITLE_MAX_LENGTH}
                   onKeyDown={(event) => {
-                    if (event.key === "Enter") {
+                    if (
+                      event.key === "Enter"
+                      && !event.nativeEvent.isComposing
+                      && event.keyCode !== 229
+                    ) {
                       event.preventDefault();
-                      if (
-                        !event.nativeEvent.isComposing
-                        && event.keyCode !== 229
-                        && !renameTooLong
-                      ) {
+                      if (!renameTooLong) {
                         event.currentTarget.blur();
                       }
                     }
@@ -182,15 +182,15 @@ function PanelHeader({
     </div>
   );
 
-  function commitRename() {
+  function commitRename(nextRenameValue = renameValue) {
     if (renameCancelledRef.current) {
       renameCancelledRef.current = false;
       return;
     }
 
-    const title = renameValue.trim();
+    const title = nextRenameValue.trim();
 
-    if (!title || renameValue.length > WORKFLOW_NODE_TITLE_MAX_LENGTH) {
+    if (!title || nextRenameValue.length > WORKFLOW_NODE_TITLE_MAX_LENGTH) {
       setRenameValue(node.data.title);
       setIsRenaming(false);
       return;

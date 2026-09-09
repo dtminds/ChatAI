@@ -37,9 +37,14 @@ describe("workflow node settings chrome", () => {
     await user.type(nameInput, "123456789");
     fireEvent.compositionStart(nameInput);
     fireEvent.change(nameInput, { target: { value: "12345678901" } });
-    fireEvent.keyDown(nameInput, { isComposing: true, key: "Enter", keyCode: 229 });
+    const imeEnterAccepted = fireEvent.keyDown(nameInput, {
+      isComposing: true,
+      key: "Enter",
+      keyCode: 229,
+    });
 
     expect(nameInput).toHaveValue("12345678901");
+    expect(imeEnterAccepted).toBe(true);
     expect(onRenameNode).not.toHaveBeenCalled();
 
     fireEvent.compositionEnd(nameInput);
@@ -51,6 +56,26 @@ describe("workflow node settings chrome", () => {
 
     expect(onRenameNode).toHaveBeenCalledWith("wait-2d", "1234567890");
     expect(within(panel).getByRole("heading", { name: "1234567890" })).toBeInTheDocument();
+  });
+
+  it("commits the limited composed settings name when blur ends composition", async () => {
+    const user = userEvent.setup();
+    const onRenameNode = vi.fn();
+    render(<RenamePanelFixture onRenameNode={onRenameNode} />);
+
+    const panel = screen.getByRole("complementary", { name: "节点配置" });
+    await user.click(within(panel).getByRole("button", { name: "更多节点操作" }));
+    await user.click(within(await screen.findByRole("menu")).getByRole("menuitem", { name: "重命名" }));
+
+    const nameInput = await within(panel).findByRole("textbox", { name: "节点名称" });
+    await user.clear(nameInput);
+    await user.type(nameInput, "123456789");
+    fireEvent.compositionStart(nameInput);
+    fireEvent.change(nameInput, { target: { value: "12345678901" } });
+    fireEvent.blur(nameInput);
+
+    expect(onRenameNode).toHaveBeenCalledWith("wait-2d", "1234567890");
+    expect(within(panel).queryByRole("textbox", { name: "节点名称" })).not.toBeInTheDocument();
   });
 
   it("clears settings rename state when selecting another node", async () => {

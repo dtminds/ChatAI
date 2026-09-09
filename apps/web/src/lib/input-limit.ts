@@ -26,15 +26,19 @@ export function limitInputEdit(previousValue: string, nextValue: string, maxLeng
 
   const prefix = nextCharacters.slice(0, prefixLength);
   const suffix = nextCharacters.slice(nextCharacters.length - suffixLength);
+  const insertedCharacters = nextCharacters.slice(
+    prefixLength,
+    nextCharacters.length - suffixLength,
+  );
+  if (previousValue.length > maxLength && insertedCharacters.length === 0) {
+    return nextValue;
+  }
+
   const retainedLength = getCharactersLength(prefix) + getCharactersLength(suffix);
   if (retainedLength > maxLength) {
     return truncateInputValue(nextValue, maxLength);
   }
 
-  const insertedCharacters = nextCharacters.slice(
-    prefixLength,
-    nextCharacters.length - suffixLength,
-  );
   const acceptedCharacters = takeCharactersWithinLength(
     insertedCharacters,
     maxLength - retainedLength,

@@ -385,7 +385,8 @@ function AiCollectFieldEditor({ field, fields, index, onChange, onDelete }: {
             aria-invalid={nameInvalid || undefined}
             className={cn(
               "h-9 pr-12 text-[13px] md:text-[13px]",
-              nameInvalid && "border-destructive focus-visible:border-destructive focus-visible:ring-destructive/15",
+              (duplicateName || nameTooLong)
+                && "border-destructive focus-visible:border-destructive focus-visible:ring-destructive/15",
             )}
             maxLength={AI_COLLECT_FIELD_NAME_MAX_LENGTH}
             onValueChange={name => onChange({ name })}

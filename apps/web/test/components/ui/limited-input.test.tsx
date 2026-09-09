@@ -23,8 +23,33 @@ describe("LimitedInput", () => {
     expect(onValueChange).toHaveBeenCalledWith("一二三四五六七八九城");
   });
 
+  it("commits composition text on blur and resumes ordinary changes", () => {
+    const onValueChange = vi.fn();
+    render(<LimitedInputFixture initialValue="123456789" onValueChange={onValueChange} />);
+
+    const input = screen.getByRole("textbox", { name: "受限输入" });
+    fireEvent.compositionStart(input);
+    fireEvent.change(input, { target: { value: "12345678901" } });
+    fireEvent.blur(input);
+
+    expect(input).toHaveValue("1234567890");
+    expect(onValueChange).toHaveBeenLastCalledWith("1234567890");
+
+    fireEvent.change(input, { target: { value: "123456789" } });
+
+    expect(input).toHaveValue("123456789");
+    expect(onValueChange).toHaveBeenLastCalledWith("123456789");
+  });
+
   it("accepts only the part of an edit that fits without deleting the suffix", () => {
     expect(limitInputEdit("123456789", "12345XY6789", 10)).toBe("12345X6789");
+  });
+
+  it("lets an existing over-limit value shrink one deletion at a time", () => {
+    expect(limitInputEdit("123456789012345", "12345678901234", 10))
+      .toBe("12345678901234");
+    expect(limitInputEdit("123456789012345", "123456789012345", 10))
+      .toBe("123456789012345");
   });
 
   it("does not split a surrogate pair at the length boundary", () => {

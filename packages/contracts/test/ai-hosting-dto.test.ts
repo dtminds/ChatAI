@@ -310,6 +310,7 @@ describe("AI hosting DTOs", () => {
         hasUnpublishedChanges: true,
         id: "301",
         model: {
+          creditMultiplier: 100,
           id: "11",
           label: "Doubao-2.0-lite",
           model: "doubao-2.0-lite",
@@ -340,6 +341,7 @@ describe("AI hosting DTOs", () => {
       Value.Check(AiHostingModelListResponseSchema, {
         models: [
           {
+            creditMultiplier: 100,
             description: "系统默认",
             id: "10",
             label: "默认模型",
@@ -370,6 +372,7 @@ describe("AI hosting DTOs", () => {
               },
             ],
             model: {
+              creditMultiplier: 100,
               id: "11",
               label: "Doubao-2.0-lite",
               model: "doubao-2.0-lite",

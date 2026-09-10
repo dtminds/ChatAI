@@ -63,6 +63,7 @@ type AgentHistoryRow = {
 };
 
 type AiModelRow = {
+  credit_multiplier: number;
   description?: string | null;
   id: number;
   model?: string | null;
@@ -510,7 +511,7 @@ export class AiHostingAgentService {
   private listModelRows() {
     return this.db
       .selectFrom("xy_wap_embed_ai_model")
-      .select(["description", "id", "model", "name", "support_multimodal", "uid"])
+      .select(["credit_multiplier", "description", "id", "model", "name", "support_multimodal", "uid"])
       .where("status", "=", dbActiveStatus)
       .where("uid", "=", 0)
       .orderBy("id", "asc")
@@ -520,7 +521,7 @@ export class AiHostingAgentService {
   private getModelRow(scope: AgentTenantScope, modelId: number) {
     return this.db
       .selectFrom("xy_wap_embed_ai_model")
-      .select(["description", "id", "model", "name", "support_multimodal", "uid"])
+      .select(["credit_multiplier", "description", "id", "model", "name", "support_multimodal", "uid"])
       .where("id", "=", modelId)
       .where("status", "=", dbActiveStatus)
       .where("uid", "=", 0)
@@ -868,6 +869,7 @@ function parseCount(value: bigint | number | string | null | undefined) {
 
 function mapModel(row: AiModelRow): AiHostingModel {
   return {
+    creditMultiplier: row.credit_multiplier,
     description: row.description ?? "",
     id: String(row.id),
     label: row.name,
@@ -883,6 +885,7 @@ function mapModelSummary(row: AiModelRow | undefined): AiHostingAgentModelSummar
   }
 
   return {
+    creditMultiplier: row.credit_multiplier,
     id: String(row.id),
     label: row.name,
     model: row.model?.trim() || row.name,
@@ -943,6 +946,7 @@ function fallbackModelSummary(modelId: number): AiHostingAgentModelSummary {
   const label = modelId > 0 ? `模型 ${modelId}` : "未知模型";
 
   return {
+    creditMultiplier: 100,
     id: String(modelId),
     label,
     model: label,

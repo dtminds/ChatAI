@@ -1,5 +1,12 @@
 # Database Change Log
 
+## 2026-09-10 AI 用量 Outbox
+
+- 新增 `xy_wap_embed_ai_usage_outbox`，保存 Node 业务事务内生成的 AI Usage Event，并支持后续批量投递至 Java Billing Service。
+- `(uid, event_key)` 保证同一实际用量事件幂等；`billing_key` 独立保存，由 Java 对客户计费去重。
+- 新环境执行 `docs/db/schema.sql`；已存在的测试环境可直接执行其中该表的最终 `CREATE TABLE` 语句。
+- 本阶段只建 Node Outbox，不创建 Java 账单表，不启用 HTTP 投递，也不扣积分。
+
 ## 2026-09-02 Workflow模板软删除状态
 
 - 模板状态收敛为 `draft`、`published`、`deleted`；删除草稿改为软删除，保留记录但不再对外展示或操作。

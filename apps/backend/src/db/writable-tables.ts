@@ -6,6 +6,7 @@
 export const WRITABLE_TABLES = [
   "xy_internal_request_idempotent",
   "xy_wap_embed_analysis_run",
+  "xy_wap_embed_ai_usage_outbox",
   "xy_wap_embed_agent",
   "xy_wap_embed_agent_history",
   "xy_wap_embed_agent_skill",

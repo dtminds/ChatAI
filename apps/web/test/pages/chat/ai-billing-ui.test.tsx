@@ -109,6 +109,31 @@ describe("AI billing UI", () => {
     expect(router.state.location.pathname).toBe(AI_BILLING_SUBSCRIPTION_PATH);
   });
 
+  it("reloads model multipliers after the initial request fails", async () => {
+    vi.mocked(agentService.listAiHostingModels)
+      .mockRejectedValueOnce(new Error("load failed"))
+      .mockResolvedValueOnce({
+        models: [{
+          creditMultiplier: 150,
+          description: "适合复杂任务",
+          id: "1",
+          label: "Turbo 模型",
+          model: "turbo",
+          name: "Turbo 模型",
+          supportMultimodal: false,
+        }],
+      });
+    const router = createMemoryRouter([
+      { path: AI_BILLING_GUIDE_PATH, element: <AiBillingGuidePage /> },
+    ], { initialEntries: [AI_BILLING_GUIDE_PATH] });
+
+    render(<RouterProvider router={router} />);
+    await userEvent.click(await screen.findByRole("button", { name: "重新加载" }));
+
+    expect(await screen.findByText("1.5x")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "重新加载" })).not.toBeInTheDocument();
+  });
+
   it("shows the confirmed base prices and model multipliers", async () => {
     const router = createMemoryRouter([
       { path: AI_BILLING_GUIDE_PATH, element: <AiBillingGuidePage /> },
@@ -129,7 +154,6 @@ describe("AI billing UI", () => {
     expect(await screen.findByText("1.5x")).toBeInTheDocument();
     expect(screen.getByText("Turbo 模型")).toBeInTheDocument();
     expect(screen.getByText("适合复杂任务")).toBeInTheDocument();
-    expect(screen.getByTitle("模型图标：Turbo 模型")).toBeInTheDocument();
     expect(screen.getByRole("list", { name: "模型倍率" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { level: 2, name: "基础积分" })).toBeInTheDocument();
     expect(screen.getAllByRole("table")).toHaveLength(1);

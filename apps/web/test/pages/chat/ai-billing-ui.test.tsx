@@ -63,6 +63,15 @@ describe("AI billing UI", () => {
     expect(router.state.location.pathname).toBe(AI_BILLING_SUBSCRIPTION_PATH);
   });
 
+  it("renders the shared billing badge outside a router", () => {
+    render(<BillingBadge />);
+
+    expect(screen.getByRole("link", { name: "前往订阅页查看计费说明" })).toHaveAttribute(
+      "href",
+      AI_BILLING_SUBSCRIPTION_PATH,
+    );
+  });
+
   it("opens the billing guide without changing the existing subscription content", async () => {
     const router = createMemoryRouter([
       { path: AI_BILLING_SUBSCRIPTION_PATH, element: <AgentSubscriptionPage /> },

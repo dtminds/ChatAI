@@ -77,14 +77,14 @@ describe("workflow node settings chrome", () => {
     (kind) => {
       renderBasePanel(createNodeFromKind(kind, `${kind}-billing`, 0));
 
-      expect(screen.getByRole("link", { name: "前往订阅页查看计费说明" }))
+      expect(screen.getByRole("link", { name: "前往 AI Pro 页面" }))
         .toHaveAttribute("href", "/chat/ai-hosting/subscription");
     },
   );
 
   it("keeps the billing entry out of non-AI and embedded workflow panels", () => {
     const { rerender } = renderBasePanel(createWaitNode());
-    expect(screen.queryByRole("link", { name: "前往订阅页查看计费说明" }))
+    expect(screen.queryByRole("link", { name: "前往 AI Pro 页面" }))
       .not.toBeInTheDocument();
 
     rerender(
@@ -94,7 +94,7 @@ describe("workflow node settings chrome", () => {
         </WorkflowSurfaceProvider>
       </MemoryRouter>,
     );
-    expect(screen.queryByRole("link", { name: "前往订阅页查看计费说明" }))
+    expect(screen.queryByRole("link", { name: "前往 AI Pro 页面" }))
       .not.toBeInTheDocument();
   });
 });

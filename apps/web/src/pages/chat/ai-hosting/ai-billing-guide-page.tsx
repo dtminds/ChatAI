@@ -30,7 +30,7 @@ export function AiBillingGuidePage() {
       <div className="space-y-6">
         <header className="flex items-center gap-3">
           <Button
-            aria-label="返回订阅"
+            aria-label="返回 AI Pro"
             asChild
             className="-ml-2 size-9 shrink-0 rounded-[8px]"
             size="icon"

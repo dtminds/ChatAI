@@ -24,9 +24,9 @@ const usageTabs = [
 
 export function AgentSubscriptionPage() {
   return (
-    <AiHostingLayout title="订阅">
+    <AiHostingLayout title="AI Pro">
       <div className="space-y-6">
-        <AiHostingPageHeader title="订阅" />
+        <AiHostingPageHeader title="AI Pro" />
 
         <section aria-label="当前套餐">
           <div className="rounded-[14px] border border-border bg-background p-6">

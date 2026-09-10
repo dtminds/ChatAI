@@ -57,23 +57,24 @@ describe("AI billing UI", () => {
     });
   });
 
-  it("routes the shared billing badge to the subscription page", async () => {
+  it("routes the shared AI Pro badge to the AI Pro page", async () => {
     const router = createMemoryRouter([
       { path: "/source", element: <BillingBadge /> },
-      { path: AI_BILLING_SUBSCRIPTION_PATH, element: <div>订阅页</div> },
+      { path: AI_BILLING_SUBSCRIPTION_PATH, element: <div>AI Pro 页面</div> },
     ], { initialEntries: ["/source"] });
 
     render(<RouterProvider router={router} />);
-    await userEvent.click(screen.getByRole("link", { name: "前往订阅页查看计费说明" }));
+    await userEvent.click(screen.getByRole("link", { name: "前往 AI Pro 页面" }));
 
-    expect(await screen.findByText("订阅页")).toBeInTheDocument();
+    expect(await screen.findByText("AI Pro 页面")).toBeInTheDocument();
     expect(router.state.location.pathname).toBe(AI_BILLING_SUBSCRIPTION_PATH);
   });
 
   it("renders the shared billing badge outside a router", () => {
     render(<BillingBadge />);
 
-    expect(screen.getByRole("link", { name: "前往订阅页查看计费说明" })).toHaveAttribute(
+    expect(screen.getByText("AI Pro")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "前往 AI Pro 页面" })).toHaveAttribute(
       "href",
       AI_BILLING_SUBSCRIPTION_PATH,
     );
@@ -83,10 +84,10 @@ describe("AI billing UI", () => {
     render(<AgentHostingSettingsPage />);
 
     expect(screen.getByRole("heading", { level: 1, name: "托管设置" })).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "前往订阅页查看计费说明" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "前往 AI Pro 页面" })).toBeInTheDocument();
   });
 
-  it("opens the billing guide without changing the existing subscription content", async () => {
+  it("opens the billing guide without changing the existing AI Pro content", async () => {
     const router = createMemoryRouter([
       { path: AI_BILLING_SUBSCRIPTION_PATH, element: <AgentSubscriptionPage /> },
       { path: AI_BILLING_GUIDE_PATH, element: <AiBillingGuidePage /> },
@@ -103,8 +104,8 @@ describe("AI billing UI", () => {
     expect(await screen.findByRole("heading", { level: 1, name: "计费说明" })).toBeInTheDocument();
     expect(router.state.location.pathname).toBe(AI_BILLING_GUIDE_PATH);
 
-    await userEvent.click(screen.getByRole("link", { name: "返回订阅" }));
-    expect(await screen.findByRole("heading", { level: 1, name: "订阅" })).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("link", { name: "返回 AI Pro" }));
+    expect(await screen.findByRole("heading", { level: 1, name: "AI Pro" })).toBeInTheDocument();
     expect(router.state.location.pathname).toBe(AI_BILLING_SUBSCRIPTION_PATH);
   });
 

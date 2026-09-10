@@ -8,8 +8,8 @@ import {
   ArrowLeft02Icon,
   AiBookIcon,
   Brain02Icon,
+  Diamond02Icon,
   RoboticIcon,
-  TokenCircleIcon,
   AiCoEditingIcon,
   WorkflowSquare06Icon,
 } from "@hugeicons/core-free-icons";
@@ -60,8 +60,8 @@ const aiHostingNavItems = [
     to: "/chat/ai-hosting/hosting-settings",
   },
   {
-    icon: TokenCircleIcon,
-    label: "订阅",
+    icon: Diamond02Icon,
+    label: "AI Pro",
     to: "/chat/ai-hosting/subscription",
   },
 ] as const;

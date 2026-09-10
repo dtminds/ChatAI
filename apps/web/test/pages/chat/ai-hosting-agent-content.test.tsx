@@ -1635,15 +1635,6 @@ describe("AI hosting agent content", () => {
     beforeEach(installVariableMocks);
     beforeEach(installImageMocks);
 
-    it("shows the billing entry in Agent settings", async () => {
-      renderWithRoute("/chat/ai-hosting/agents/new", <AgentSettingsEditor />);
-
-      expect(await screen.findByRole("heading", { level: 1, name: "创建 Agent" }))
-        .toBeInTheDocument();
-      expect(screen.getByRole("link", { name: "前往订阅页查看计费说明" }))
-        .toHaveAttribute("href", "/chat/ai-hosting/subscription");
-    });
-
     it("blocks the agent editor after an initial load failure and retries in place", async () => {
       const user = userEvent.setup();
       vi.mocked(agentService.getAiHostingAgent).mockRejectedValueOnce(

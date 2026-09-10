@@ -14,7 +14,7 @@ const service = vi.hoisted(() => ({
 }));
 vi.mock("@/pages/chat/ai-hosting/api/user-memory-service", () => service);
 vi.mock("@/pages/chat/billing/billing-badge", () => ({
-  BillingBadge: () => <a aria-label="前往订阅页查看计费说明" href="/chat/ai-hosting/subscription">付费</a>,
+  BillingBadge: () => <a aria-label="前往 AI Pro 页面" href="/chat/ai-hosting/subscription">AI Pro</a>,
 }));
 vi.mock("@/pages/chat/ai-hosting/ai-hosting-layout", () => ({
   AiHostingLayout: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
@@ -73,7 +73,7 @@ describe("user memory page", () => {
       "src",
       "https://b5.bokr.com.cn/dist/ui/memory_f3.png",
     );
-    expect(screen.getByRole("link", { name: "前往订阅页查看计费说明" }))
+    expect(screen.getByRole("link", { name: "前往 AI Pro 页面" }))
       .toHaveAttribute("href", "/chat/ai-hosting/subscription");
     const toggle = await screen.findByRole("switch", { name: "用户记忆" });
     expect(toggle).not.toBeChecked();

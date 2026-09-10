@@ -14,14 +14,14 @@ export function BillingBadge({ className }: { className?: string }) {
   const content = (
     <>
       <HugeiconsIcon icon={Diamond02Icon} size={12} strokeWidth={1.8} />
-      <span>付费</span>
+      <span>AI Pro</span>
     </>
   );
 
   if (!isInRouterContext) {
     return (
       <a
-        aria-label="前往订阅页查看计费说明"
+        aria-label="前往 AI Pro 页面"
         className={linkClassName}
         href={AI_BILLING_SUBSCRIPTION_PATH}
       >
@@ -32,7 +32,7 @@ export function BillingBadge({ className }: { className?: string }) {
 
   return (
     <Link
-      aria-label="前往订阅页查看计费说明"
+      aria-label="前往 AI Pro 页面"
       className={linkClassName}
       to={AI_BILLING_SUBSCRIPTION_PATH}
     >

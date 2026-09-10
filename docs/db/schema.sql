@@ -589,6 +589,34 @@ CREATE TABLE `xy_wap_embed_quick_reply` (
   KEY `idx_quick_reply_category_sort` (`uid`,`sub_uid`,`category_id`,`biz_status`,`sort`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci COMMENT='chatAI-快捷话术表';
 
+CREATE TABLE IF NOT EXISTS xy_wap_embed_ai_usage_outbox (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+  uid BIGINT UNSIGNED NOT NULL COMMENT '租户ID',
+  event_key VARCHAR(191) NOT NULL COMMENT '实际用量事件幂等键',
+  billing_key VARCHAR(191) NOT NULL COMMENT '客户计费去重键',
+  capability VARCHAR(64) NOT NULL COMMENT 'AI能力编码',
+  business_type VARCHAR(64) NOT NULL COMMENT '业务对象类型',
+  business_id VARCHAR(191) NOT NULL COMMENT '业务对象ID',
+  occurred_at DATETIME NOT NULL COMMENT '用量实际发生时间',
+  payload_json JSON NOT NULL COMMENT 'Usage Event完整载荷',
+  payload_hash CHAR(64) NOT NULL COMMENT '规范化载荷SHA-256',
+  status VARCHAR(32) NOT NULL DEFAULT 'pending' COMMENT '状态：pending、leased、delivered、rejected、dead',
+  attempt INT UNSIGNED NOT NULL DEFAULT 0 COMMENT '投递领取次数',
+  lease_owner VARCHAR(128) NULL COMMENT '当前租约持有者',
+  lease_expires_at DATETIME NULL COMMENT '当前租约过期时间',
+  next_attempt_at DATETIME NOT NULL COMMENT '下次可投递时间',
+  delivered_at DATETIME NULL COMMENT 'Java确认接收时间',
+  last_error_code VARCHAR(128) NULL COMMENT '最近错误码',
+  last_error_message VARCHAR(512) NULL COMMENT '最近脱敏错误摘要',
+  create_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  update_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  PRIMARY KEY (id),
+  UNIQUE KEY uk_ai_usage_outbox_event (uid, event_key),
+  KEY idx_ai_usage_outbox_dispatch (status, next_attempt_at, id),
+  KEY idx_ai_usage_outbox_lease (status, lease_expires_at, id),
+  KEY idx_ai_usage_outbox_business (uid, business_type, business_id, id)
+) COMMENT='AI用量上报事务Outbox表';
+
 CREATE TABLE IF NOT EXISTS xy_wap_embed_workflow_definition (
   id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '主键ID',
   uid BIGINT UNSIGNED NOT NULL COMMENT '租户ID',

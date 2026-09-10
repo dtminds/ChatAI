@@ -100,7 +100,7 @@ jobs:
       - name: Build database
         run: pnpm --filter @chatai/database exec tsc -p tsconfig.json
 
-      - name: Build LLM policy
+      - name: Build LLM policy and usage
         run: pnpm --filter @chatai/llm exec tsc -p tsconfig.json
 
       - name: Build tickets
@@ -132,6 +132,17 @@ jobs:
 
       - name: Test database
         run: pnpm --filter @chatai/database test
+
+      - name: Test database AI usage MySQL repository
+        run: pnpm --filter @chatai/database test:repository:mysql
+        env:
+          AI_USAGE_TEST_MYSQL_HOST: 127.0.0.1
+          AI_USAGE_TEST_MYSQL_PASSWORD: workflow-test
+          AI_USAGE_TEST_MYSQL_PORT: 3306
+          AI_USAGE_TEST_MYSQL_USER: root
+
+      - name: Test LLM policy and usage
+        run: pnpm --filter @chatai/llm test
 
       - name: Test tickets
         run: pnpm --filter @chatai/tickets test

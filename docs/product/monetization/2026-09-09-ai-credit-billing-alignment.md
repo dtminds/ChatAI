@@ -35,7 +35,7 @@
 
 | 所属方 | 表 | 内容 |
 |---|---|---|
-| Node | `ai_usage_outbox` | 稳定事件键、uid、事件载荷、投递状态、重试时间、次数、租约及错误 |
+| Node | `xy_wap_embed_ai_usage_outbox` | 稳定事件键、uid、事件载荷、投递状态、重试时间、次数、租约及错误 |
 | Java | `ai_usage_bill` | 用量事实、业务对象、计费档位、价格快照、应计/减免/实扣积分、减免原因和时间 |
 
 Java 账单按租户与业务事件键唯一去重，保存基础积分、整数基点倍率和价格版本快照。积分采用定点表示，精度与舍入方式在协议中统一。业务时间遵循 UTC+8。
@@ -59,6 +59,23 @@ flowchart TD
 Node 不计算正式积分、不写 Java 账单表，Java 不调用 Node。业务成功与 outbox 的持久化必须保证一致，投递故障不重新执行模型任务。批量响应逐条区分接收、重复、拒绝；超时后使用原事件键重发。
 
 自动洞察的计费键应按逻辑会话稳定，不能每个分析 job 都生成新账单；主动重刷使用独立业务操作键。记忆按 run item，Workflow 按节点执行实例去重。内部调用成本与客户计费事件分开，自动洞察后续更新的成本不能因账单去重被丢弃。
+
+### Usage Event 契约
+
+- `eventKey` 标识一次实际完成的用量事件，用于 Node 重试幂等；`billingKey` 标识客户计费单元，由 Java 去重。两者不得合并。
+- `occurredAt` 使用 UTC RFC 3339，并在 Node 构造事件时统一为三位毫秒的 `.sssZ`；免费期和价格版本均按该业务发生时间判断。
+- `billingModel.creditMultiplier` 使用整数基点；`modelUsages` 按实际模型汇总请求次数、输入 Token 和输出 Token，可记录洞察内部的多模型调用。
+- `businessSnapshot` 仅保存运行模式、节点标识等审计所需标量字段，最多 16 项；不得写入消息正文、Prompt、客户资料或嵌套业务对象。
+- `capability` 与 `businessType` 固定配对：回复对应 `agent_reply`，洞察对应 `logical_session`，记忆对应 `user_memory_run_item`，三类 Workflow AI 节点对应 `workflow_node_execution`。
+- 单批最多 100 个事件，Java 按 `uid + eventKey` 对每条返回 `accepted`、`duplicate` 或 `rejected`。账单查询金额使用六位小数字符串，避免跨 Java/Node 的浮点误差。
+- 账单汇总和明细查询显式传递 `uid`；明细使用 cursor 分页，单页最多 100 条。
+
+### Outbox 状态与 SQL 预算
+
+- `pending` 到期后可领取为 `leased`；过期 `leased` 可被其他 Worker 恢复领取；Java 接收成功进入 `delivered`，业务拒绝进入 `rejected`，超过重试策略进入 `dead`，可重试故障回到 `pending`。
+- 所有状态更新都校验 `id + leased + lease_owner`，旧租约持有者不能覆盖新 Worker 的处理结果。
+- 领取批次硬上限为 100，优先恢复过期租约，再用剩余额度领取待投递事件；每批最多锁 100 行，执行最多 2 条候选查询和 1 条批量更新，不随批内事件数增加 SQL。正常首次入队 1 条 SQL，重复键校验为 2 条 SQL。
+- 索引仅服务已定义查询：`(status, next_attempt_at, id)` 用于待投递领取，`(status, lease_expires_at, id)` 用于过期租约恢复，`(uid, business_type, business_id, id)` 用于按业务对象排查和回放。
 
 ## 并行交付
 

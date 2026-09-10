@@ -594,7 +594,7 @@ CREATE TABLE IF NOT EXISTS xy_wap_embed_ai_usage_outbox (
   uid BIGINT UNSIGNED NOT NULL COMMENT '租户ID',
   event_key VARCHAR(255) NOT NULL COMMENT '实际用量事件幂等键',
   billing_key VARCHAR(255) NOT NULL COMMENT '客户计费去重键',
-  capability VARCHAR(64) NOT NULL COMMENT 'AI能力编码',
+  capability VARCHAR(64) NOT NULL COMMENT '计费模块',
   business_type VARCHAR(64) NOT NULL COMMENT '业务对象类型',
   business_id VARCHAR(255) NOT NULL COMMENT '业务对象ID',
   occurred_at DATETIME NOT NULL COMMENT '用量实际发生时间',

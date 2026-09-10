@@ -204,6 +204,9 @@ describe("LLM provider config", () => {
         cached_tokens: 4,
       },
       total_tokens: 28,
+    }, {
+      model: "ep-main",
+      provider: "volcengine_ark",
     });
   });
 
@@ -273,6 +276,9 @@ describe("LLM provider config", () => {
       prompt_tokens: 7,
       prompt_tokens_details: { cached_tokens: 2 },
       total_tokens: 10,
+    }, {
+      model: "ep-main",
+      provider: "volcengine_ark",
     });
   });
 

@@ -1,6 +1,6 @@
 import type { InsightRescanAnalysisScope } from "@chatai/contracts";
-import { sql, type Kysely } from "kysely";
-import type { Database } from "@chatai/database";
+import { sql, type Kysely, type Transaction } from "kysely";
+import { enqueueAiUsageEvent, type Database } from "@chatai/database";
 import type {
   InsightPreviousSessionContext,
   InsightPromptContext,
@@ -191,10 +191,16 @@ const SESSIONIZATION_JOB_LEASE_MS = 5 * 60_000;
 const RESCAN_SESSION_LOOKUP_BATCH_SIZE = 500;
 
 export class MysqlInsightWorkerRepository implements InsightWorkerRepositoryPort {
+  private readonly hasCustomTicketWriter: boolean;
+  private readonly ticketWriter: AiTicketWriter;
+
   constructor(
     private readonly db: Kysely<Database>,
-    private readonly ticketWriter: AiTicketWriter = new TicketsRepository(db),
-  ) {}
+    ticketWriter?: AiTicketWriter,
+  ) {
+    this.hasCustomTicketWriter = ticketWriter != null;
+    this.ticketWriter = ticketWriter ?? new TicketsRepository(db);
+  }
 
   async withSessionizationClaim<T>(
     input: ClaimedSessionizationUidJob,
@@ -2424,6 +2430,21 @@ export class MysqlInsightWorkerRepository implements InsightWorkerRepositoryPort
   }
 
   async saveAnalysisResult(input: SaveAnalysisResultInput): Promise<string> {
+    if (input.usageEvent) {
+      return this.db.transaction().execute((trx) =>
+        new MysqlInsightWorkerRepository(
+          trx,
+          this.hasCustomTicketWriter ? this.ticketWriter : undefined,
+        ).saveAnalysisResultInTransaction(input, trx)
+      );
+    }
+    return this.saveAnalysisResultInTransaction(input);
+  }
+
+  private async saveAnalysisResultInTransaction(
+    input: SaveAnalysisResultInput,
+    transaction?: Transaction<Database>,
+  ): Promise<string> {
     const sessionId = parsePositiveInteger(input.job.sessionId) ?? -1;
     const conversationIdBySessionId = new Map<string, number>();
     const conversationId = await this.getSessionConversationId(input.job.sessionId, conversationIdBySessionId);
@@ -2659,6 +2680,15 @@ export class MysqlInsightWorkerRepository implements InsightWorkerRepositoryPort
       })
       .where("id", "=", parsePositiveInteger(input.runId) ?? -1)
       .executeTakeFirst();
+
+    if (input.usageEvent) {
+      if (!transaction) throw new Error("AI usage event requires an active transaction");
+      await enqueueAiUsageEvent(
+        transaction,
+        input.usageEvent,
+        new Date(input.usageEvent.occurredAt),
+      );
+    }
 
     return String(snapshotId);
   }

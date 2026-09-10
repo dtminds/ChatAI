@@ -40,6 +40,7 @@ describe("AI hosting agent routes", () => {
               },
             ],
             model: {
+              creditMultiplier: 150,
               id: "11",
               label: "Doubao-2.0-lite",
               model: "doubao-2.0-lite",
@@ -63,6 +64,7 @@ describe("AI hosting agent routes", () => {
               },
             ],
             model: {
+              creditMultiplier: 150,
               id: "11",
               label: "Doubao-2.0-lite",
               model: "doubao-2.0-lite",
@@ -86,6 +88,7 @@ describe("AI hosting agent routes", () => {
       data: {
         models: [
           {
+            creditMultiplier: 100,
             description: "系统默认",
             id: "10",
             label: "默认模型",
@@ -94,6 +97,7 @@ describe("AI hosting agent routes", () => {
             supportMultimodal: false,
           },
           {
+            creditMultiplier: 150,
             description: "平台模型",
             id: "11",
             label: "Doubao-2.0-lite",
@@ -354,6 +358,10 @@ describe("AI hosting agent routes", () => {
             status: "invalid",
           },
         ],
+        model: {
+          creditMultiplier: 150,
+          id: "11",
+        },
       },
       success: true,
     });
@@ -367,6 +375,33 @@ describe("AI hosting agent routes", () => {
       ["uid", "=", 9001],
       ["id", "in", [3, 999, 2]],
     ]);
+
+    await app.close();
+  });
+
+  it("keeps missing model summaries separate from database-backed multipliers", async () => {
+    const { app, authorization, db } = await createAiHostingApp();
+    db.setAgentModelId(999);
+
+    const [listResponse, detailResponse] = await Promise.all([
+      app.inject({
+        headers: { authorization },
+        method: "GET",
+        url: "/api/server/ai-hosting/agents",
+      }),
+      app.inject({
+        headers: { authorization },
+        method: "GET",
+        url: "/api/server/ai-hosting/agents/301",
+      }),
+    ]);
+
+    expect(listResponse.json().data.agents[0]?.model).toMatchObject({
+      creditMultiplier: 100,
+    });
+    expect(detailResponse.json().data.model).toMatchObject({
+      creditMultiplier: 100,
+    });
 
     await app.close();
   });
@@ -1781,6 +1816,7 @@ function createAiHostingDbMock(options: CreateAiHostingDbMockOptions = {}) {
   const models = [
     {
       description: "系统默认",
+      credit_multiplier: 100,
       id: 10,
       model: "default-model",
       name: "默认模型",
@@ -1790,6 +1826,7 @@ function createAiHostingDbMock(options: CreateAiHostingDbMockOptions = {}) {
     },
     {
       description: "平台模型",
+      credit_multiplier: 150,
       id: 11,
       model: "doubao-2.0-lite",
       name: "Doubao-2.0-lite",
@@ -2069,6 +2106,11 @@ function createAiHostingDbMock(options: CreateAiHostingDbMockOptions = {}) {
     setAgentPrompt: (prompt: string) => {
       agentPrompt = prompt;
       agents[0].prompt_config = buildPromptConfig(prompt);
+    },
+    setAgentModelId: (modelId: number) => {
+      for (const agent of agents) {
+        agent.model_id = modelId;
+      }
     },
     setAgentPromptConfig: (prompt: {
       availableKbIds: number[];

@@ -73,13 +73,6 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { Spinner } from "@/components/ui/spinner";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
@@ -122,7 +115,7 @@ import {
   type AgentSettingsForm,
   type AgentToneStyle,
 } from "./agent-components/agent-settings.constants";
-import { AgentModelBadge } from "./agent-model-badge";
+import { AiModelSelect } from "./ai-model-select";
 import { canManageAiHostingAgents } from "./agent-permissions";
 import { AiHostingLayout, notifyAiHostingQuotaChanged } from "./ai-hosting-layout";
 import {
@@ -151,6 +144,7 @@ type PreviewMessage = {
 };
 
 type ModelOption = {
+  creditMultiplier?: number;
   id: string;
   label: string;
   model: string;
@@ -240,6 +234,7 @@ export function AgentSettingsEditor() {
     () =>
       models.length > 0
         ? models.map((model) => ({
+          creditMultiplier: model.creditMultiplier,
           id: model.id,
           label: model.label,
           model: model.model,
@@ -251,8 +246,6 @@ export function AgentSettingsEditor() {
         })),
     [models],
   );
-  const selectedModel = modelOptions.find((option) => option.id === form.model);
-
   const pageTitle = isEditing ? (agentDetail?.name || form.name || "Agent") : "创建 Agent";
 
   const loadInitialData = useCallback(async () => {
@@ -921,41 +914,16 @@ export function AgentSettingsEditor() {
 
                 <div className="space-y-2">
                   <Label htmlFor="agent-settings-model">大模型</Label>
-                  <Select
+                  <AiModelSelect
+                    ariaInvalid={Boolean(modelError)}
+                    ariaLabel="大模型"
                     disabled={controlsDisabled}
+                    id="agent-settings-model"
+                    models={modelOptions}
                     onValueChange={(value) => updateForm("model", value)}
+                    placeholder="请选择大模型"
                     value={form.model}
-                  >
-                    <SelectTrigger
-                      aria-invalid={modelError ? true : undefined}
-                      className="w-full"
-                      id="agent-settings-model"
-                    >
-                      {selectedModel ? (
-                        <div className="min-w-0" data-agent-model-trigger-value>
-                          <AgentModelBadge
-                            label={selectedModel.label}
-                            model={selectedModel.model}
-                          />
-                        </div>
-                      ) : (
-                        <SelectValue placeholder="请选择大模型" />
-                      )}
-                    </SelectTrigger>
-                    <SelectContent>
-                      {modelOptions.map((option) => (
-                        <SelectItem
-                          key={option.id}
-                          value={option.id}
-                        >
-                          <AgentModelBadge
-                            label={option.label}
-                            model={option.model}
-                          />
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  />
                   {modelError ? (
                     <p className="text-xs text-destructive" role="alert">
                       {modelError}

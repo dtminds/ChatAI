@@ -1087,6 +1087,10 @@ export interface XyWapEmbedAiModel {
    */
   credit: Generated<number>;
   /**
+   * 积分倍率，100表示1x
+   */
+  credit_multiplier: Generated<number>;
+  /**
    * 模型描述
    */
   description: Generated<string>;

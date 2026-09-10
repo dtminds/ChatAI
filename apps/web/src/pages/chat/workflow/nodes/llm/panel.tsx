@@ -10,7 +10,7 @@ import {
   Settings03Icon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
-import { AgentModelBadge } from "@/pages/chat/ai-hosting/agent-model-badge";
+import { AiModelSelect } from "@/pages/chat/ai-hosting/ai-model-select";
 import { listAiHostingModels } from "@/pages/chat/ai-hosting/agent-service";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -211,8 +211,10 @@ export function LlmConfig({
         )}
       >
         <div className="flex items-center gap-2">
-          <Select
+          <AiModelSelect
+            ariaLabel="模型"
             disabled={modelsLoading || modelsError}
+            models={models}
             onValueChange={(nextModelId) => {
               const model = models.find((item) => item.id === nextModelId);
               if (!model) return;
@@ -222,35 +224,14 @@ export function LlmConfig({
                 modelName: model.model,
               });
             }}
+            placeholder="请选择模型"
+            unavailableModel={modelId && !selectedModel ? {
+              label: normalizeLlmModelSnapshot(node.data.modelLabel) ?? "原模型不可用",
+              model: normalizeLlmModelSnapshot(node.data.modelName) ?? modelId,
+            } : undefined}
+            unavailableModelId={modelId && !modelsLoading ? modelId : undefined}
             value={modelId}
-          >
-            <SelectTrigger aria-label="模型" className="w-full">
-              {selectedModel ? (
-                <div className="min-w-0">
-                  <AgentModelBadge label={selectedModel.label} model={selectedModel.model} />
-                </div>
-              ) : modelId ? (
-                <div className="min-w-0">
-                  <AgentModelBadge
-                    label={normalizeLlmModelSnapshot(node.data.modelLabel) ?? "原模型不可用"}
-                    model={normalizeLlmModelSnapshot(node.data.modelName) ?? modelId}
-                  />
-                </div>
-              ) : (
-                <SelectValue placeholder="请选择模型" />
-              )}
-            </SelectTrigger>
-            <SelectContent>
-              {modelId && !selectedModel && !modelsLoading ? (
-                <SelectItem disabled value={modelId}>原模型不可用</SelectItem>
-              ) : null}
-              {models.map((model) => (
-                <SelectItem key={model.id} value={model.id}>
-                  <AgentModelBadge label={model.label} model={model.model} />
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          />
           <Popover modal={false}>
             <PopoverTrigger asChild>
               <Button

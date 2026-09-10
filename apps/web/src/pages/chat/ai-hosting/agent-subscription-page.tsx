@@ -1,3 +1,6 @@
+import { ArrowRight01Icon } from "@hugeicons/core-free-icons";
+import { HugeiconsIcon } from "@hugeicons/react";
+import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import {
@@ -9,6 +12,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { AI_BILLING_GUIDE_PATH } from "@/pages/chat/billing/ai-credit-billing";
 import { AiHostingLayout, AiHostingPageHeader } from "./ai-hosting-layout";
 
 const usageTabs = [
@@ -20,9 +24,9 @@ const usageTabs = [
 
 export function AgentSubscriptionPage() {
   return (
-    <AiHostingLayout title="订阅">
+    <AiHostingLayout title="AI Pro">
       <div className="space-y-6">
-        <AiHostingPageHeader title="订阅" />
+        <AiHostingPageHeader title="AI Pro" />
 
         <section aria-label="当前套餐">
           <div className="rounded-[14px] border border-border bg-background p-6">
@@ -39,9 +43,17 @@ export function AgentSubscriptionPage() {
                 </div>
               </div>
 
-              <Button className="h-10 rounded-[8px] px-4" disabled type="button">
-                管理套餐
-              </Button>
+              <div className="flex items-center gap-2">
+                <Button asChild className="h-10 rounded-[8px] px-4" variant="outline">
+                  <Link to={AI_BILLING_GUIDE_PATH}>
+                    计费说明
+                    <HugeiconsIcon icon={ArrowRight01Icon} size={16} strokeWidth={1.8} />
+                  </Link>
+                </Button>
+                <Button className="h-10 rounded-[8px] px-4" disabled type="button">
+                  管理套餐
+                </Button>
+              </div>
             </div>
           </div>
         </section>

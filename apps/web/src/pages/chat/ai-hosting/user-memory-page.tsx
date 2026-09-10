@@ -18,6 +18,7 @@ import { Switch } from "@/components/ui/switch";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { resolveTablePagination, TablePagination } from "@/components/ui/table-pagination";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { BillingBadge } from "@/pages/chat/billing/billing-badge";
 import { useAuthStore } from "@/store/auth-store";
 import { insightChartColors, insightResolutionColors } from "../insights/insights-chart-palette";
 import { canMaintainUserMemory, canManageAiHostingAgents } from "./agent-permissions";
@@ -215,19 +216,22 @@ export function UserMemoryPage() {
     <div className="space-y-6">
       <AiHostingPageHeader
         title="记忆"
-        titleActions={overview ? <div className="flex items-center gap-2">
-          <div className="flex h-8 items-center gap-2 rounded-full bg-muted px-2.5"><span className={overview.enabled ? "text-sm font-medium text-success" : "text-sm font-medium text-destructive"}>{overview.enabled ? "已开启" : "未开启"}</span><Switch aria-label="用户记忆" checked={overview.enabled} className="data-[state=checked]:bg-success data-[state=unchecked]:bg-destructive" disabled={!canManage || saving} onCheckedChange={toggleEnabled} /></div>
-          <Button
-            className="h-8 rounded-full bg-muted px-3 text-sm"
-            disabled={!canManage || saving}
-            onClick={() => setInstructionOpen(true)}
-            size="sm"
-            variant="ghost"
-          >
-            <HugeiconsIcon icon={Settings03Icon} size={15} />
-            规则配置
-          </Button>
-        </div> : undefined}
+        titleActions={<div className="flex items-center gap-2">
+          <BillingBadge />
+          {overview ? <>
+            <div className="flex h-8 items-center gap-2 rounded-full bg-muted px-2.5"><span className={overview.enabled ? "text-sm font-medium text-success" : "text-sm font-medium text-destructive"}>{overview.enabled ? "已开启" : "未开启"}</span><Switch aria-label="用户记忆" checked={overview.enabled} className="data-[state=checked]:bg-success data-[state=unchecked]:bg-destructive" disabled={!canManage || saving} onCheckedChange={toggleEnabled} /></div>
+            <Button
+              className="h-8 rounded-full bg-muted px-3 text-sm"
+              disabled={!canManage || saving}
+              onClick={() => setInstructionOpen(true)}
+              size="sm"
+              variant="ghost"
+            >
+              <HugeiconsIcon icon={Settings03Icon} size={15} />
+              规则配置
+            </Button>
+          </> : null}
+        </div>}
         description="AI 自动提炼客户的稳定背景、长期偏好与沟通习惯，让每次服务更懂客户"
       />
       <AiHostingIntroGuide ariaLabel="客户记忆使用引导" steps={userMemoryIntroSteps} />

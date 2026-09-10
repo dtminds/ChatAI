@@ -5234,7 +5234,11 @@ describe("MysqlInsightWorkerRepository", () => {
         uid: 9001,
       },
       output: {
-        actionItems: [],
+        actionItems: [{
+          evidenceMessageIds: [],
+          priority: "high",
+          title: "跟进物流异常",
+        }],
         entities: [],
         faqCandidates: [
           {
@@ -5379,6 +5383,23 @@ describe("MysqlInsightWorkerRepository", () => {
           event_key: "conversation-insight:run:6001",
           status: "pending",
         }),
+      }),
+    );
+    expect(operations).toContainEqual(
+      expect.objectContaining({
+        table: "xy_wap_embed_session_action_item",
+        type: "insert",
+        values: expect.objectContaining({
+          snapshot_id: 7001,
+          source_type: "ai",
+          title: "跟进物流异常",
+        }),
+      }),
+    );
+    expect(operations).toContainEqual(
+      expect.objectContaining({
+        table: "xy_wap_embed_ticket_activity",
+        type: "insert",
       }),
     );
   });

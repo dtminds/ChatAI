@@ -2431,12 +2431,18 @@ export class MysqlInsightWorkerRepository implements InsightWorkerRepositoryPort
 
   async saveAnalysisResult(input: SaveAnalysisResultInput): Promise<string> {
     if (input.usageEvent) {
-      return this.db.transaction().execute((trx) =>
-        new MysqlInsightWorkerRepository(
+      return this.db.transaction().execute((trx) => {
+        const ticketWriter = this.hasCustomTicketWriter
+          ? this.ticketWriter
+          : {
+              createAiTickets: (ticketInput: Parameters<TicketsRepository["createAiTickets"]>[0]) =>
+                new TicketsRepository(trx).createAiTicketsInTransaction(trx, ticketInput),
+            };
+        return new MysqlInsightWorkerRepository(
           trx,
-          this.hasCustomTicketWriter ? this.ticketWriter : undefined,
-        ).saveAnalysisResultInTransaction(input, trx)
-      );
+          ticketWriter,
+        ).saveAnalysisResultInTransaction(input, trx);
+      });
     }
     return this.saveAnalysisResultInTransaction(input);
   }

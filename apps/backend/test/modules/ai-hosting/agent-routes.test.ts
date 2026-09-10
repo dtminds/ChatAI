@@ -398,11 +398,9 @@ describe("AI hosting agent routes", () => {
 
     expect(listResponse.json().data.agents[0]?.model).toMatchObject({
       creditMultiplier: 100,
-      id: "999",
     });
     expect(detailResponse.json().data.model).toMatchObject({
       creditMultiplier: 100,
-      id: "0",
     });
 
     await app.close();

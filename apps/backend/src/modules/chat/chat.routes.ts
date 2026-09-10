@@ -1,6 +1,7 @@
 import type {
   WorkbenchPollRequest,
   WorkbenchRetryMessageRequest,
+  WorkbenchSendFailReasonRequest,
   WorkbenchSendMessagePayload,
   WorkbenchGetOrCreateConversationRequestDto,
   WorkbenchKickGroupMemberRequest,
@@ -2061,6 +2062,22 @@ export async function registerChatRoutes(app: FastifyInstance) {
       return getWorkbenchService(app, request).retryMessage(
         getSubUserId(request),
         request.body satisfies WorkbenchRetryMessageRequest,
+      );
+    },
+  );
+
+  app.post<{ Body: Static<typeof MessageRetryBodySchema> }>(
+    "/api/server/messages/send-fail-reason",
+    {
+      preHandler: app.authenticate,
+      schema: {
+        body: MessageRetryBodySchema,
+      },
+    },
+    async (request) => {
+      return getWorkbenchService(app, request).getSendFailReason(
+        getSubUserId(request),
+        request.body satisfies WorkbenchSendFailReasonRequest,
       );
     },
   );

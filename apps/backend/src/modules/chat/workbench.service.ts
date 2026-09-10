@@ -53,6 +53,8 @@ import type {
   WorkbenchSmartReplySendAnswerResponse,
   WorkbenchRevokeMessageResponse,
   WorkbenchRetryMessageRequest,
+  WorkbenchSendFailReasonRequest,
+  WorkbenchSendFailReasonResponse,
   WorkbenchSeatAgentModeSwitchRequest,
   WorkbenchSeatAgentModeSwitchResponse,
   WorkbenchSeatDto,
@@ -593,6 +595,10 @@ export type WorkbenchService = {
     subUserId: string,
     payload: WorkbenchRetryMessageRequest,
   ): Promise<WorkbenchSendMessageResponse> | WorkbenchSendMessageResponse;
+  getSendFailReason(
+    subUserId: string,
+    payload: WorkbenchSendFailReasonRequest,
+  ): Promise<WorkbenchSendFailReasonResponse> | WorkbenchSendFailReasonResponse;
   takeOverSeat(
     subUserId: string,
     seatId: string,
@@ -2459,6 +2465,49 @@ export class MysqlWorkbenchService implements WorkbenchService {
     );
 
     return response;
+  }
+
+  async getSendFailReason(
+    subUserId: string,
+    payload: WorkbenchSendFailReasonRequest,
+  ): Promise<WorkbenchSendFailReasonResponse> {
+    const scope = await this.getAuthenticatedWorkbenchScope(subUserId);
+    const conversation = await this.getAccessibleConversation(
+      subUserId,
+      payload.conversationId,
+      scope,
+    );
+
+    if (!Number.isSafeInteger(payload.messageSeq) || payload.messageSeq <= 0) {
+      throw new BadRequestError("INVALID_MESSAGE_SEQ", "消息序号无效");
+    }
+
+    const failedMessage = await this.repository.findRetryMessage({
+      conversationId: conversation.id,
+      messageSourceThirdUserId: getMessageSourceThirdUserId(conversation),
+      messageSeq: payload.messageSeq,
+      platform: conversation.platform,
+      receptionThirdUserId: conversation.thirdUserId,
+      ...(conversation.thirdExternalUserId
+        ? { thirdExternalUserId: conversation.thirdExternalUserId }
+        : {}),
+      ...(conversation.thirdGroupId ? { thirdGroupId: conversation.thirdGroupId } : {}),
+      uid: conversation.uid,
+    });
+
+    if (!failedMessage?.optNo) {
+      return { failReason: "" };
+    }
+
+    const operation = await this.javaClient.getAsyncOperationInfo({
+      optNo: failedMessage.optNo,
+      platform: conversation.platform,
+      uid: conversation.uid,
+    });
+
+    return {
+      failReason: operation.failReason,
+    };
   }
 
   private async buildJavaSendMessageData(

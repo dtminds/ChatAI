@@ -25,6 +25,7 @@ import {
   useState,
 } from "react";
 import { toast } from "sonner";
+import { resolveSendFailureTooltip } from "@/pages/chat/lib/send-fail-reason";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -109,6 +110,7 @@ type ChatMessageListProps = {
   onRefreshInitializingMessage?: (message: Message) => void | Promise<void>;
   onRevokeMessage?: (message: ChatMessage) => void;
   onRetryMessage?: (uiMessageKey: string) => void;
+  onLoadSendFailReason?: (uiMessageKey: string) => void;
   onSendSmartReply?: (message: ChatMessage, payload: SmartReplySendPayload) => void;
   onFillSmartReplyComposer?: (message: ChatMessage, content: string) => void;
   onDismissSmartReply?: (message: ChatMessage) => void;
@@ -163,6 +165,7 @@ export function ChatMessageList({
   onRefreshInitializingMessage,
   onRevokeMessage,
   onRetryMessage,
+  onLoadSendFailReason,
   onSendSmartReply,
   onFillSmartReplyComposer,
   onDismissSmartReply,
@@ -306,6 +309,7 @@ export function ChatMessageList({
                   onRefreshInitializingMessage={onRefreshInitializingMessage}
                   onRevokeMessage={onRevokeMessage}
                   onRetryMessage={onRetryMessage}
+                  onLoadSendFailReason={onLoadSendFailReason}
                   onSendSmartReply={onSendSmartReply}
                   onFillSmartReplyComposer={onFillSmartReplyComposer}
                   onDismissSmartReply={onDismissSmartReply}
@@ -407,6 +411,7 @@ export function MessageRow({
   onRefreshInitializingMessage,
   onRevokeMessage,
   onRetryMessage,
+  onLoadSendFailReason,
   onSendSmartReply,
   onFillSmartReplyComposer,
   onDismissSmartReply,
@@ -443,6 +448,7 @@ export function MessageRow({
   onRefreshInitializingMessage?: (message: Message) => void | Promise<void>;
   onRevokeMessage?: (message: ChatMessage) => void;
   onRetryMessage?: (uiMessageKey: string) => void;
+  onLoadSendFailReason?: (uiMessageKey: string) => void;
   onSendSmartReply?: (message: ChatMessage, payload: SmartReplySendPayload) => void;
   onFillSmartReplyComposer?: (message: ChatMessage, content: string) => void;
   onDismissSmartReply?: (message: ChatMessage) => void;
@@ -658,6 +664,7 @@ export function MessageRow({
                   canRetryMessage={canUseMessageActions}
                   isRetryingMessage={isRetryingMessage}
                   message={message}
+                  onLoadSendFailReason={onLoadSendFailReason}
                   onRetryMessage={onRetryMessage}
                   state={inlineDeliveryState}
                 />
@@ -704,6 +711,7 @@ export function MessageRow({
                     isAgent={isAgent}
                     message={message}
                     onOpenQuotedMessage={onOpenQuotedMessage}
+                    onLoadSendFailReason={onLoadSendFailReason}
                     onRetryMessage={onRetryMessage}
                   />
                 ) : (
@@ -789,6 +797,7 @@ function QuoteMessageContentWithDelivery({
   isAgent,
   message,
   onOpenQuotedMessage,
+  onLoadSendFailReason,
   onRetryMessage,
 }: {
   canRetryMessage: boolean;
@@ -798,6 +807,7 @@ function QuoteMessageContentWithDelivery({
   isAgent: boolean;
   message: ChatMessage;
   onOpenQuotedMessage?: (quoteMsgId: string) => void;
+  onLoadSendFailReason?: (uiMessageKey: string) => void;
   onRetryMessage?: (uiMessageKey: string) => void;
 }) {
   return (
@@ -813,6 +823,7 @@ function QuoteMessageContentWithDelivery({
             canRetryMessage={canRetryMessage}
             isRetryingMessage={isRetryingMessage}
             message={message}
+            onLoadSendFailReason={onLoadSendFailReason}
             onRetryMessage={onRetryMessage}
             state={inlineDeliveryState}
           />
@@ -1149,12 +1160,14 @@ function MessageInlineStatusSlot({
   canRetryMessage,
   isRetryingMessage,
   message,
+  onLoadSendFailReason,
   onRetryMessage,
   state,
 }: {
   canRetryMessage: boolean;
   isRetryingMessage: boolean;
   message: ChatMessage;
+  onLoadSendFailReason?: (uiMessageKey: string) => void;
   onRetryMessage?: (uiMessageKey: string) => void;
   state: InlineDeliveryState | null;
 }) {
@@ -1167,42 +1180,75 @@ function MessageInlineStatusSlot({
       canRetryMessage &&
       Boolean(onRetryMessage) &&
       !isRetryingMessage;
+    const failReasonText = message.failReason?.trim();
+    const failReasonLabel = isRetryingMessage
+      ? "正在重试发送"
+      : failReasonText
+        ? resolveSendFailureTooltip(failReasonText)
+        : "";
+    const requestFailReasonIfNeeded = () => {
+      if (!isRetryingMessage && !failReasonText) {
+        onLoadSendFailReason?.(message.uiMessageKey);
+      }
+    };
+    const retryButton = (
+      <button
+        aria-busy={isRetryingMessage}
+        aria-label={isRetryingMessage ? "正在重试发送" : "重试发送"}
+        className={cn(
+          "inline-flex size-4 items-center justify-center rounded-full transition-colors disabled:cursor-not-allowed disabled:opacity-55",
+          isRetryingMessage
+            ? "bg-transparent text-muted-foreground"
+            : "bg-destructive text-destructive-foreground hover:bg-destructive/90 disabled:hover:bg-destructive",
+        )}
+        disabled={!canRetry}
+        onClick={() => {
+          if (!canRetry) {
+            return;
+          }
+
+          onRetryMessage?.(message.uiMessageKey);
+        }}
+        onPointerEnter={requestFailReasonIfNeeded}
+        type="button"
+      >
+        {isRetryingMessage ? (
+          <Spinner variant="classic" size={10} strokeWidth={2.4} className="text-current" />
+        ) : (
+          <HugeiconsIcon
+            icon={ExclamationMarkIcon}
+            size={10}
+            strokeWidth={2.4}
+          />
+        )}
+      </button>
+    );
 
     return (
       <div
         className="mb-1 flex h-4 shrink-0 items-center"
         data-testid="message-inline-status-slot"
       >
-        <button
-          aria-busy={isRetryingMessage}
-          aria-label={isRetryingMessage ? "正在重试发送" : "重试发送"}
-          className={cn(
-            "inline-flex size-4 items-center justify-center rounded-full transition-colors disabled:cursor-not-allowed disabled:opacity-55",
-            isRetryingMessage
-              ? "bg-transparent text-muted-foreground"
-              : "bg-destructive text-destructive-foreground hover:bg-destructive/90 disabled:hover:bg-destructive",
-          )}
-          disabled={!canRetry}
-          onClick={() => {
-            if (!canRetry) {
-              return;
-            }
-
-            onRetryMessage?.(message.uiMessageKey);
-          }}
-          title={isRetryingMessage ? "正在重试发送" : "重试发送"}
-          type="button"
-        >
-          {isRetryingMessage ? (
-            <Spinner variant="classic" size={10} strokeWidth={2.4} className="text-current" />
-          ) : (
-            <HugeiconsIcon
-              icon={ExclamationMarkIcon}
-              size={10}
-              strokeWidth={2.4}
-            />
-          )}
-        </button>
+        <TooltipProvider delayDuration={300}>
+          <Tooltip
+            onOpenChange={(open) => {
+              if (open) {
+                requestFailReasonIfNeeded();
+              }
+            }}
+          >
+            <TooltipTrigger asChild>
+              {canRetry ? retryButton : (
+                <span className="inline-flex">{retryButton}</span>
+              )}
+            </TooltipTrigger>
+            {failReasonLabel ? (
+              <TooltipContent side="top" sideOffset={6}>
+                {failReasonLabel}
+              </TooltipContent>
+            ) : null}
+          </Tooltip>
+        </TooltipProvider>
       </div>
     );
   }

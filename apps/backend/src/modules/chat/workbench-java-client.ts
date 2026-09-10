@@ -1,5 +1,6 @@
 import {
   decodeJavaInternalApiEnvelope,
+  type WorkbenchAsyncOperationInfoDto,
   type WorkbenchBroadcastProtectionStatusDto,
   type WorkbenchSendMessageResponse,
   type WorkbenchSmartReplyAttachmentsResponse,
@@ -306,6 +307,11 @@ export type WorkbenchJavaClient = {
     uid: number;
   }): Promise<JavaRevokeMessageResponse | undefined>;
   sendMessage(input: JavaSendMessageInput): Promise<WorkbenchSendMessageResponse>;
+  getAsyncOperationInfo(input: {
+    optNo: string;
+    platform: number;
+    uid: number;
+  }): Promise<WorkbenchAsyncOperationInfoDto>;
   takeOverSeat(input: {
     platform: number;
     subId: number;
@@ -799,6 +805,22 @@ export function createWorkbenchJavaClient(
         status: "accepted",
       };
     },
+    async getAsyncOperationInfo(input) {
+      const response = await postJavaEnvelope<unknown>(
+        baseUrl,
+        token,
+        "/third-internal/wap-embed/async-operation/get-info",
+        {
+          optNo: input.optNo,
+          platform: input.platform,
+          uid: input.uid,
+        },
+        logger,
+        "get-async-operation-info",
+      );
+
+      return mapJavaAsyncOperationInfo(response, logger);
+    },
     takeOverSeat(input) {
       return postJavaEnvelope<boolean>(
         baseUrl,
@@ -1208,6 +1230,44 @@ async function postJavaEnvelope<T>(
 
   const payload = decodeWorkbenchJavaResponse(response, body, logger, operation, path);
   return payload.data as T;
+}
+
+function mapJavaAsyncOperationInfo(
+  data: unknown,
+  logger: AppLogger,
+): WorkbenchAsyncOperationInfoDto {
+  if (!isRecord(data)) {
+    throwWorkbenchJavaContractInvalid(
+      data,
+      logger,
+      "get-async-operation-info",
+      "/third-internal/wap-embed/async-operation/get-info",
+      "data must be an object",
+    );
+  }
+
+  const optNo = data.optNo == null ? "" : String(data.optNo).trim();
+  const status = data.status;
+
+  if (
+    !optNo ||
+    typeof status !== "number" ||
+    !Number.isSafeInteger(status)
+  ) {
+    throwWorkbenchJavaContractInvalid(
+      data,
+      logger,
+      "get-async-operation-info",
+      "/third-internal/wap-embed/async-operation/get-info",
+      "optNo and status are required",
+    );
+  }
+
+  return {
+    failReason: typeof data.failReason === "string" ? data.failReason.trim() : "",
+    optNo,
+    status,
+  };
 }
 
 function mapJavaBroadcastProtectionStatus(

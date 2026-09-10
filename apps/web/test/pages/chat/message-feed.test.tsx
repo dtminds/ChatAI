@@ -1324,6 +1324,62 @@ describe("message feed row actions", () => {
     expect(onRetryMessage).toHaveBeenCalledWith(expect.any(String));
   });
 
+  it("shows the send failReason when hovering the failed-message mark", async () => {
+    const user = userEvent.setup();
+
+    render(
+      <MessageRow
+        message={{
+          ...createTextMessage("发送失败消息"),
+          failReason: "当前机器人不在线",
+          status: "failed",
+        }}
+        onRetryMessage={vi.fn()}
+      />,
+    );
+
+    await user.hover(screen.getByRole("button", { name: "重试发送" }));
+
+    expect(await screen.findByRole("tooltip")).toHaveTextContent("当前机器人不在线");
+  });
+
+  it("loads a missing send failReason when hovering the failed-message mark", async () => {
+    const user = userEvent.setup();
+    const onLoadSendFailReason = vi.fn();
+    const failedMessage = {
+      ...createTextMessage("发送失败消息"),
+      status: "failed" as const,
+    };
+
+    const { rerender } = render(
+      <MessageRow
+        message={failedMessage}
+        onLoadSendFailReason={onLoadSendFailReason}
+        onRetryMessage={vi.fn()}
+      />,
+    );
+
+    await user.hover(screen.getByRole("button", { name: "重试发送" }));
+
+    expect(onLoadSendFailReason).toHaveBeenCalledWith(expect.any(String));
+    expect(screen.queryByRole("tooltip")).not.toBeInTheDocument();
+
+    rerender(
+      <MessageRow
+        message={{
+          ...failedMessage,
+          failReason: "当前机器人不在线",
+        }}
+        onLoadSendFailReason={onLoadSendFailReason}
+        onRetryMessage={vi.fn()}
+      />,
+    );
+
+    await user.hover(screen.getByRole("button", { name: "重试发送" }));
+
+    expect(await screen.findByRole("tooltip")).toHaveTextContent("当前机器人不在线");
+  });
+
   it("keeps the retry control visible but disabled when message actions are locked", () => {
     const onRetryMessage = vi.fn();
 

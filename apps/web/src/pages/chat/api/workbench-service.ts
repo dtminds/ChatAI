@@ -72,6 +72,8 @@ import {
   type WorkbenchRevokeMessageRequest,
   type WorkbenchRevokeMessageResponse,
   type WorkbenchRetryMessageRequest,
+  type WorkbenchSendFailReasonRequest,
+  type WorkbenchSendFailReasonResponse,
   type WorkbenchVoicePlaybackConfirmRequest,
   type WorkbenchVoicePlaybackConfirmResponse,
   type WorkbenchVoiceTranscriptionRequest,
@@ -299,6 +301,9 @@ export type WorkbenchService = {
   retryMessage: (
     request: WorkbenchRetryMessageRequest,
   ) => Promise<WorkbenchSendMessageResponse>;
+  getSendFailReason: (
+    request: WorkbenchSendFailReasonRequest,
+  ) => Promise<WorkbenchSendFailReasonResponse>;
   takeOverSeat: (seatId: string) => Promise<WorkbenchTakeOverSeatResponse>;
   unpinConversation: (conversationId: string) => Promise<WorkbenchConversationUnpinResponse>;
   search: (seatId: string, keyword: string) => Promise<WorkbenchSearchResponseDto>;
@@ -2020,6 +2025,18 @@ export function createMockWorkbenchService(): WorkbenchService {
         status: "accepted",
       };
     },
+    async getSendFailReason(request) {
+      const message = findMessageByIdOrSeq(
+        state,
+        request.conversationId,
+        undefined,
+        request.messageSeq,
+      );
+
+      return {
+        failReason: message?.failReason?.trim() ?? "",
+      };
+    },
     async takeOverSeat(seatId) {
       const seat = findAccount(state, seatId);
 
@@ -2686,6 +2703,12 @@ export function createHttpWorkbenchService(): WorkbenchService {
     retryMessage(request) {
       return http.post<WorkbenchSendMessageResponse, WorkbenchRetryMessageRequest>(
         "/server/messages/retry",
+        request,
+      );
+    },
+    getSendFailReason(request) {
+      return http.post<WorkbenchSendFailReasonResponse, WorkbenchSendFailReasonRequest>(
+        "/server/messages/send-fail-reason",
         request,
       );
     },

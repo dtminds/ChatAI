@@ -453,6 +453,7 @@ function ChatWorkbenchContent({
     revokeMessage,
     pinConversation,
     retryFailedMessage,
+    loadSendFailReason,
     saveComposerDraft,
     setChatSendPermission,
     closeHistoryPanel,
@@ -560,6 +561,7 @@ function ChatWorkbenchContent({
       requestSmartReplyGeneralAnswer: state.requestSmartReplyGeneralAnswer,
       requestSmartReplyMakeShorter: state.requestSmartReplyMakeShorter,
       retryFailedMessage: state.retryFailedMessage,
+      loadSendFailReason: state.loadSendFailReason,
       revokeMessage: state.revokeMessage,
       saveComposerDraft: state.saveComposerDraft,
       scopeTransitionError: state.scopeTransitionError,
@@ -1578,6 +1580,13 @@ function ChatWorkbenchContent({
       }
     },
     [canSendMessage, retryFailedMessage],
+  );
+
+  const handleLoadSendFailReason = useCallback(
+    (uiMessageKey: string) => {
+      void loadSendFailReason(uiMessageKey);
+    },
+    [loadSendFailReason],
   );
 
   const handleRevokeMessage = useCallback(
@@ -2696,6 +2705,7 @@ function ChatWorkbenchContent({
       onMessageViewportScroll={handleMessageViewportScroll}
       onPinConversation={pinConversation}
       onRetryMessage={handleRetryFailedMessage}
+      onLoadSendFailReason={handleLoadSendFailReason}
       retryingMessageIds={retryingUiMessageKeys}
       onSendDraft={handleSendDraft}
       onUnpinConversation={unpinConversation}

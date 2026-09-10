@@ -51,6 +51,7 @@ type ChatMessagePanelProps = {
   onRevokeMessage?: (message: ChatMessage) => void;
   onMessageViewportScroll: () => void;
   onRetryMessage: (uiMessageKey: string) => void | Promise<void>;
+  onLoadSendFailReason?: (uiMessageKey: string) => void;
   onSendSmartReply?: (message: ChatMessage, payload: SmartReplySendPayload) => void;
   onFillSmartReplyComposer?: (message: ChatMessage, content: string) => void;
   onDismissSmartReply?: (message: ChatMessage) => void;
@@ -96,6 +97,7 @@ export function ChatMessagePanel({
   onRevokeMessage,
   onMessageViewportScroll,
   onRetryMessage,
+  onLoadSendFailReason,
   onSendSmartReply,
   onFillSmartReplyComposer,
   onDismissSmartReply,
@@ -260,6 +262,7 @@ export function ChatMessagePanel({
                     void onRetryMessage(uiMessageKey);
                   });
                 }}
+                onLoadSendFailReason={onLoadSendFailReason}
                 retryingMessageIds={retryingMessageIds}
                 smartReplyAutoPendingByMessageId={
                   smartReplyCanDisplay

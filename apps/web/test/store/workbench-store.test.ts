@@ -7,6 +7,7 @@ import { adaptMessage } from "@/pages/chat/api/workbench-adapter";
 import { resolveImageSegmentsForSend } from "@/pages/chat/api/media-upload-service";
 import { JAVA_MENTION_PLACEHOLDER } from "@/pages/chat/lib/composer-segments";
 import { sortConversationsForDisplay } from "@/pages/chat/lib/conversation-order";
+import { SEND_FAILURE_FALLBACK_REASON } from "@/pages/chat/lib/send-fail-reason";
 import { seedMessages } from "@/pages/chat/mock-data";
 import {
   createWorkbenchStore,
@@ -8299,6 +8300,98 @@ describe("useWorkbenchStore", () => {
       status: "failed",
     });
     expect(state.pendingMessages).toHaveLength(0);
+  });
+
+  it("writes the Java send failReason after the hover request finishes", async () => {
+    const baseService = createMockWorkbenchService();
+    const getSendFailReason = vi.fn(async () => ({
+      failReason: "当前机器人不在线",
+    }));
+    setWorkbenchService({
+      ...baseService,
+      getSendFailReason,
+    });
+    await useWorkbenchStore.getState().initializeWorkbench();
+    useWorkbenchStore.setState((state) => ({
+      messagesByConversationId: {
+        ...state.messagesByConversationId,
+        "conv-001": [
+          {
+            author: "客服一号",
+            content: {
+              text: "发送失败消息",
+              type: "text",
+            },
+            conversationId: "conv-001",
+            uiMessageKey: "failed-6991",
+            role: "agent",
+            sender: {
+              id: "agent-001",
+              name: "客服一号",
+            },
+            sentAt: "2026-05-20 10:00:00",
+            seq: 6991,
+            status: "failed",
+          },
+        ],
+      },
+    }));
+
+    await useWorkbenchStore.getState().loadSendFailReason("failed-6991");
+
+    expect(getSendFailReason).toHaveBeenCalledWith({
+      conversationId: "conv-001",
+      messageSeq: 6991,
+    });
+    expect(
+      useWorkbenchStore.getState().messagesByConversationId["conv-001"][0],
+    ).toMatchObject({
+      failReason: "当前机器人不在线",
+    });
+  });
+
+  it("writes a fallback send failReason after the hover request finishes without a reason", async () => {
+    const baseService = createMockWorkbenchService();
+    const getSendFailReason = vi.fn(async () => ({
+      failReason: "",
+    }));
+    setWorkbenchService({
+      ...baseService,
+      getSendFailReason,
+    });
+    await useWorkbenchStore.getState().initializeWorkbench();
+    useWorkbenchStore.setState((state) => ({
+      messagesByConversationId: {
+        ...state.messagesByConversationId,
+        "conv-001": [
+          {
+            author: "客服一号",
+            content: {
+              text: "发送失败消息",
+              type: "text",
+            },
+            conversationId: "conv-001",
+            uiMessageKey: "failed-6992",
+            role: "agent",
+            sender: {
+              id: "agent-001",
+              name: "客服一号",
+            },
+            sentAt: "2026-05-20 10:00:00",
+            seq: 6992,
+            status: "failed",
+          },
+        ],
+      },
+    }));
+
+    await useWorkbenchStore.getState().loadSendFailReason("failed-6992");
+
+    expect(
+      useWorkbenchStore.getState().messagesByConversationId["conv-001"][0],
+    ).toMatchObject({
+      failReason: SEND_FAILURE_FALLBACK_REASON,
+    });
   });
 
   it("retries a failed text message by resending it as a new pending message", async () => {

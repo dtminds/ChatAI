@@ -92,46 +92,41 @@ function ModelMultiplierTable() {
   return (
     <section className="rounded-[8px] border p-5" aria-labelledby="model-multiplier-title">
       <h2 className="text-base font-semibold text-foreground" id="model-multiplier-title">模型倍率</h2>
+      <p className="mt-1 text-sm text-muted-foreground">
+        不同模型按倍率计费，实际消耗积分 = 基础积分 × 模型倍率
+      </p>
       <div className="mt-3">
-        <Table aria-label="模型倍率" className="table-fixed">
-          <TableHeader>
-            <TableRow className="hover:bg-transparent">
-              <TableHead className="w-1/2">模型</TableHead>
-              <TableHead className="w-1/2">倍率</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {loading ? (
-              <TableRow>
-                <TableCell colSpan={2}>
-                  <div className="flex items-center justify-center gap-2 py-5 text-muted-foreground" role="status">
-                    <Spinner />
-                    <span>正在加载</span>
-                  </div>
-                </TableCell>
-              </TableRow>
-            ) : loadFailed ? (
-              <TableRow>
-                <TableCell className="py-5 text-center" colSpan={2}>
-                  <Button onClick={() => setReloadKey((current) => current + 1)} size="sm" variant="outline">
-                    重新加载
-                  </Button>
-                </TableCell>
-              </TableRow>
-            ) : models.length === 0 ? (
-              <TableRow>
-                <TableCell className="py-5 text-center text-muted-foreground" colSpan={2}>暂无数据</TableCell>
-              </TableRow>
-            ) : models.map((model) => (
-              <TableRow className="border-b-0" key={model.id}>
-                <TableCell className="py-3 text-muted-foreground">
-                  <AgentModelBadge label={model.label} model={model.model} />
-                </TableCell>
-                <TableCell className="font-medium tabular-nums">{formatCreditMultiplier(model.creditMultiplier)}</TableCell>
-              </TableRow>
+        {loading ? (
+          <div className="flex items-center justify-center gap-2 py-5 text-muted-foreground" role="status">
+            <Spinner />
+            <span>正在加载</span>
+          </div>
+        ) : loadFailed ? (
+          <div className="py-5 text-center">
+            <Button onClick={() => setReloadKey((current) => current + 1)} size="sm" variant="outline">
+              重新加载
+            </Button>
+          </div>
+        ) : models.length === 0 ? (
+          <div className="py-5 text-center text-sm text-muted-foreground">暂无数据</div>
+        ) : (
+          <ul aria-label="模型倍率" className="space-y-2">
+            {models.map((model) => (
+              <li
+                className="grid grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)_auto] items-center gap-5 rounded-[8px] border px-4 py-3"
+                key={model.id}
+              >
+                <AgentModelBadge className="font-medium text-foreground" label={model.label} model={model.model} />
+                <span className="min-w-0 truncate text-sm text-muted-foreground">
+                  {model.description || "-"}
+                </span>
+                <span className="inline-flex h-8 min-w-20 items-center justify-center rounded-full bg-primary/10 px-4 text-sm font-semibold text-primary tabular-nums">
+                  {formatCreditMultiplier(model.creditMultiplier)}
+                </span>
+              </li>
             ))}
-          </TableBody>
-        </Table>
+          </ul>
+        )}
       </div>
     </section>
   );

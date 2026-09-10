@@ -40,7 +40,7 @@ describe("AI billing UI", () => {
     vi.mocked(agentService.listAiHostingModels).mockResolvedValue({
       models: [{
         creditMultiplier: 150,
-        description: "",
+        description: "适合复杂任务",
         id: "1",
         label: "Turbo 模型",
         model: "turbo",
@@ -104,8 +104,11 @@ describe("AI billing UI", () => {
 
     expect(await screen.findByText("1.5x")).toBeInTheDocument();
     expect(screen.getByText("Turbo 模型")).toBeInTheDocument();
+    expect(screen.getByText("适合复杂任务")).toBeInTheDocument();
+    expect(screen.getByTitle("模型图标：Turbo 模型")).toBeInTheDocument();
+    expect(screen.getByRole("list", { name: "模型倍率" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { level: 2, name: "基础积分" })).toBeInTheDocument();
-    expect(screen.getAllByRole("table")).toHaveLength(2);
+    expect(screen.getAllByRole("table")).toHaveLength(1);
     expect(screen.getByRole("columnheader", { name: "备注" })).toBeInTheDocument();
     const billingLabels = [
       "Agent",

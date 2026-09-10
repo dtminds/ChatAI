@@ -1,3 +1,4 @@
+import { BillingBadge } from "@/pages/chat/billing/billing-badge";
 import { AiHostingLayout, AiHostingPageHeader } from "./ai-hosting-layout";
 import { SingleChatHostingSettingsTab } from "./single-chat-hosting-settings-tab";
 
@@ -8,6 +9,7 @@ export function AgentHostingSettingsPage() {
         <AiHostingPageHeader
           description="配置托管账号关联的 Agent 和托管策略"
           title="托管设置"
+          titleActions={<BillingBadge />}
         />
 
         <SingleChatHostingSettingsTab />

@@ -84,7 +84,6 @@ import {
 } from "@/components/ui/tooltip";
 import { isRequestError } from "@/lib/request";
 import { cn } from "@/lib/utils";
-import { BillingBadge } from "@/pages/chat/billing/billing-badge";
 import {
   COMPOSER_IMAGE_FILE_ACCEPT,
   isSupportedComposerImageFile,
@@ -739,7 +738,6 @@ export function AgentSettingsEditor() {
                 <h1 className="truncate text-xl font-semibold leading-tight text-foreground">
                   {pageTitle}
                 </h1>
-                <BillingBadge />
                 {isEditing && canManage ? (
                   <Button
                     aria-label="编辑 Agent 名称"

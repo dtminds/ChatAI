@@ -4,6 +4,7 @@ import userEvent from "@testing-library/user-event";
 import { createMemoryRouter, RouterProvider } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { AiBillingGuidePage } from "@/pages/chat/ai-hosting/ai-billing-guide-page";
+import { AgentHostingSettingsPage } from "@/pages/chat/ai-hosting/agent-hosting-settings-page";
 import { AgentSubscriptionPage } from "@/pages/chat/ai-hosting/agent-subscription-page";
 import * as agentService from "@/pages/chat/ai-hosting/agent-service";
 import {
@@ -22,17 +23,23 @@ vi.mock("@/pages/chat/ai-hosting/ai-hosting-layout", () => ({
     actions,
     description,
     title,
+    titleActions,
   }: {
     actions?: ReactNode;
     description?: string;
     title: ReactNode;
+    titleActions?: ReactNode;
   }) => (
     <header>
-      <h1>{title}</h1>
+      <div><h1>{title}</h1>{titleActions}</div>
       {description ? <p>{description}</p> : null}
       {actions}
     </header>
   ),
+}));
+
+vi.mock("@/pages/chat/ai-hosting/single-chat-hosting-settings-tab", () => ({
+  SingleChatHostingSettingsTab: () => <div>托管设置内容</div>,
 }));
 
 describe("AI billing UI", () => {
@@ -70,6 +77,13 @@ describe("AI billing UI", () => {
       "href",
       AI_BILLING_SUBSCRIPTION_PATH,
     );
+  });
+
+  it("shows the billing entry beside the hosting settings title", () => {
+    render(<AgentHostingSettingsPage />);
+
+    expect(screen.getByRole("heading", { level: 1, name: "托管设置" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "前往订阅页查看计费说明" })).toBeInTheDocument();
   });
 
   it("opens the billing guide without changing the existing subscription content", async () => {

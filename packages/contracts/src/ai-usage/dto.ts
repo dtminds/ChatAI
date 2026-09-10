@@ -2,7 +2,8 @@ import { Type, type Static } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
 
 const MAX_SAFE_INTEGER = Number.MAX_SAFE_INTEGER;
-const UsageKeySchema = Type.String({ minLength: 1, maxLength: 191 });
+const MAX_USAGE_STRING_LENGTH = 255;
+const UsageKeySchema = Type.String({ minLength: 1, maxLength: MAX_USAGE_STRING_LENGTH });
 const AI_USAGE_UTC_INSTANT_PATTERN =
   /^(\d{4}-\d{2}-\d{2}T(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d)(?:\.\d{1,9})?Z$/;
 const UtcInstantSchema = Type.String({
@@ -21,7 +22,7 @@ export type AiUsageCapability = Static<typeof AiUsageCapabilitySchema>;
 
 export const AiUsageModelSchema = Type.Object({
   creditMultiplier: Type.Integer({ minimum: 1, maximum: MAX_SAFE_INTEGER }),
-  model: Type.String({ minLength: 1, maxLength: 191 }),
+  model: Type.String({ minLength: 1, maxLength: MAX_USAGE_STRING_LENGTH }),
   modelId: Type.Union([
     Type.Integer({ minimum: 1, maximum: MAX_SAFE_INTEGER }),
     Type.Null(),
@@ -31,7 +32,7 @@ export type AiUsageModel = Static<typeof AiUsageModelSchema>;
 
 export const AiUsageModelTokenSchema = Type.Object({
   inputTokens: Type.Integer({ minimum: 0, maximum: MAX_SAFE_INTEGER }),
-  model: Type.String({ minLength: 1, maxLength: 191 }),
+  model: Type.String({ minLength: 1, maxLength: MAX_USAGE_STRING_LENGTH }),
   modelId: Type.Union([
     Type.Integer({ minimum: 1, maximum: MAX_SAFE_INTEGER }),
     Type.Null(),
@@ -47,7 +48,7 @@ export const AiUsageBusinessSnapshotSchema = Type.Record(
   Type.Union([
     Type.Boolean(),
     Type.Integer({ minimum: 0, maximum: MAX_SAFE_INTEGER }),
-    Type.String({ maxLength: 191 }),
+    Type.String({ maxLength: MAX_USAGE_STRING_LENGTH }),
     Type.Null(),
   ]),
   { minProperties: 1, maxProperties: 16 },
@@ -186,7 +187,7 @@ export const AiUsageBillingDetailItemSchema = Type.Object({
   creditMultiplier: Type.Integer({ minimum: 1, maximum: MAX_SAFE_INTEGER }),
   deductedCredits: CreditAmountSchema,
   eventKey: UsageKeySchema,
-  model: Type.String({ minLength: 1, maxLength: 191 }),
+  model: Type.String({ minLength: 1, maxLength: MAX_USAGE_STRING_LENGTH }),
   occurredAt: UtcInstantSchema,
   priceVersion: Type.String({ minLength: 1, maxLength: 64 }),
   waivedCredits: CreditAmountSchema,

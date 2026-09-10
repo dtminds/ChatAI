@@ -44,6 +44,29 @@ describe("AI usage contracts", () => {
     expect(Value.Check(AiUsageEventSchema, event())).toBe(true);
   });
 
+  it("accepts 255-character usage strings and rejects longer values", () => {
+    expect(Value.Check(AiUsageEventSchema, event({
+      billingKey: "b".repeat(255),
+      billingModel: {
+        creditMultiplier: 150,
+        model: "m".repeat(255),
+        modelId: 3,
+      },
+      businessId: "i".repeat(255),
+      businessSnapshot: { source: "s".repeat(255) },
+      eventKey: "e".repeat(255),
+      modelUsages: [{
+        inputTokens: 1_200,
+        model: "u".repeat(255),
+        modelId: null,
+        outputTokens: 300,
+        provider: "volcengine_ark",
+        requestCount: 2,
+      }],
+    }))).toBe(true);
+    expect(Value.Check(AiUsageEventSchema, event({ eventKey: "e".repeat(256) }))).toBe(false);
+  });
+
   it("rejects decimal multiplier values instead of treating them as basis points", () => {
     expect(Value.Check(AiUsageEventSchema, event({
       billingModel: {

@@ -8302,7 +8302,7 @@ describe("useWorkbenchStore", () => {
     expect(state.pendingMessages).toHaveLength(0);
   });
 
-  it("writes the Java send failReason after the hover request finishes", async () => {
+  it("writes the Java send failReason after the detail request finishes", async () => {
     const baseService = createMockWorkbenchService();
     const getSendFailReason = vi.fn(async () => ({
       failReason: "当前机器人不在线",
@@ -8350,7 +8350,7 @@ describe("useWorkbenchStore", () => {
     });
   });
 
-  it("writes a fallback send failReason after the hover request finishes without a reason", async () => {
+  it("writes a fallback send failReason after the detail request finishes without a reason", async () => {
     const baseService = createMockWorkbenchService();
     const getSendFailReason = vi.fn(async () => ({
       failReason: "",

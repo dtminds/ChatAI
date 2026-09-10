@@ -25,7 +25,7 @@ import {
   useState,
 } from "react";
 import { toast } from "sonner";
-import { resolveSendFailureTooltip } from "@/pages/chat/lib/send-fail-reason";
+import { resolveSendFailureReason } from "@/pages/chat/lib/send-fail-reason";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -38,6 +38,11 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 import { AIHostingAvatarBadge } from "@/pages/chat/components/ai-hosting-avatar-badge";
 import {
   DropdownMenu,
@@ -1176,79 +1181,106 @@ function MessageInlineStatusSlot({
   }
 
   if (state === "failed") {
-    const canRetry =
-      canRetryMessage &&
-      Boolean(onRetryMessage) &&
-      !isRetryingMessage;
     const failReasonText = message.failReason?.trim();
-    const failReasonLabel = isRetryingMessage
-      ? "正在重试发送"
-      : failReasonText
-        ? resolveSendFailureTooltip(failReasonText)
-        : "";
-    const requestFailReasonIfNeeded = () => {
-      if (!isRetryingMessage && !failReasonText) {
-        onLoadSendFailReason?.(message.uiMessageKey);
-      }
-    };
-    const retryButton = (
-      <button
-        aria-busy={isRetryingMessage}
-        aria-label={isRetryingMessage ? "正在重试发送" : "重试发送"}
-        className={cn(
-          "inline-flex size-4 items-center justify-center rounded-full transition-colors disabled:cursor-not-allowed disabled:opacity-55",
-          isRetryingMessage
-            ? "bg-transparent text-muted-foreground"
-            : "bg-destructive text-destructive-foreground hover:bg-destructive/90 disabled:hover:bg-destructive",
-        )}
-        disabled={!canRetry}
-        onClick={() => {
-          if (!canRetry) {
-            return;
-          }
+    const canRetry = canRetryMessage && Boolean(onRetryMessage);
 
-          onRetryMessage?.(message.uiMessageKey);
-        }}
-        onPointerEnter={requestFailReasonIfNeeded}
-        type="button"
-      >
-        {isRetryingMessage ? (
-          <Spinner variant="classic" size={10} strokeWidth={2.4} className="text-current" />
-        ) : (
-          <HugeiconsIcon
-            icon={ExclamationMarkIcon}
-            size={10}
-            strokeWidth={2.4}
-          />
-        )}
-      </button>
-    );
+    if (isRetryingMessage) {
+      return (
+        <div
+          className="mb-1 flex h-4 shrink-0 items-center"
+          data-testid="message-inline-status-slot"
+        >
+          <TooltipProvider delayDuration={300}>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <span
+                  aria-busy="true"
+                  aria-label="正在重发"
+                  className="inline-flex size-4 items-center justify-center text-muted-foreground"
+                  data-testid="message-resend-status"
+                  role="status"
+                >
+                  <Spinner variant="classic" size={10} strokeWidth={2.4} className="text-current" />
+                </span>
+              </TooltipTrigger>
+              <TooltipContent side="top" sideOffset={6}>正在重发</TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+        </div>
+      );
+    }
+
+    const canLoadFailReason = Boolean(onLoadSendFailReason) && isValidMessageSeq(message.seq);
+    const isLoadingFailReason = !failReasonText && canLoadFailReason;
 
     return (
       <div
         className="mb-1 flex h-4 shrink-0 items-center"
         data-testid="message-inline-status-slot"
       >
-        <TooltipProvider delayDuration={300}>
-          <Tooltip
-            onOpenChange={(open) => {
-              if (open) {
-                requestFailReasonIfNeeded();
-              }
-            }}
+        <Popover
+          onOpenChange={(open) => {
+            if (open && isLoadingFailReason) {
+              onLoadSendFailReason?.(message.uiMessageKey);
+            }
+          }}
+        >
+          <TooltipProvider delayDuration={300}>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <PopoverTrigger asChild>
+                  <button
+                    aria-label="查看发送失败原因"
+                    className="inline-flex size-4 items-center justify-center rounded-full bg-destructive text-destructive-foreground transition-colors hover:bg-destructive/90"
+                    data-testid="message-send-failure-trigger"
+                    type="button"
+                  >
+                    <HugeiconsIcon
+                      icon={ExclamationMarkIcon}
+                      size={10}
+                      strokeWidth={2.4}
+                    />
+                  </button>
+                </PopoverTrigger>
+              </TooltipTrigger>
+              <TooltipContent side="top" sideOffset={6}>查看原因</TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+          <PopoverContent
+            align="end"
+            className="w-64 max-w-[calc(100vw-2rem)] space-y-3"
+            data-testid="message-send-failure-popover"
           >
-            <TooltipTrigger asChild>
-              {canRetry ? retryButton : (
-                <span className="inline-flex">{retryButton}</span>
+            <div className="space-y-1">
+              <p className="text-xs font-medium text-foreground">发送失败</p>
+              {isLoadingFailReason ? (
+                <div className="flex items-center gap-2 text-xs text-muted-foreground" role="status">
+                  <Spinner size={14} variant="classic" />
+                  <span>正在加载</span>
+                </div>
+              ) : (
+                <p
+                  className="whitespace-pre-wrap break-words text-xs leading-5 text-muted-foreground"
+                  data-testid="message-send-failure-reason"
+                >
+                  {resolveSendFailureReason(failReasonText)}
+                </p>
               )}
-            </TooltipTrigger>
-            {failReasonLabel ? (
-              <TooltipContent side="top" sideOffset={6}>
-                {failReasonLabel}
-              </TooltipContent>
-            ) : null}
-          </Tooltip>
-        </TooltipProvider>
+            </div>
+            <div className="flex justify-end">
+              <Button
+                disabled={!canRetry}
+                data-testid="message-resend-button"
+                onClick={() => onRetryMessage?.(message.uiMessageKey)}
+                size="sm"
+                type="button"
+              >
+                <HugeiconsIcon icon={Refresh03Icon} size={14} strokeWidth={2} />
+                重发
+              </Button>
+            </div>
+          </PopoverContent>
+        </Popover>
       </div>
     );
   }

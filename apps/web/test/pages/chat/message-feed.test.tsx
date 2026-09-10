@@ -1295,10 +1295,8 @@ describe("message feed row actions", () => {
       />,
     );
 
-    const retryButton = screen.getByRole("button", { name: "重试发送" });
-    expect(retryButton).toBeEnabled();
-
-    await user.click(retryButton);
+    await user.click(screen.getByTestId("message-send-failure-trigger"));
+    await user.click(screen.getByTestId("message-resend-button"));
     expect(onRetryMessage).toHaveBeenCalledWith(expect.any(String));
   });
 
@@ -1317,15 +1315,36 @@ describe("message feed row actions", () => {
       />,
     );
 
-    const retryButton = screen.getByRole("button", { name: "重试发送" });
-    expect(retryButton).toBeEnabled();
-
-    await user.click(retryButton);
+    await user.click(screen.getByTestId("message-send-failure-trigger"));
+    await user.click(screen.getByTestId("message-resend-button"));
     expect(onRetryMessage).toHaveBeenCalledWith(expect.any(String));
   });
 
-  it("shows the send failReason when hovering the failed-message mark", async () => {
+  it("shows only the view-reason hint on hover without loading details", async () => {
     const user = userEvent.setup();
+    const onLoadSendFailReason = vi.fn();
+
+    render(
+      <MessageRow
+        message={{
+          ...createTextMessage("发送失败消息"),
+          status: "failed",
+        }}
+        onLoadSendFailReason={onLoadSendFailReason}
+        onRetryMessage={vi.fn()}
+      />,
+    );
+
+    await user.hover(screen.getByTestId("message-send-failure-trigger"));
+
+    expect(await screen.findByRole("tooltip")).toBeInTheDocument();
+    expect(onLoadSendFailReason).not.toHaveBeenCalled();
+  });
+
+  it("shows an existing send failReason after clicking the failed-message mark", async () => {
+    const user = userEvent.setup();
+    const onLoadSendFailReason = vi.fn();
+    const onRetryMessage = vi.fn();
 
     render(
       <MessageRow
@@ -1334,16 +1353,20 @@ describe("message feed row actions", () => {
           failReason: "当前机器人不在线",
           status: "failed",
         }}
-        onRetryMessage={vi.fn()}
+        onLoadSendFailReason={onLoadSendFailReason}
+        onRetryMessage={onRetryMessage}
       />,
     );
 
-    await user.hover(screen.getByRole("button", { name: "重试发送" }));
+    await user.click(screen.getByTestId("message-send-failure-trigger"));
 
-    expect(await screen.findByRole("tooltip")).toHaveTextContent("当前机器人不在线");
+    expect(screen.getByTestId("message-send-failure-reason")).toHaveTextContent("当前机器人不在线");
+    expect(screen.getByTestId("message-resend-button")).toBeEnabled();
+    expect(onLoadSendFailReason).not.toHaveBeenCalled();
+    expect(onRetryMessage).not.toHaveBeenCalled();
   });
 
-  it("loads a missing send failReason when hovering the failed-message mark", async () => {
+  it("loads a missing send failReason after clicking the failed-message mark", async () => {
     const user = userEvent.setup();
     const onLoadSendFailReason = vi.fn();
     const failedMessage = {
@@ -1359,10 +1382,10 @@ describe("message feed row actions", () => {
       />,
     );
 
-    await user.hover(screen.getByRole("button", { name: "重试发送" }));
+    await user.click(screen.getByTestId("message-send-failure-trigger"));
 
     expect(onLoadSendFailReason).toHaveBeenCalledWith(expect.any(String));
-    expect(screen.queryByRole("tooltip")).not.toBeInTheDocument();
+    expect(screen.getByRole("status")).toBeInTheDocument();
 
     rerender(
       <MessageRow
@@ -1375,12 +1398,12 @@ describe("message feed row actions", () => {
       />,
     );
 
-    await user.hover(screen.getByRole("button", { name: "重试发送" }));
-
-    expect(await screen.findByRole("tooltip")).toHaveTextContent("当前机器人不在线");
+    expect(screen.getByTestId("message-send-failure-reason")).toHaveTextContent("当前机器人不在线");
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
   });
 
-  it("keeps the retry control visible but disabled when message actions are locked", () => {
+  it("keeps failure details available but disables retry when message actions are locked", async () => {
+    const user = userEvent.setup();
     const onRetryMessage = vi.fn();
 
     render(
@@ -1395,7 +1418,10 @@ describe("message feed row actions", () => {
       />,
     );
 
-    expect(screen.getByRole("button", { name: "重试发送" })).toBeDisabled();
+    await user.click(screen.getByTestId("message-send-failure-trigger"));
+
+    expect(screen.getByTestId("message-send-failure-reason")).toHaveTextContent("模拟发送失败");
+    expect(screen.getByTestId("message-resend-button")).toBeDisabled();
     expect(onRetryMessage).not.toHaveBeenCalled();
   });
 
@@ -1419,10 +1445,8 @@ describe("message feed row actions", () => {
       />,
     );
 
-    const retryButton = screen.getByRole("button", { name: "重试发送" });
-    expect(retryButton).toBeEnabled();
-
-    await user.click(retryButton);
+    await user.click(screen.getByTestId("message-send-failure-trigger"));
+    await user.click(screen.getByTestId("message-resend-button"));
     expect(onRetryMessage).toHaveBeenCalledWith(expect.any(String));
   });
 

@@ -1389,25 +1389,30 @@ export class MysqlInsightWorkerRepository implements InsightWorkerRepositoryPort
       }
       const baselineAuditId = parseNumber(globalCursor.cursor_audit_id);
       const uids = Array.from(new Set(messages.map((message) => parseNumber(message.uid))));
+      const sessionizationJobRows = uids
+        .map((uid) => ({
+          analysis_scope: "all" as const,
+          idempotency_key: `${sessionizationUidJobType}:${uid}`,
+          job_type: sessionizationUidJobType,
+          priority: 5,
+          rescan_task_id: null,
+          run_after: input.now,
+          status: "pending" as const,
+          target_id: String(uid),
+          target_type: "uid" as const,
+          uid,
+        }))
+        .sort((left, right) => {
+          if (left.idempotency_key < right.idempotency_key) return -1;
+          if (left.idempotency_key > right.idempotency_key) return 1;
+          return 0;
+        });
 
-      // UID workers lock sessionization job rows first and then upsert cursors.
-      // Keep discovery in the same order to avoid an InnoDB lock-order deadlock.
+      // Lock jobs before cursors and order batch job locks by their unique index key.
+      // This matches concurrent single-row upserts and avoids reverse gap/record waits.
       await trx
         .insertInto("xy_wap_embed_insight_job")
-        .values(
-          uids.map((uid) => ({
-            analysis_scope: "all",
-            idempotency_key: `${sessionizationUidJobType}:${uid}`,
-            job_type: sessionizationUidJobType,
-            priority: 5,
-            rescan_task_id: null,
-            run_after: input.now,
-            status: "pending",
-            target_id: String(uid),
-            target_type: "uid",
-            uid,
-          })),
-        )
+        .values(sessionizationJobRows)
         .onDuplicateKeyUpdate({
           status: sql<string>`case
             when status in ('succeeded', 'failed') then 'pending'

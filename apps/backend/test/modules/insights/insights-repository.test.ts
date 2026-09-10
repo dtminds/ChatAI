@@ -3701,7 +3701,7 @@ describe("MysqlInsightWorkerRepository", () => {
     ]);
   });
 
-  it("discovers message uids by the global id cursor before advancing it", async () => {
+  it("orders discovered uid job upserts before advancing the global cursor", async () => {
     const cutoverAt = new Date("2026-06-11T08:00:00.000Z");
     const now = new Date("2026-06-13T08:00:00.000Z");
     const operations: string[] = [];
@@ -3736,9 +3736,12 @@ describe("MysqlInsightWorkerRepository", () => {
             }]
           : table === "xy_wap_embed_msg_audit_info"
             ? [
-                { id: 101, uid: 9001 },
-                { id: 102, uid: 9002 },
-                { id: 103, uid: 9001 },
+                { id: 101, uid: 4308 },
+                { id: 102, uid: 3798 },
+                { id: 103, uid: 2802 },
+                { id: 104, uid: 999 },
+                { id: 105, uid: 1000 },
+                { id: 106, uid: 4308 },
               ]
             : [];
         const builder = createSelectBuilder(rows, table);
@@ -3760,9 +3763,9 @@ describe("MysqlInsightWorkerRepository", () => {
     const repository = new MysqlInsightWorkerRepository(db as never);
 
     await expect(repository.discoverMessageUids({ batchSize: 200, now })).resolves.toEqual({
-      cursorAuditId: 103,
-      discoveredMessages: 3,
-      discoveredUidIds: [9001, 9002],
+      cursorAuditId: 106,
+      discoveredMessages: 6,
+      discoveredUidIds: [4308, 3798, 2802, 999, 1000],
       skipped: false,
     });
 
@@ -3780,13 +3783,31 @@ describe("MysqlInsightWorkerRepository", () => {
         create_time: cutoverAt,
         cursor_audit_id: 100,
         cursor_msgtime: cutoverAt.getTime(),
-        uid: 9001,
+        uid: 4308,
       }),
       expect.objectContaining({
         create_time: cutoverAt,
         cursor_audit_id: 100,
         cursor_msgtime: cutoverAt.getTime(),
-        uid: 9002,
+        uid: 3798,
+      }),
+      expect.objectContaining({
+        create_time: cutoverAt,
+        cursor_audit_id: 100,
+        cursor_msgtime: cutoverAt.getTime(),
+        uid: 2802,
+      }),
+      expect.objectContaining({
+        create_time: cutoverAt,
+        cursor_audit_id: 100,
+        cursor_msgtime: cutoverAt.getTime(),
+        uid: 999,
+      }),
+      expect.objectContaining({
+        create_time: cutoverAt,
+        cursor_audit_id: 100,
+        cursor_msgtime: cutoverAt.getTime(),
+        uid: 1000,
       }),
     ]);
     const jobRows = insertValues.filter(
@@ -3795,18 +3816,30 @@ describe("MysqlInsightWorkerRepository", () => {
     expect(jobRows).toHaveLength(1);
     expect(jobRows[0]?.values).toEqual([
       expect.objectContaining({
-        idempotency_key: "sessionize_uid:9001",
-        uid: 9001,
+        idempotency_key: "sessionize_uid:1000",
+        uid: 1000,
       }),
       expect.objectContaining({
-        idempotency_key: "sessionize_uid:9002",
-        uid: 9002,
+        idempotency_key: "sessionize_uid:2802",
+        uid: 2802,
+      }),
+      expect.objectContaining({
+        idempotency_key: "sessionize_uid:3798",
+        uid: 3798,
+      }),
+      expect.objectContaining({
+        idempotency_key: "sessionize_uid:4308",
+        uid: 4308,
+      }),
+      expect.objectContaining({
+        idempotency_key: "sessionize_uid:999",
+        uid: 999,
       }),
     ]);
     expect(updateValues).toContainEqual({
       table: "xy_wap_embed_insight_sync_cursor",
       values: expect.objectContaining({
-        cursor_audit_id: 103,
+        cursor_audit_id: 106,
         cursor_msgtime: 0,
         update_time: now,
       }),

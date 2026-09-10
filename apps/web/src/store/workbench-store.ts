@@ -72,7 +72,6 @@ import {
 import type { AgentHostingStatus } from "@/pages/chat/lib/chat-agent-hosting-status";
 import { normalizeMediaAssetUrl } from "@/pages/chat/lib/media-asset-url";
 import { isValidMessageSeq } from "@/pages/chat/lib/message-seq";
-import { SEND_FAILURE_FALLBACK_REASON } from "@/pages/chat/lib/send-fail-reason";
 import { notifyPulledCustomerMessage } from "@/pages/chat/lib/new-message-title-alert";
 import { canUseWorkbenchConversationActions } from "@/pages/chat/lib/workbench-permissions";
 import {
@@ -352,7 +351,7 @@ type WorkbenchState = {
   takeOverAccount: (accountId: string) => Promise<TakeoverResult>;
   unpinConversation: (conversationId: string) => Promise<void>;
   retryFailedMessage: (uiMessageKey: string) => Promise<RetryFailedMessageResult>;
-  loadSendFailReason: (uiMessageKey: string) => Promise<void>;
+  loadSendFailReason: (uiMessageKey: string) => Promise<string | undefined>;
   refreshInitializingMessage: (
     conversationId: string,
     messageSeq: number,
@@ -1153,7 +1152,6 @@ function mergeMessageState(currentMessage: Message, nextMessage: Message): Messa
   return {
     ...currentMessage,
     ...nextMessage,
-    failReason: nextMessage.failReason?.trim() || currentMessage.failReason,
     optNo: nextMessage.optNo || currentMessage.optNo,
     reconcileFingerprint:
       nextMessage.reconcileFingerprint ?? currentMessage.reconcileFingerprint,
@@ -3192,7 +3190,6 @@ export function createWorkbenchStore() {
   const latestUnreadRequestIdByScope: Record<string, number> = {};
   const revokePendingTimeoutsByMessageId = new Map<string, ReturnType<typeof setTimeout>>();
   const pendingRevokeRequestMessageIds = new Set<string>();
-  const sendFailReasonInFlightKeys = new Set<string>();
   const conversationProfileRefreshRequestsById = new Map<
     string,
     Promise<Conversation>
@@ -3501,7 +3498,6 @@ export function createWorkbenchStore() {
     }
     conversationProfileRefreshRetryTimersById.clear();
     conversationReadRequestsById.clear();
-    sendFailReasonInFlightKeys.clear();
     fullAutoFinishedMessageByConversationId.clear();
 
     for (const timer of smartReplyAutoPreviewTimeoutsByKey.values()) {
@@ -6896,7 +6892,6 @@ export function createWorkbenchStore() {
     async loadSendFailReason(uiMessageKey) {
       const state = get();
       const conversationId = state.activeConversationId;
-      const inFlightKey = `${conversationId}:${uiMessageKey}`;
       const failedMessage = (state.messagesByConversationId[conversationId] ?? []).find(
         (message) =>
           matchesMessageKey(message, uiMessageKey) &&
@@ -6907,46 +6902,17 @@ export function createWorkbenchStore() {
       if (
         !failedMessage ||
         failedMessage.role !== "agent" ||
-        failedMessage.failReason?.trim() ||
-        !isValidMessageSeq(failedMessage.seq) ||
-        sendFailReasonInFlightKeys.has(inFlightKey)
+        !isValidMessageSeq(failedMessage.seq)
       ) {
-        return;
+        return undefined;
       }
 
-      sendFailReasonInFlightKeys.add(inFlightKey);
+      const response = await getSendFailReasonRequest({
+        conversationId,
+        messageSeq: failedMessage.seq,
+      });
 
-      try {
-        let failReason = SEND_FAILURE_FALLBACK_REASON;
-
-        try {
-          const response = await getSendFailReasonRequest({
-            conversationId,
-            messageSeq: failedMessage.seq,
-          });
-          failReason = response.failReason.trim() || SEND_FAILURE_FALLBACK_REASON;
-        } catch {
-          failReason = SEND_FAILURE_FALLBACK_REASON;
-        }
-
-        if (get().activeConversationId !== conversationId) {
-          return;
-        }
-
-        set((currentState) => ({
-          messagesByConversationId: {
-            ...currentState.messagesByConversationId,
-            [conversationId]: (currentState.messagesByConversationId[conversationId] ?? []).map(
-              (message) =>
-                matchesMessageKey(message, uiMessageKey)
-                  ? { ...message, failReason }
-                  : message,
-            ),
-          },
-        }));
-      } finally {
-        sendFailReasonInFlightKeys.delete(inFlightKey);
-      }
+      return response.failReason.trim() || undefined;
     },
     async retryFailedMessage(uiMessageKey) {
       const state = get();

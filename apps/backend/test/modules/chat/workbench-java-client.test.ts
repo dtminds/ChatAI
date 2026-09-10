@@ -1197,6 +1197,70 @@ describe("createWorkbenchJavaClient", () => {
     );
   });
 
+  it("uses Java success false as authoritative for async-operation info", async () => {
+    process.env.JAVA_INTERNAL_API_BASE_URL = "https://java.internal/";
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          data: {
+            failReason: "不应读取",
+            optNo: "opt-001",
+            status: 2,
+          },
+          error: 601,
+          errorMsg: "查询失败",
+          success: false,
+        }),
+        {
+          headers: { "content-type": "application/json" },
+          status: 200,
+        },
+      ),
+    );
+
+    await expect(
+      createWorkbenchJavaClient().getAsyncOperationInfo({
+        optNo: "opt-001",
+        platform: 5,
+        uid: 2720,
+      }),
+    ).rejects.toMatchObject({
+      code: WORKBENCH_INTERNAL_API_BUSINESS_FAILED_CODE,
+      details: {
+        error: 601,
+        errorMsg: "查询失败",
+      },
+      statusCode: 200,
+    });
+  });
+
+  it("rejects malformed Java async-operation info data", async () => {
+    process.env.JAVA_INTERNAL_API_BASE_URL = "https://java.internal/";
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          data: null,
+          success: true,
+        }),
+        {
+          headers: { "content-type": "application/json" },
+          status: 200,
+        },
+      ),
+    );
+
+    await expect(
+      createWorkbenchJavaClient().getAsyncOperationInfo({
+        optNo: "opt-001",
+        platform: 5,
+        uid: 2720,
+      }),
+    ).rejects.toMatchObject({
+      code: WORKBENCH_INTERNAL_API_CONTRACT_INVALID_CODE,
+      statusCode: 502,
+    });
+  });
+
   it("posts a single text message to the Java send-message API", async () => {
     process.env.JAVA_INTERNAL_API_BASE_URL = "https://java.internal/";
     const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(

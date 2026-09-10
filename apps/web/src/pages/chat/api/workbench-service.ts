@@ -2710,6 +2710,7 @@ export function createHttpWorkbenchService(): WorkbenchService {
       return http.post<WorkbenchSendFailReasonResponse, WorkbenchSendFailReasonRequest>(
         "/server/messages/send-fail-reason",
         request,
+        { supportReadonlyAllowed: true },
       );
     },
     takeOverSeat(seatId) {

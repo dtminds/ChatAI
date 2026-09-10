@@ -115,7 +115,7 @@ type ChatMessageListProps = {
   onRefreshInitializingMessage?: (message: Message) => void | Promise<void>;
   onRevokeMessage?: (message: ChatMessage) => void;
   onRetryMessage?: (uiMessageKey: string) => void;
-  onLoadSendFailReason?: (uiMessageKey: string) => void;
+  onLoadSendFailReason?: (uiMessageKey: string) => Promise<string | undefined>;
   onSendSmartReply?: (message: ChatMessage, payload: SmartReplySendPayload) => void;
   onFillSmartReplyComposer?: (message: ChatMessage, content: string) => void;
   onDismissSmartReply?: (message: ChatMessage) => void;
@@ -453,7 +453,7 @@ export function MessageRow({
   onRefreshInitializingMessage?: (message: Message) => void | Promise<void>;
   onRevokeMessage?: (message: ChatMessage) => void;
   onRetryMessage?: (uiMessageKey: string) => void;
-  onLoadSendFailReason?: (uiMessageKey: string) => void;
+  onLoadSendFailReason?: (uiMessageKey: string) => Promise<string | undefined>;
   onSendSmartReply?: (message: ChatMessage, payload: SmartReplySendPayload) => void;
   onFillSmartReplyComposer?: (message: ChatMessage, content: string) => void;
   onDismissSmartReply?: (message: ChatMessage) => void;
@@ -812,7 +812,7 @@ function QuoteMessageContentWithDelivery({
   isAgent: boolean;
   message: ChatMessage;
   onOpenQuotedMessage?: (quoteMsgId: string) => void;
-  onLoadSendFailReason?: (uiMessageKey: string) => void;
+  onLoadSendFailReason?: (uiMessageKey: string) => Promise<string | undefined>;
   onRetryMessage?: (uiMessageKey: string) => void;
 }) {
   return (
@@ -1172,16 +1172,23 @@ function MessageInlineStatusSlot({
   canRetryMessage: boolean;
   isRetryingMessage: boolean;
   message: ChatMessage;
-  onLoadSendFailReason?: (uiMessageKey: string) => void;
+  onLoadSendFailReason?: (uiMessageKey: string) => Promise<string | undefined>;
   onRetryMessage?: (uiMessageKey: string) => void;
   state: InlineDeliveryState | null;
 }) {
+  const failReasonRequestIdRef = useRef(0);
+  const [loadedFailReason, setLoadedFailReason] = useState<string>();
+  const [isLoadingFailReason, setIsLoadingFailReason] = useState(false);
+
+  useEffect(() => () => {
+    failReasonRequestIdRef.current += 1;
+  }, []);
+
   if (!state) {
     return null;
   }
 
   if (state === "failed") {
-    const failReasonText = message.failReason?.trim();
     const canRetry = canRetryMessage && Boolean(onRetryMessage);
 
     if (isRetryingMessage) {
@@ -1211,20 +1218,37 @@ function MessageInlineStatusSlot({
     }
 
     const canLoadFailReason = Boolean(onLoadSendFailReason) && isValidMessageSeq(message.seq);
-    const isLoadingFailReason = !failReasonText && canLoadFailReason;
+
+    const handleOpenChange = (open: boolean) => {
+      const requestId = ++failReasonRequestIdRef.current;
+      setLoadedFailReason(undefined);
+
+      if (!open || !canLoadFailReason || !onLoadSendFailReason) {
+        setIsLoadingFailReason(false);
+        return;
+      }
+
+      setIsLoadingFailReason(true);
+      void onLoadSendFailReason(message.uiMessageKey)
+        .then((failReason) => {
+          if (failReasonRequestIdRef.current === requestId) {
+            setLoadedFailReason(failReason);
+          }
+        })
+        .catch(() => undefined)
+        .finally(() => {
+          if (failReasonRequestIdRef.current === requestId) {
+            setIsLoadingFailReason(false);
+          }
+        });
+    };
 
     return (
       <div
         className="mb-1 flex h-4 shrink-0 items-center"
         data-testid="message-inline-status-slot"
       >
-        <Popover
-          onOpenChange={(open) => {
-            if (open && isLoadingFailReason) {
-              onLoadSendFailReason?.(message.uiMessageKey);
-            }
-          }}
-        >
+        <Popover onOpenChange={handleOpenChange}>
           <TooltipProvider delayDuration={300}>
             <Tooltip>
               <TooltipTrigger asChild>
@@ -1263,7 +1287,7 @@ function MessageInlineStatusSlot({
                   className="whitespace-pre-wrap break-words text-xs leading-5 text-muted-foreground"
                   data-testid="message-send-failure-reason"
                 >
-                  {resolveSendFailureReason(failReasonText)}
+                  {resolveSendFailureReason(loadedFailReason)}
                 </p>
               )}
             </div>

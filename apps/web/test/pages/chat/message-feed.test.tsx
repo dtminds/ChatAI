@@ -1322,7 +1322,7 @@ describe("message feed row actions", () => {
 
   it("shows only the view-reason hint on hover without loading details", async () => {
     const user = userEvent.setup();
-    const onLoadSendFailReason = vi.fn();
+    const onLoadSendFailReason = vi.fn(async () => undefined);
 
     render(
       <MessageRow
@@ -1341,16 +1341,19 @@ describe("message feed row actions", () => {
     expect(onLoadSendFailReason).not.toHaveBeenCalled();
   });
 
-  it("shows an existing send failReason after clicking the failed-message mark", async () => {
+  it("requests the current send failReason whenever the details are opened", async () => {
     const user = userEvent.setup();
-    const onLoadSendFailReason = vi.fn();
+    const onLoadSendFailReason = vi
+      .fn()
+      .mockRejectedValueOnce(new Error("temporary failure"))
+      .mockResolvedValueOnce("最新原因");
     const onRetryMessage = vi.fn();
 
     render(
       <MessageRow
         message={{
           ...createTextMessage("发送失败消息"),
-          failReason: "当前机器人不在线",
+          failReason: "不应复用的旧原因",
           status: "failed",
         }}
         onLoadSendFailReason={onLoadSendFailReason}
@@ -1360,50 +1363,20 @@ describe("message feed row actions", () => {
 
     await user.click(screen.getByTestId("message-send-failure-trigger"));
 
-    expect(screen.getByTestId("message-send-failure-reason")).toHaveTextContent("当前机器人不在线");
+    expect(await screen.findByTestId("message-send-failure-reason")).toBeInTheDocument();
     expect(screen.getByTestId("message-resend-button")).toBeEnabled();
-    expect(onLoadSendFailReason).not.toHaveBeenCalled();
     expect(onRetryMessage).not.toHaveBeenCalled();
-  });
 
-  it("loads a missing send failReason after clicking the failed-message mark", async () => {
-    const user = userEvent.setup();
-    const onLoadSendFailReason = vi.fn();
-    const failedMessage = {
-      ...createTextMessage("发送失败消息"),
-      status: "failed" as const,
-    };
-
-    const { rerender } = render(
-      <MessageRow
-        message={failedMessage}
-        onLoadSendFailReason={onLoadSendFailReason}
-        onRetryMessage={vi.fn()}
-      />,
-    );
-
+    await user.keyboard("{Escape}");
     await user.click(screen.getByTestId("message-send-failure-trigger"));
 
-    expect(onLoadSendFailReason).toHaveBeenCalledWith(expect.any(String));
-    expect(screen.getByRole("status")).toBeInTheDocument();
-
-    rerender(
-      <MessageRow
-        message={{
-          ...failedMessage,
-          failReason: "当前机器人不在线",
-        }}
-        onLoadSendFailReason={onLoadSendFailReason}
-        onRetryMessage={vi.fn()}
-      />,
-    );
-
-    expect(screen.getByTestId("message-send-failure-reason")).toHaveTextContent("当前机器人不在线");
-    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+    expect(await screen.findByTestId("message-send-failure-reason")).toHaveTextContent("最新原因");
+    expect(onLoadSendFailReason).toHaveBeenCalledTimes(2);
   });
 
-  it("keeps failure details available but disables retry when message actions are locked", async () => {
+  it("loads failure details but disables retry when message actions are locked", async () => {
     const user = userEvent.setup();
+    const onLoadSendFailReason = vi.fn(async () => "模拟发送失败");
     const onRetryMessage = vi.fn();
 
     render(
@@ -1411,16 +1384,17 @@ describe("message feed row actions", () => {
         canUseMessageActions={false}
         message={{
           ...createTextMessage("只读失败消息"),
-          failReason: "模拟发送失败",
           status: "failed",
         }}
+        onLoadSendFailReason={onLoadSendFailReason}
         onRetryMessage={onRetryMessage}
       />,
     );
 
     await user.click(screen.getByTestId("message-send-failure-trigger"));
 
-    expect(screen.getByTestId("message-send-failure-reason")).toHaveTextContent("模拟发送失败");
+    expect(await screen.findByTestId("message-send-failure-reason")).toBeInTheDocument();
+    expect(onLoadSendFailReason).toHaveBeenCalledTimes(1);
     expect(screen.getByTestId("message-resend-button")).toBeDisabled();
     expect(onRetryMessage).not.toHaveBeenCalled();
   });

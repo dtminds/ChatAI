@@ -1583,9 +1583,7 @@ function ChatWorkbenchContent({
   );
 
   const handleLoadSendFailReason = useCallback(
-    (uiMessageKey: string) => {
-      void loadSendFailReason(uiMessageKey);
-    },
+    (uiMessageKey: string) => loadSendFailReason(uiMessageKey),
     [loadSendFailReason],
   );
 

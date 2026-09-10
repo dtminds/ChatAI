@@ -17,6 +17,8 @@ import type {
   WorkflowTaskRecord,
 } from "./types.js";
 import { WORKFLOW_ACTIVE_RUN_STATUSES } from "@chatai/contracts";
+import type { AiUsageEvent } from "@chatai/contracts";
+import { AI_USAGE_COLLECTION_ENABLED } from "@chatai/llm";
 import {
   getWorkflowExecutionBoundaryDecision,
   transitionRun,
@@ -26,6 +28,7 @@ import { createNodeMetricDeltas } from "./node-metrics.js";
 import { resolveWorkflowForwardRoute } from "./live-revision-routing.js";
 import { isWorkflowTaskDeferReasonCode } from "./task-deferral.js";
 import { formatWorkflowMetricDate } from "./workflow-date.js";
+import { createWorkflowNodeUsageEvent } from "./workflow-ai-usage.js";
 
 type WorkflowBoundaryResolver = (input: {
   uid: number;
@@ -58,6 +61,7 @@ export class InMemoryWorkflowRuntimeRepository implements WorkflowRuntimeReposit
   readonly revisionCleanups: WorkflowRevisionCleanupRecord[] = [];
   readonly eventSubscriptions: WorkflowEventSubscriptionRecord[] = [];
   readonly inferenceJobs: WorkflowInferenceJobRecord[] = [];
+  readonly usageEvents: AiUsageEvent[] = [];
   private inbox: Array<WorkflowCommitNodeResultInput["inbox"] & { uid: number }> = [];
   private outbox: WorkflowOutboxRecord[] = [];
   private readonly runCompletedAt = new Map<string, Date>();
@@ -71,6 +75,7 @@ export class InMemoryWorkflowRuntimeRepository implements WorkflowRuntimeReposit
     private readonly resolveWorkflowBoundary?: WorkflowBoundaryResolver,
     private readonly now: () => Date = () => new Date(),
     private resolvePublishedRevision?: WorkflowPublishedRevisionResolver,
+    private readonly usageCollectionEnabled = AI_USAGE_COLLECTION_ENABLED,
   ) {}
 
   configurePublishedRevisionResolver(resolver: WorkflowPublishedRevisionResolver) {
@@ -777,6 +782,7 @@ export class InMemoryWorkflowRuntimeRepository implements WorkflowRuntimeReposit
       errorCode: null,
       errorMessage: null,
       failureKind: null,
+      id: this.createId(),
       executionKey: input.executionKey,
       input: clone(input.input),
       nodeId: task.nodeId,
@@ -876,6 +882,7 @@ export class InMemoryWorkflowRuntimeRepository implements WorkflowRuntimeReposit
       taskId: task.id,
       uid: input.uid,
       updatedAt: clone(input.now),
+      usage: null,
     };
     this.inferenceJobs.push(job);
     this.inbox.push({ ...clone(input.inbox), uid: input.uid });
@@ -1225,6 +1232,7 @@ export class InMemoryWorkflowRuntimeRepository implements WorkflowRuntimeReposit
     return this.finishInference(input.id, input.leaseOwner, input.completedAt, {
       result: input.result,
       status: "succeeded",
+      usage: input.usage,
     });
   }
 
@@ -1453,10 +1461,12 @@ export class InMemoryWorkflowRuntimeRepository implements WorkflowRuntimeReposit
     const existingExecution = this.nodeExecutions.find(item => item.uid === input.uid
       && item.runId === run.id
       && item.sequence === task.sequence);
+    let nodeExecutionId: string;
     if (existingExecution) {
       if (existingExecution.executionKey !== input.nodeExecution.executionKey
         || existingExecution.revision !== task.revision
         || existingExecution.status !== "running") return conflict();
+      nodeExecutionId = existingExecution.id ?? input.taskId;
       existingExecution.errorCode = input.nodeExecution.errorCode ?? null;
       existingExecution.errorMessage = input.nodeExecution.errorMessage ?? null;
       existingExecution.failureKind = null;
@@ -1464,10 +1474,12 @@ export class InMemoryWorkflowRuntimeRepository implements WorkflowRuntimeReposit
       existingExecution.sourceOutletId = input.nodeExecution.sourceOutletId ?? null;
       existingExecution.status = failed ? "failed" : "completed";
     } else {
+      nodeExecutionId = this.createId();
       this.nodeExecutions.push({
         errorCode: input.nodeExecution.errorCode ?? null,
         errorMessage: input.nodeExecution.errorMessage ?? null,
         failureKind: null,
+        id: nodeExecutionId,
         executionKey: input.nodeExecution.executionKey,
         input: clone(input.nodeExecution.input),
         nodeId: task.nodeId,
@@ -1480,6 +1492,30 @@ export class InMemoryWorkflowRuntimeRepository implements WorkflowRuntimeReposit
         status: failed ? "failed" : "completed",
         uid: input.uid,
       });
+    }
+    if (this.usageCollectionEnabled && !failed
+      && (task.nodeKind === "ai-intent" || task.nodeKind === "llm" || task.nodeKind === "ai-collect")) {
+      const usages = this.inferenceJobs
+        .filter(job => job.uid === input.uid
+          && job.taskId === task.id
+          && job.status === "succeeded"
+          && job.usage !== null)
+        .sort(compareById)
+        .map(job => clone(job.usage!));
+      const event = createWorkflowNodeUsageEvent({
+        executionId: nodeExecutionId,
+        nodeId: task.nodeId,
+        nodeKind: task.nodeKind,
+        occurredAt: this.now(),
+        runId: run.id,
+        uid: input.uid,
+        usages,
+        workflowId: run.workflowId,
+      });
+      if (event && !this.usageEvents.some(existing =>
+        existing.uid === event.uid && existing.eventKey === event.eventKey)) {
+        this.usageEvents.push(event);
+      }
     }
     this.inbox.push({ ...clone(input.inbox), uid: input.uid });
     task.status = nextTaskStatus;
@@ -2191,6 +2227,7 @@ export class InMemoryWorkflowRuntimeRepository implements WorkflowRuntimeReposit
       failureKind?: "retryable" | "terminal" | "unknown";
       result?: import("@chatai/contracts").WorkflowInferenceResult;
       status: "failed" | "succeeded";
+      usage?: import("./inference-port.js").WorkflowInferenceUsage;
     },
     allowUnleased = false,
   ) {
@@ -2207,6 +2244,7 @@ export class InMemoryWorkflowRuntimeRepository implements WorkflowRuntimeReposit
     job.result = terminal.result ? clone(terminal.result) : null;
     job.status = terminal.status;
     job.updatedAt = clone(completedAt);
+    job.usage = terminal.usage ? clone(terminal.usage) : null;
     const task = this.tasks.find(item => item.uid === job.uid && item.id === job.taskId);
     const run = this.runs.find(item => item.uid === job.uid && item.id === job.runId);
     if (!task || !run || task.status !== "waiting_external" || task.taskType !== "inference"

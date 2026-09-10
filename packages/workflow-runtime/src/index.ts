@@ -19,6 +19,7 @@ export * from "./message.js";
 export * from "./message-query.js";
 export * from "./workflow-messages.js";
 export * from "./workflow-date.js";
+export * from "./workflow-ai-usage.js";
 export * from "./memory-repository.js";
 export * from "./mysql-repository.js";
 export * from "./node-metrics.js";

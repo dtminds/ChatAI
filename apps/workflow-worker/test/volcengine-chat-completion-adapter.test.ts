@@ -4,7 +4,10 @@ import { Kysely, MysqlDialect } from "kysely";
 import type { Database } from "@chatai/database";
 import { VolcengineChatCompletionAdapter } from "../src/volcengine-chat-completion-adapter.js";
 
-const request = (overrides: Record<string, unknown> = {}) => ({
+const request = (
+  overrides: Record<string, unknown> = {},
+  requestOverrides: Record<string, unknown> = {},
+) => ({
   contractVersion: 1,
   deadlineAt: new Date("2099-01-01T00:01:00.000Z"),
   executionKey: "workflow:1:llm:1",
@@ -21,6 +24,7 @@ const request = (overrides: Record<string, unknown> = {}) => ({
   },
   signal: new AbortController().signal,
   uid: 9,
+  ...requestOverrides,
 });
 
 const database = {} as never;
@@ -51,28 +55,44 @@ function createProductionDatabase(rows: Array<Record<string, unknown>>) {
 describe("VolcengineChatCompletionAdapter", () => {
   it("resolves the production model row when no resolver is injected", async () => {
     const { db, query } = createProductionDatabase([{
+      credit_multiplier: 150,
       endpoint: "ep-production",
       model: "doubao-pro",
     }]);
     const fetchImpl = vi.fn(async () => new Response(JSON.stringify({
       choices: [{ message: { content: "answer" } }],
+      usage: { completion_tokens: 3, prompt_tokens: 5 },
     }), { status: 200 }));
     const adapter = new VolcengineChatCompletionAdapter(db, "secret", fetchImpl);
+    const onUsage = vi.fn();
 
-    await expect(adapter.execute(request())).resolves.toEqual({ content: "answer", type: "text" });
+    await expect(adapter.execute(request({}, { onUsage })))
+      .resolves.toEqual({ content: "answer", type: "text" });
 
     expect(query).toHaveBeenCalledTimes(1);
     const executedSql = String(query.mock.calls[0]?.[0]).replace(/\s+/g, " ").trim();
     expect(executedSql).toContain(
-      "SELECT endpoint, model FROM xy_wap_embed_ai_model WHERE id = ? AND uid = 0 AND status = 1 LIMIT 1",
+      "SELECT credit_multiplier, endpoint, model FROM xy_wap_embed_ai_model WHERE id = ? AND uid = 0 AND status = 1 LIMIT 1",
     );
     expect(query.mock.calls[0]?.[1]).toEqual([11]);
     const body = JSON.parse(String(fetchImpl.mock.calls[0]?.[1]?.body));
     expect(body.model).toBe("ep-production");
+    expect(onUsage).toHaveBeenCalledWith({
+      billingModel: { creditMultiplier: 150, model: "doubao-pro", modelId: 11 },
+      modelUsage: {
+        inputTokens: 5,
+        model: "doubao-pro",
+        modelId: 11,
+        outputTokens: 3,
+        provider: "volcengine_ark",
+        requestCount: 1,
+      },
+    });
   });
 
   it("rejects a production model row with an empty endpoint", async () => {
     const { db, query } = createProductionDatabase([{
+      credit_multiplier: 150,
       endpoint: "",
       model: "doubao-pro",
     }]);
@@ -90,6 +110,7 @@ describe("VolcengineChatCompletionAdapter", () => {
   it("uses a direct endpoint target without resolving the model catalog", async () => {
     const { db, query } = createProductionDatabase([]);
     const modelResolver = vi.fn();
+    const onUsage = vi.fn();
     const fetchImpl = vi.fn(async () => new Response(JSON.stringify({
       choices: [{ message: { content: JSON.stringify({
         matchedCode: "I1",
@@ -113,7 +134,7 @@ describe("VolcengineChatCompletionAdapter", () => {
         ],
         type: "json",
       },
-    }))).resolves.toEqual({
+    }, { onUsage }))).resolves.toEqual({
       type: "json",
       value: { matchedCode: "I1", reason: "matched" },
     });
@@ -125,6 +146,21 @@ describe("VolcengineChatCompletionAdapter", () => {
       model: "ep-20260227145914-nxcmn",
       reasoning_effort: "low",
       thinking: { type: "enabled" },
+    });
+    expect(onUsage).toHaveBeenCalledWith({
+      billingModel: {
+        creditMultiplier: 100,
+        model: "ep-20260227145914-nxcmn",
+        modelId: null,
+      },
+      modelUsage: {
+        inputTokens: 0,
+        model: "ep-20260227145914-nxcmn",
+        modelId: null,
+        outputTokens: 0,
+        provider: "volcengine_ark",
+        requestCount: 1,
+      },
     });
   });
 
@@ -138,7 +174,7 @@ describe("VolcengineChatCompletionAdapter", () => {
       database,
       "secret",
       fetchImpl,
-      async () => ({ endpoint: "ep-test", model: "doubao-pro" }),
+      async () => ({ credit_multiplier: 150, endpoint: "ep-test", model: "doubao-pro" }),
     );
 
     await expect(adapter.execute(request())).resolves.toEqual({ content: "answer", type: "text" });
@@ -169,7 +205,7 @@ describe("VolcengineChatCompletionAdapter", () => {
       database,
       "secret",
       fetchImpl,
-      async () => ({ endpoint: "ep-test", model: "doubao-pro" }),
+      async () => ({ credit_multiplier: 150, endpoint: "ep-test", model: "doubao-pro" }),
       undefined,
       "media.example.com",
     );
@@ -209,7 +245,7 @@ describe("VolcengineChatCompletionAdapter", () => {
       database,
       "secret",
       fetchImpl,
-      async () => ({ endpoint: "ep-test", model: "doubao-pro" }),
+      async () => ({ credit_multiplier: 150, endpoint: "ep-test", model: "doubao-pro" }),
       logger,
     );
 
@@ -234,7 +270,7 @@ describe("VolcengineChatCompletionAdapter", () => {
       database,
       "secret",
       fetchImpl,
-      async () => ({ endpoint: "ep-test", model: "doubao-pro" }),
+      async () => ({ credit_multiplier: 150, endpoint: "ep-test", model: "doubao-pro" }),
     );
 
     await expect(adapter.execute(request({
@@ -267,7 +303,7 @@ describe("VolcengineChatCompletionAdapter", () => {
       database,
       "secret",
       async () => new Response("provider error", { status }),
-      async () => ({ endpoint: "ep-test", model: "doubao-pro" }),
+      async () => ({ credit_multiplier: 150, endpoint: "ep-test", model: "doubao-pro" }),
     );
     await expect(adapter.execute(request())).rejects.toMatchObject({
       failureKind,
@@ -291,7 +327,7 @@ describe("VolcengineChatCompletionAdapter", () => {
       database,
       "secret",
       async () => new Response("x".repeat(1024 * 1024 + 1), { status: 200 }),
-      async () => ({ endpoint: "ep-test", model: "doubao-pro" }),
+      async () => ({ credit_multiplier: 150, endpoint: "ep-test", model: "doubao-pro" }),
     );
     await expect(oversized.execute(request())).rejects.toBeInstanceOf(
       WorkflowCapabilityExecutionError,
@@ -305,7 +341,7 @@ describe("VolcengineChatCompletionAdapter", () => {
       async () => new Response(JSON.stringify({
         choices: [{ message: { content: "" } }],
       }), { status: 200 }),
-      async () => ({ endpoint: "ep-test", model: "doubao-pro" }),
+      async () => ({ credit_multiplier: 150, endpoint: "ep-test", model: "doubao-pro" }),
     );
 
     await expect(adapter.execute(request())).rejects.toMatchObject({

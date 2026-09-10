@@ -15,8 +15,13 @@ const DEFAULT_PLAYABLE_MEDIA_HOST = "b5.bokr.com.cn";
 const MAX_RESPONSE_BYTES = 1024 * 1024;
 const MAX_COMPLETION_TOKENS = 4096;
 
-type ModelRow = { endpoint: string; model: string };
-type ResolvedModelTarget = { endpoint: string; model?: string };
+type ModelRow = { credit_multiplier: number; endpoint: string; model: string };
+type ResolvedModelTarget = {
+  creditMultiplier: number;
+  endpoint: string;
+  model: string;
+  modelId: number | null;
+};
 type ModelResolver = (modelId: string) => Promise<ModelRow | undefined>;
 type ProviderDiagnosticsLogger = {
   info(value: unknown, message?: string): void;
@@ -87,6 +92,7 @@ export class VolcengineChatCompletionAdapter implements WorkflowChatCompletionPo
     }
     if (request.payload.responseFormat.type !== "json") {
       this.logProviderCompletion(model, completion);
+      this.recordUsage(request, model, completion);
       return { content: completion.content, type: "text" };
     }
 
@@ -106,7 +112,30 @@ export class VolcengineChatCompletionAdapter implements WorkflowChatCompletionPo
       }
     }
     this.logProviderCompletion(model, completion);
+    this.recordUsage(request, model, completion);
     return { type: "json", value: value as Record<string, boolean | number | string> };
+  }
+
+  private recordUsage(
+    request: WorkflowChatCompletionRequest,
+    model: ResolvedModelTarget,
+    completion: ProviderCompletion,
+  ) {
+    request.onUsage?.({
+      billingModel: {
+        creditMultiplier: model.creditMultiplier,
+        model: model.model,
+        modelId: model.modelId,
+      },
+      modelUsage: {
+        inputTokens: completion.usage?.prompt_tokens ?? 0,
+        model: model.model,
+        modelId: model.modelId,
+        outputTokens: completion.usage?.completion_tokens ?? 0,
+        provider: "volcengine_ark",
+        requestCount: 1,
+      },
+    });
   }
 
   private logProviderCompletion(model: ResolvedModelTarget, completion: ProviderCompletion) {
@@ -122,7 +151,12 @@ export class VolcengineChatCompletionAdapter implements WorkflowChatCompletionPo
 
   private async resolveModel(payload: WorkflowInferenceMessageListRequest) {
     if (payload.modelTarget.kind === "endpoint") {
-      return { endpoint: payload.modelTarget.endpointId };
+      return {
+        creditMultiplier: 100,
+        endpoint: payload.modelTarget.endpointId,
+        model: payload.modelTarget.endpointId,
+        modelId: null,
+      };
     }
     const modelId = Number(payload.modelTarget.modelId);
     if (!Number.isSafeInteger(modelId) || modelId <= 0) {
@@ -133,18 +167,30 @@ export class VolcengineChatCompletionAdapter implements WorkflowChatCompletionPo
       if (!model?.endpoint?.trim() || !model.model?.trim()) {
         throw terminal("WORKFLOW_INFERENCE_MODEL_INVALID", "模型配置不可用");
       }
-      return model;
+      return normalizeCatalogModel(modelId, model);
     }
     const result = await sql<ModelRow>`
-      SELECT endpoint, model FROM xy_wap_embed_ai_model
+      SELECT credit_multiplier, endpoint, model FROM xy_wap_embed_ai_model
       WHERE id = ${modelId} AND uid = 0 AND status = 1 LIMIT 1
     `.execute(this.database);
     const model = result.rows[0];
     if (!model?.endpoint?.trim() || !model.model?.trim()) {
       throw terminal("WORKFLOW_INFERENCE_MODEL_INVALID", "模型配置不可用");
     }
-    return model;
+    return normalizeCatalogModel(modelId, model);
   }
+}
+
+function normalizeCatalogModel(modelId: number, model: ModelRow): ResolvedModelTarget {
+  if (!Number.isSafeInteger(model.credit_multiplier) || model.credit_multiplier < 1) {
+    throw terminal("WORKFLOW_INFERENCE_MODEL_INVALID", "模型配置不可用");
+  }
+  return {
+    creditMultiplier: model.credit_multiplier,
+    endpoint: model.endpoint,
+    model: model.model,
+    modelId,
+  };
 }
 
 export function createVolcengineChatCompletionAdapter(

@@ -20,6 +20,7 @@ describe("AI Collect runtime", () => {
       onBeginInference: () => order.push("inference"),
       onOpeningMessage: () => order.push("opening"),
       openingMessage: "请提供订单号",
+      usageCollectionEnabled: true,
     });
     const collectTask = await enterCollect(harness, { input: "订单号是 A100" });
 
@@ -37,6 +38,7 @@ describe("AI Collect runtime", () => {
         type: "json",
         value: { F1_present: true, F1_value: "A100" },
       },
+      usage: inferenceUsage(90, 15),
     });
     harness.setNow(new Date(enteredAt.getTime() + 1_000));
     const resumedTask = requireTask(harness.runtime, collectTask.id);
@@ -52,6 +54,13 @@ describe("AI Collect runtime", () => {
     expect(harness.conversationPort.sendOpeningMessage).not.toHaveBeenCalled();
     const run = harness.runtime.runs[0];
     expect(run?.context.outputs).toMatchObject({ collect: { "field-order": "A100" } });
+    expect(harness.runtime.usageEvents).toEqual([
+      expect.objectContaining({
+        billingModel: { creditMultiplier: 100, model: "ep-ai-collect", modelId: null },
+        capability: "workflow_ai_collect",
+        modelUsages: [expect.objectContaining({ inputTokens: 90, outputTokens: 15 })],
+      }),
+    ]);
   });
 
   it("activates Agent guidance only after the initial input remains incomplete", async () => {
@@ -361,6 +370,7 @@ function createHarness(options: {
   onOpeningMessage?: () => void;
   openingMessage?: string;
   readCustomerMessages?: WorkflowAiCollectConversationPort["readCustomerMessages"];
+  usageCollectionEnabled?: boolean;
 } = {}) {
   const spec = compileWorkflowDraft({
     draft: collectDraft(options.openingMessage, options.fields),
@@ -374,7 +384,12 @@ function createHarness(options: {
     collect.config = { ...collect.config, inputSelector: options.inputSelector } as typeof collect.config;
   }
   let now = enteredAt;
-  const runtime = new InMemoryWorkflowRuntimeRepository(undefined, () => now);
+  const runtime = new InMemoryWorkflowRuntimeRepository(
+    undefined,
+    () => now,
+    undefined,
+    options.usageCollectionEnabled,
+  );
   if (options.onBeginInference) {
     const beginInference = runtime.beginInference.bind(runtime);
     vi.spyOn(runtime, "beginInference").mockImplementation(async (input) => {
@@ -466,6 +481,20 @@ function requireTask(runtime: InMemoryWorkflowRuntimeRepository, taskId: string)
   const task = runtime.tasks.find(candidate => candidate.id === taskId);
   if (!task) throw new Error(`Task not found: ${taskId}`);
   return structuredClone(task);
+}
+
+function inferenceUsage(inputTokens: number, outputTokens: number) {
+  return {
+    billingModel: { creditMultiplier: 100, model: "ep-ai-collect", modelId: null },
+    modelUsage: {
+      inputTokens,
+      model: "ep-ai-collect",
+      modelId: null,
+      outputTokens,
+      provider: "volcengine_ark",
+      requestCount: 1,
+    },
+  };
 }
 
 function taskInput(task: { id: string; taskVersion: number }, now: Date) {

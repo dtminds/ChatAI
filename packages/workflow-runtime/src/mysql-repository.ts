@@ -17,6 +17,7 @@ import {
   type WorkflowTriggerBindingFilter,
 } from "@chatai/contracts";
 import { Value } from "@sinclair/typebox/value";
+import { enqueueAiUsageEvent } from "@chatai/database";
 import type {
   Database,
   DatabaseId,
@@ -27,6 +28,7 @@ import type {
   WorkflowTaskTable,
   WorkflowTaskTransitionTable,
 } from "@chatai/database";
+import { AI_USAGE_COLLECTION_ENABLED } from "@chatai/llm";
 import { sql, type Kysely, type Selectable, type Transaction } from "kysely";
 import {
   getWorkflowExecutionBoundaryDecision,
@@ -38,6 +40,11 @@ import { createNodeMetricDeltas, type WorkflowNodeMetricDelta } from "./node-met
 import { resolveWorkflowForwardRoute } from "./live-revision-routing.js";
 import { isWorkflowTaskDeferReasonCode } from "./task-deferral.js";
 import { formatWorkflowMetricDate } from "./workflow-date.js";
+import {
+  createWorkflowNodeUsageEvent,
+  isWorkflowInferenceUsage,
+  WORKFLOW_AI_COLLECT_MAX_INFERENCE_JOBS,
+} from "./workflow-ai-usage.js";
 import {
   WORKFLOW_MYSQL_WRITE_CHUNK_SIZE,
   WORKFLOW_RUNTIME_BATCH_LIMIT,
@@ -113,7 +120,10 @@ export class MysqlWorkflowRuntimeRepository implements
   WorkflowRuntimeControlReader,
   WorkflowRuntimeRepository,
   WorkflowTriggerBindingReader {
-  constructor(private readonly db: Kysely<Database>) {}
+  constructor(
+    private readonly db: Kysely<Database>,
+    private readonly usageCollectionEnabled = AI_USAGE_COLLECTION_ENABLED,
+  ) {}
 
   async deactivateWorkflowForEntitlementLoss(
     input: Parameters<WorkflowRuntimeControlReader["deactivateWorkflowForEntitlementLoss"]>[0],
@@ -1545,6 +1555,7 @@ export class MysqlWorkflowRuntimeRepository implements
         status: "pending",
         task_id: task.id,
         uid: input.uid,
+        usage_json: null,
       }).executeTakeFirstOrThrow();
       await insertWorkflowInbox(trx, input.uid, input.inbox, input.now);
       await trx.updateTable(TASK_TABLE).set({
@@ -2038,6 +2049,7 @@ export class MysqlWorkflowRuntimeRepository implements
       leaseOwner: input.leaseOwner,
       result: input.result,
       status: "succeeded",
+      usage: input.usage,
     });
   }
 
@@ -2292,6 +2304,7 @@ export class MysqlWorkflowRuntimeRepository implements
     };
     result?: import("@chatai/contracts").WorkflowInferenceResult;
     status: "failed" | "succeeded";
+    usage?: import("./inference-port.js").WorkflowInferenceUsage;
   }) {
     return this.db.transaction().execute(async (trx) => {
       const candidate = await trx.selectFrom(INFERENCE_JOB_TABLE).select(["run_id", "task_id", "uid"])
@@ -2335,6 +2348,7 @@ export class MysqlWorkflowRuntimeRepository implements
         lease_owner: null,
         result_json: input.result ? stringifyJson(input.result) : null,
         status: input.status,
+        usage_json: input.usage ? stringifyJson(input.usage) : null,
       }).where("id", "=", row.id).executeTakeFirstOrThrow();
       if (!taskRow || !runRow) return true;
       const task = mapTask(taskRow);
@@ -2769,6 +2783,9 @@ export class MysqlWorkflowRuntimeRepository implements
         });
       }
 
+      let nodeExecutionId: string | null = existingExecution
+        ? normalizeId(existingExecution.id)
+        : null;
       if (existingExecution) {
         await trx.updateTable(EXECUTION_TABLE).set({
           completed_at: now,
@@ -2784,7 +2801,7 @@ export class MysqlWorkflowRuntimeRepository implements
           .where("status", "=", "running")
           .executeTakeFirstOrThrow();
       } else {
-        await trx.insertInto(EXECUTION_TABLE).values({
+        const insertedExecution = await trx.insertInto(EXECUTION_TABLE).values({
           completed_at: now,
           error_code: input.nodeExecution.errorCode ?? null,
           error_message: input.nodeExecution.errorMessage ?? null,
@@ -2802,6 +2819,40 @@ export class MysqlWorkflowRuntimeRepository implements
           status: failed ? "failed" : "completed",
           uid: input.uid,
         }).executeTakeFirstOrThrow();
+        if (insertedExecution.insertId !== undefined) {
+          nodeExecutionId = normalizeId(insertedExecution.insertId);
+        }
+      }
+      if (this.usageCollectionEnabled && !failed
+        && (task.nodeKind === "ai-intent" || task.nodeKind === "llm" || task.nodeKind === "ai-collect")) {
+        if (nodeExecutionId === null) throw new Error("Node Execution insert did not return an ID");
+        const usageRows = await trx.selectFrom(INFERENCE_JOB_TABLE)
+          .select("usage_json")
+          .where("uid", "=", input.uid)
+          .where("task_id", "=", task.id)
+          .where("status", "=", "succeeded")
+          .where("usage_json", "is not", null)
+          .orderBy("id", "asc")
+          .limit(task.nodeKind === "ai-collect" ? WORKFLOW_AI_COLLECT_MAX_INFERENCE_JOBS : 1)
+          .execute();
+        const usages = usageRows.map(row => {
+          const usage = parseJson(row.usage_json!);
+          if (!isWorkflowInferenceUsage(usage)) {
+            throw new Error("Database returned an invalid Workflow inference usage snapshot");
+          }
+          return usage;
+        });
+        const event = createWorkflowNodeUsageEvent({
+          executionId: nodeExecutionId,
+          nodeId: task.nodeId,
+          nodeKind: task.nodeKind,
+          occurredAt: now,
+          runId: run.id,
+          uid: input.uid,
+          usages,
+          workflowId: run.workflowId,
+        });
+        if (event) await enqueueAiUsageEvent(trx, event, now);
       }
       await trx.insertInto(INBOX_TABLE).values({
         consumer: input.inbox.consumer,
@@ -4692,6 +4743,10 @@ function mapInferenceJob(
   if (result !== null && !Value.Check(WorkflowInferenceResultSchema, result)) {
     throw new Error("Database returned an invalid Workflow inference result");
   }
+  const usage = row.usage_json === null ? null : parseJson(row.usage_json);
+  if (usage !== null && !isWorkflowInferenceUsage(usage)) {
+    throw new Error("Database returned an invalid Workflow inference usage snapshot");
+  }
   const status = row.status;
   if (status !== "pending" && status !== "running" && status !== "retry_wait"
     && status !== "succeeded" && status !== "failed" && status !== "cancelled") {
@@ -4724,6 +4779,7 @@ function mapInferenceJob(
     taskId: normalizeId(row.task_id),
     uid: normalizeTenantId(row.uid),
     updatedAt: toDate(row.update_time),
+    usage,
   };
 }
 
@@ -5216,6 +5272,7 @@ function mapNodeExecution(row: Selectable<Database[typeof EXECUTION_TABLE]>): Wo
     errorCode: row.error_code,
     errorMessage: row.error_message,
     failureKind: parseCapabilityFailureKind(row.failure_kind),
+    id: normalizeId(row.id),
     executionKey: row.execution_key,
     input: row.input_snapshot_json ? parseJson(row.input_snapshot_json) : {},
     nodeId: row.node_id,

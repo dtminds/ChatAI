@@ -928,6 +928,7 @@ CREATE TABLE IF NOT EXISTS xy_wap_embed_workflow_inference_job (
   contract_version INT UNSIGNED NOT NULL COMMENT '推理请求契约版本',
   payload_json JSON NOT NULL COMMENT '推理请求载荷',
   result_json JSON NULL COMMENT '推理结果',
+  usage_json JSON NULL COMMENT '模型调用用量快照',
   status VARCHAR(32) NOT NULL COMMENT '状态：pending、running、retry_wait、succeeded、failed、cancelled',
   attempt INT UNSIGNED NOT NULL DEFAULT 0 COMMENT '推理调用尝试次数',
   next_attempt_at DATETIME NOT NULL COMMENT '下次允许领取时间',

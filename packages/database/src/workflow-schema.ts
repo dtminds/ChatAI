@@ -297,6 +297,7 @@ export interface WorkflowInferenceJobTable {
   task_id: DatabaseId;
   uid: number;
   update_time: GeneratedDate;
+  usage_json: JsonText | null;
 }
 
 export interface WorkflowAiCollectStateTable {

@@ -104,7 +104,7 @@ export function normalizeAiCollectFields(value: unknown): WorkflowAiCollectField
     fields.push({
       id,
       instruction: normalizeText(rawField.instruction, AI_COLLECT_INSTRUCTION_MAX_LENGTH),
-      name: normalizeText(rawField.name, AI_COLLECT_FIELD_NAME_MAX_LENGTH),
+      name: typeof rawField.name === "string" ? rawField.name : "",
       type: normalizeAiCollectFieldType(rawField.type),
     });
   }
@@ -167,6 +167,7 @@ export function getAiCollectStatus(data: Pick<
   const complete = fields.length >= AI_COLLECT_FIELD_MIN_COUNT
     && fields.length <= AI_COLLECT_FIELD_MAX_COUNT
     && fields.every(field => field.name.trim() && field.instruction.trim())
+    && fields.every(field => field.name.length <= AI_COLLECT_FIELD_NAME_MAX_LENGTH)
     && new Set(names).size === names.length
     && (maxFollowUpCount > 0 || Boolean(normalizeAiCollectInputSelector(data.inputSelector)));
   return complete ? "ready" : "warning";

@@ -1,4 +1,4 @@
-import { render, screen, within } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { ComponentProps, ReactNode } from "react";
 import { describe, expect, it, vi } from "vitest";
@@ -62,7 +62,7 @@ describe("workflow node chrome", () => {
     expect(onDuplicate).toHaveBeenCalledTimes(1);
   });
 
-  it("renames editable nodes inline without opening settings and limits names to 10 characters", async () => {
+  it("limits an inline node name after composition and ignores the IME Enter", async () => {
     const user = userEvent.setup();
     const onRename = vi.fn();
     const onSelect = vi.fn();
@@ -78,10 +78,51 @@ describe("workflow node chrome", () => {
 
     const nameInput = screen.getByRole("textbox", { name: "节点名称" });
     await user.clear(nameInput);
-    await user.type(nameInput, "12345678901{Enter}");
+    await user.type(nameInput, "123456789");
+    fireEvent.compositionStart(nameInput);
+    fireEvent.change(nameInput, { target: { value: "12345678901" } });
+    const imeEnterAccepted = fireEvent.keyDown(nameInput, {
+      isComposing: true,
+      key: "Enter",
+      keyCode: 229,
+    });
+
+    expect(nameInput).toHaveValue("12345678901");
+    expect(imeEnterAccepted).toBe(true);
+    expect(onRename).not.toHaveBeenCalled();
+    expect(onSelect).not.toHaveBeenCalled();
+
+    fireEvent.compositionEnd(nameInput);
+    expect(nameInput).toHaveValue("1234567890");
+    expect(nameInput).not.toHaveAttribute("aria-invalid");
+    expect(screen.getByText("10/10")).toBeInTheDocument();
+
+    await user.type(nameInput, "{Enter}");
 
     expect(onRename).toHaveBeenCalledWith("message-welcome", "1234567890");
-    expect(onSelect).not.toHaveBeenCalled();
+  });
+
+  it("commits the limited composed node name when blur ends composition", async () => {
+    const user = userEvent.setup();
+    const onRename = vi.fn();
+    renderBaseNode({
+      onRename,
+      selected: true,
+      title: "发送欢迎消息",
+    });
+
+    await user.click(screen.getByRole("button", { name: "更多操作：发送欢迎消息" }));
+    await user.click(within(await screen.findByRole("menu")).getByRole("menuitem", { name: "重命名" }));
+
+    const nameInput = screen.getByRole("textbox", { name: "节点名称" });
+    await user.clear(nameInput);
+    await user.type(nameInput, "123456789");
+    fireEvent.compositionStart(nameInput);
+    fireEvent.change(nameInput, { target: { value: "12345678901" } });
+    fireEvent.blur(nameInput);
+
+    expect(onRename).toHaveBeenCalledWith("message-welcome", "1234567890");
+    expect(screen.queryByRole("textbox", { name: "节点名称" })).not.toBeInTheDocument();
   });
 
   it("starts inline node renaming by double-clicking the title and cancels with Escape", async () => {
@@ -101,6 +142,25 @@ describe("workflow node chrome", () => {
     expect(onRename).not.toHaveBeenCalled();
     expect(screen.getByText("发送欢迎消息")).toBeInTheDocument();
     expect(screen.queryByRole("textbox", { name: "节点名称" })).not.toBeInTheDocument();
+  });
+
+  it("cancels a blank inline node name on blur", async () => {
+    const user = userEvent.setup();
+    const onRename = vi.fn();
+    renderBaseNode({
+      onRename,
+      selected: true,
+      title: "发送欢迎消息",
+    });
+
+    await user.dblClick(screen.getByText("发送欢迎消息"));
+    const nameInput = screen.getByRole("textbox", { name: "节点名称" });
+    await user.clear(nameInput);
+    await user.tab();
+
+    expect(onRename).not.toHaveBeenCalled();
+    expect(screen.queryByRole("textbox", { name: "节点名称" })).not.toBeInTheDocument();
+    expect(screen.getByText("发送欢迎消息")).toBeInTheDocument();
   });
 
   it("keeps start and end nodes protected from menus and double-click rename", async () => {

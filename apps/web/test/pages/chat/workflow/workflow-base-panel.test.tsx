@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { render, screen, within } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import { createNodeFromKind } from "@/pages/chat/workflow/graph";
@@ -23,7 +23,7 @@ describe("workflow node settings chrome", () => {
       .toBeInTheDocument();
   });
 
-  it("renames a node from the settings menu and limits names to 10 characters", async () => {
+  it("limits a settings node name after composition and ignores the IME Enter", async () => {
     const user = userEvent.setup();
     const onRenameNode = vi.fn();
     render(<RenamePanelFixture onRenameNode={onRenameNode} />);
@@ -34,10 +34,48 @@ describe("workflow node settings chrome", () => {
 
     const nameInput = await within(panel).findByRole("textbox", { name: "节点名称" });
     await user.clear(nameInput);
-    await user.type(nameInput, "12345678901{Enter}");
+    await user.type(nameInput, "123456789");
+    fireEvent.compositionStart(nameInput);
+    fireEvent.change(nameInput, { target: { value: "12345678901" } });
+    const imeEnterAccepted = fireEvent.keyDown(nameInput, {
+      isComposing: true,
+      key: "Enter",
+      keyCode: 229,
+    });
+
+    expect(nameInput).toHaveValue("12345678901");
+    expect(imeEnterAccepted).toBe(true);
+    expect(onRenameNode).not.toHaveBeenCalled();
+
+    fireEvent.compositionEnd(nameInput);
+    expect(nameInput).toHaveValue("1234567890");
+    expect(nameInput).not.toHaveAttribute("aria-invalid");
+    expect(within(panel).getByText("10/10")).toBeInTheDocument();
+
+    await user.type(nameInput, "{Enter}");
 
     expect(onRenameNode).toHaveBeenCalledWith("wait-2d", "1234567890");
     expect(within(panel).getByRole("heading", { name: "1234567890" })).toBeInTheDocument();
+  });
+
+  it("commits the limited composed settings name when blur ends composition", async () => {
+    const user = userEvent.setup();
+    const onRenameNode = vi.fn();
+    render(<RenamePanelFixture onRenameNode={onRenameNode} />);
+
+    const panel = screen.getByRole("complementary", { name: "节点配置" });
+    await user.click(within(panel).getByRole("button", { name: "更多节点操作" }));
+    await user.click(within(await screen.findByRole("menu")).getByRole("menuitem", { name: "重命名" }));
+
+    const nameInput = await within(panel).findByRole("textbox", { name: "节点名称" });
+    await user.clear(nameInput);
+    await user.type(nameInput, "123456789");
+    fireEvent.compositionStart(nameInput);
+    fireEvent.change(nameInput, { target: { value: "12345678901" } });
+    fireEvent.blur(nameInput);
+
+    expect(onRenameNode).toHaveBeenCalledWith("wait-2d", "1234567890");
+    expect(within(panel).queryByRole("textbox", { name: "节点名称" })).not.toBeInTheDocument();
   });
 
   it("clears settings rename state when selecting another node", async () => {
@@ -55,6 +93,24 @@ describe("workflow node settings chrome", () => {
     panel = screen.getByRole("complementary", { name: "节点配置" });
     expect(within(panel).queryByRole("textbox", { name: "节点名称" })).not.toBeInTheDocument();
     expect(within(panel).getByRole("heading", { name: "发送欢迎消息" })).toBeInTheDocument();
+  });
+
+  it("cancels a blank settings node name on blur", async () => {
+    const user = userEvent.setup();
+    const onRenameNode = vi.fn();
+    render(<RenamePanelFixture onRenameNode={onRenameNode} />);
+
+    const panel = screen.getByRole("complementary", { name: "节点配置" });
+    await user.click(within(panel).getByRole("button", { name: "更多节点操作" }));
+    await user.click(within(await screen.findByRole("menu")).getByRole("menuitem", { name: "重命名" }));
+
+    const nameInput = await within(panel).findByRole("textbox", { name: "节点名称" });
+    await user.clear(nameInput);
+    await user.tab();
+
+    expect(onRenameNode).not.toHaveBeenCalled();
+    expect(within(panel).queryByRole("textbox", { name: "节点名称" })).not.toBeInTheDocument();
+    expect(within(panel).getByRole("heading", { name: "观察期" })).toBeInTheDocument();
   });
 
   it("does not show the settings menu for protected nodes", () => {

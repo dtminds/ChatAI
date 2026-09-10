@@ -8,7 +8,8 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
+import { LimitedInput } from "@/components/ui/limited-input";
+import { cn } from "@/lib/utils";
 
 const QUICK_REPLY_CATEGORY_TITLE_MAX_LENGTH = 10;
 
@@ -40,6 +41,8 @@ export function QuickReplyCategoryDialog({
   }, [initialTitle, open]);
 
   const copy = getQuickReplyCategoryDialogCopy(variant, Boolean(initialTitle));
+  const titleLength = title.length;
+  const titleTooLong = titleLength > QUICK_REPLY_CATEGORY_TITLE_MAX_LENGTH;
 
   const handleSubmit = async () => {
     const normalizedTitle = title.trim();
@@ -49,8 +52,7 @@ export function QuickReplyCategoryDialog({
       return;
     }
 
-    if (normalizedTitle.length > QUICK_REPLY_CATEGORY_TITLE_MAX_LENGTH) {
-      setTitleError(copy.maxLengthError);
+    if (titleTooLong) {
       return;
     }
 
@@ -76,16 +78,28 @@ export function QuickReplyCategoryDialog({
           ) : null}
         </DialogHeader>
         <div className="space-y-2">
-          <Input
-            aria-invalid={titleError ? true : undefined}
-            maxLength={QUICK_REPLY_CATEGORY_TITLE_MAX_LENGTH}
-            onChange={(event) => {
-              setTitle(event.target.value);
-              setTitleError("");
-            }}
-            placeholder={copy.placeholder}
-            value={title}
-          />
+          <div className="relative">
+            <LimitedInput
+              aria-invalid={titleError || titleTooLong ? true : undefined}
+              className={cn(
+                "pr-14",
+                titleTooLong && "border-destructive focus-visible:border-destructive focus-visible:ring-destructive/15",
+              )}
+              maxLength={QUICK_REPLY_CATEGORY_TITLE_MAX_LENGTH}
+              onValueChange={(value) => {
+                setTitle(value);
+                setTitleError("");
+              }}
+              placeholder={copy.placeholder}
+              value={title}
+            />
+            <span className={cn(
+              "pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-xs tabular-nums text-muted-foreground",
+              titleTooLong && "text-destructive",
+            )}>
+              {titleLength}/{QUICK_REPLY_CATEGORY_TITLE_MAX_LENGTH}
+            </span>
+          </div>
           {titleError ? (
             <p className="text-xs text-destructive" role="alert">
               {titleError}
@@ -101,7 +115,11 @@ export function QuickReplyCategoryDialog({
           >
             取消
           </Button>
-          <Button disabled={isSubmitting} onClick={handleSubmit} type="button">
+          <Button
+            disabled={isSubmitting || titleTooLong}
+            onClick={handleSubmit}
+            type="button"
+          >
             保存
           </Button>
         </DialogFooter>
@@ -119,7 +137,6 @@ function getQuickReplyCategoryDialogCopy(
       description:
         "用于收纳同类话术，主题要比分类更具体，如报价、改址；不要再用售前、售后这类大类名",
       emptyError: "请输入话术分组名称",
-      maxLengthError: "话术分组名称不能超过10字",
       placeholder: "请输入话术分组名称，10字以内",
       title: isEditing ? "编辑话术分组" : "创建话术分组",
     };
@@ -128,7 +145,6 @@ function getQuickReplyCategoryDialogCopy(
   return {
     description: "按客户服务场景划分大类，如售前、售后、物流；具体主题请建话术分组",
     emptyError: "请输入分类名称",
-    maxLengthError: "分类名称不能超过10字",
     placeholder: "请输入分类名称，10字以内",
     title: isEditing ? "编辑分类" : "新建分类",
   };

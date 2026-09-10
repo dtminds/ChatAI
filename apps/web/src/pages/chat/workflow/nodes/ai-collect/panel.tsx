@@ -16,6 +16,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
+import { LimitedInput } from "@/components/ui/limited-input";
 import {
   Select,
   SelectContent,
@@ -366,6 +367,9 @@ function AiCollectFieldEditor({ field, fields, index, onChange, onDelete }: {
 }) {
   const duplicateName = Boolean(field.name.trim()) && fields.some(item =>
     item.id !== field.id && item.name.trim() === field.name.trim());
+  const nameLength = field.name.length;
+  const nameTooLong = nameLength > AI_COLLECT_FIELD_NAME_MAX_LENGTH;
+  const nameInvalid = !field.name.trim() || duplicateName || nameTooLong;
   return (
     <section className="space-y-2.5 rounded-[8px] bg-secondary/50 p-3 pl-2">
       <div className="grid grid-cols-[28px_minmax(0,1fr)_5rem_32px] items-start gap-2">
@@ -375,18 +379,29 @@ function AiCollectFieldEditor({ field, fields, index, onChange, onDelete }: {
         >
           <HugeiconsIcon icon={DragDropVerticalIcon} size={16} strokeWidth={1.8} />
         </SortableItemHandle>
-        <Input
-          aria-label={`字段 ${index + 1} 名称`}
-          aria-invalid={!field.name.trim() || duplicateName}
-          className={cn(
-            "h-9 text-[13px] md:text-[13px]",
-            duplicateName && "border-destructive",
-          )}
-          maxLength={AI_COLLECT_FIELD_NAME_MAX_LENGTH}
-          onChange={event => onChange({ name: event.target.value })}
-          placeholder="字段名称"
-          value={field.name}
-        />
+        <div className="relative min-w-0">
+          <LimitedInput
+            aria-label={`字段 ${index + 1} 名称`}
+            aria-invalid={nameInvalid || undefined}
+            className={cn(
+              "h-9 pr-12 text-[13px] md:text-[13px]",
+              (duplicateName || nameTooLong)
+                && "border-destructive focus-visible:border-destructive focus-visible:ring-destructive/15",
+            )}
+            maxLength={AI_COLLECT_FIELD_NAME_MAX_LENGTH}
+            onValueChange={name => onChange({ name })}
+            placeholder="字段名称"
+            value={field.name}
+          />
+          <span
+            className={cn(
+              "pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-[11px] tabular-nums text-muted-foreground",
+              nameTooLong && "text-destructive",
+            )}
+          >
+            {nameLength}/{AI_COLLECT_FIELD_NAME_MAX_LENGTH}
+          </span>
+        </div>
         <Select
           onValueChange={(type: WorkflowAiCollectFieldType) => onChange({ type })}
           value={field.type}

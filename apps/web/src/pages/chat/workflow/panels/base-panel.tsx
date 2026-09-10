@@ -9,13 +9,13 @@ import {
 import { HugeiconsIcon } from "@hugeicons/react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { LimitedInput } from "@/components/ui/limited-input";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import { canRenameNodeKind, nodeVisuals } from "../node-definitions";
 import type { WorkflowNode } from "../types";
@@ -72,6 +72,8 @@ function PanelHeader({
   const [isRenaming, setIsRenaming] = useState(false);
   const [renameValue, setRenameValue] = useState(node.data.title);
   const renameCancelledRef = useRef(false);
+  const renameLength = renameValue.length;
+  const renameTooLong = renameLength > WORKFLOW_NODE_TITLE_MAX_LENGTH;
 
   return (
     <div className="p-4">
@@ -87,28 +89,48 @@ function PanelHeader({
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
             {isRenaming ? (
-              <Input
-                aria-label="节点名称"
-                autoFocus
-                className="h-8 min-w-0 rounded px-2.5 text-sm font-normal"
-                maxLength={WORKFLOW_NODE_TITLE_MAX_LENGTH}
-                onBlur={commitRename}
-                onChange={(event) => setRenameValue(event.target.value)}
-                onKeyDown={(event) => {
-                  if (event.key === "Enter") {
-                    event.preventDefault();
-                    event.currentTarget.blur();
-                  }
-                  if (event.key === "Escape") {
-                    event.preventDefault();
-                    event.stopPropagation();
-                    renameCancelledRef.current = true;
-                    setRenameValue(node.data.title);
-                    setIsRenaming(false);
-                  }
-                }}
-                value={renameValue}
-              />
+              <div className="relative min-w-0 flex-1">
+                <LimitedInput
+                  aria-invalid={renameTooLong || undefined}
+                  aria-label="节点名称"
+                  autoFocus
+                  className={cn(
+                    "h-8 min-w-0 rounded px-2.5 pr-12 text-sm font-normal",
+                    renameTooLong && "border-destructive focus-visible:border-destructive focus-visible:ring-destructive/15",
+                  )}
+                  onBlur={(event) => commitRename(event.currentTarget.value)}
+                  maxLength={WORKFLOW_NODE_TITLE_MAX_LENGTH}
+                  onKeyDown={(event) => {
+                    if (
+                      event.key === "Enter"
+                      && !event.nativeEvent.isComposing
+                      && event.keyCode !== 229
+                    ) {
+                      event.preventDefault();
+                      if (!renameTooLong) {
+                        event.currentTarget.blur();
+                      }
+                    }
+                    if (event.key === "Escape") {
+                      event.preventDefault();
+                      event.stopPropagation();
+                      renameCancelledRef.current = true;
+                      setRenameValue(node.data.title);
+                      setIsRenaming(false);
+                    }
+                  }}
+                  onValueChange={setRenameValue}
+                  value={renameValue}
+                />
+                <span
+                  className={cn(
+                    "pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-[11px] tabular-nums text-muted-foreground",
+                    renameTooLong && "text-destructive",
+                  )}
+                >
+                  {renameLength}/{WORKFLOW_NODE_TITLE_MAX_LENGTH}
+                </span>
+              </div>
             ) : (
               <h2 className="truncate text-base font-semibold">{node.data.title}</h2>
             )}
@@ -160,18 +182,23 @@ function PanelHeader({
     </div>
   );
 
-  function commitRename() {
+  function commitRename(nextRenameValue = renameValue) {
     if (renameCancelledRef.current) {
       renameCancelledRef.current = false;
       return;
     }
 
-    const title = renameValue.trim();
-    setIsRenaming(false);
-    if (title && title !== node.data.title) {
-      onRenameNode(node.id, title);
+    const title = nextRenameValue.trim();
+
+    if (!title || nextRenameValue.length > WORKFLOW_NODE_TITLE_MAX_LENGTH) {
+      setRenameValue(node.data.title);
+      setIsRenaming(false);
       return;
     }
-    setRenameValue(node.data.title);
+
+    setIsRenaming(false);
+    if (title !== node.data.title) {
+      onRenameNode(node.id, title);
+    }
   }
 }

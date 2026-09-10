@@ -1,6 +1,7 @@
 import { HierarchySquare08Icon } from "@hugeicons/core-free-icons";
 import {
   WORKFLOW_RATIO_SPLIT_GROUP_MAX,
+  WORKFLOW_RATIO_SPLIT_GROUP_LABEL_MAX_LENGTH,
   WORKFLOW_RATIO_SPLIT_GROUP_MIN,
   WORKFLOW_RATIO_SPLIT_TOTAL_BASIS_POINTS,
   getWorkflowRatioSplitBasisPointsTotal,
@@ -68,6 +69,13 @@ export const ratioSplitNodeDefinition: WorkflowNodeDefinition<"ratio-split"> = {
     }
     if (node.data.groups.some(group => !group.label.trim())) {
       issues.push(createCatalogIssue("ratio-split-label-required", "分组名称不能为空"));
+    }
+    if (node.data.groups.some(group =>
+      group.label.length > WORKFLOW_RATIO_SPLIT_GROUP_LABEL_MAX_LENGTH)) {
+      issues.push(createCatalogIssue(
+        "ratio-split-label-too-long",
+        `分组名称不能超过 ${WORKFLOW_RATIO_SPLIT_GROUP_LABEL_MAX_LENGTH} 个字`,
+      ));
     }
     if (getWorkflowRatioSplitBasisPointsTotal(node.data.groups)
       !== WORKFLOW_RATIO_SPLIT_TOTAL_BASIS_POINTS) {

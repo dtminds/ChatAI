@@ -1,5 +1,6 @@
 import {
   WORKFLOW_RATIO_SPLIT_GROUP_MAX,
+  WORKFLOW_RATIO_SPLIT_GROUP_LABEL_MAX_LENGTH,
   WORKFLOW_RATIO_SPLIT_GROUP_MIN,
   WORKFLOW_RATIO_SPLIT_TOTAL_BASIS_POINTS,
   getWorkflowRatioSplitBasisPointsTotal,
@@ -91,6 +92,7 @@ export function isWorkflowRatioSplitLocallyComplete(groups: WorkflowRatioSplitDr
   return groups.length >= WORKFLOW_RATIO_SPLIT_GROUP_MIN
     && groups.length <= WORKFLOW_RATIO_SPLIT_GROUP_MAX
     && groups.every(group => group.label.trim().length > 0)
+    && groups.every(group => group.label.length <= WORKFLOW_RATIO_SPLIT_GROUP_LABEL_MAX_LENGTH)
     && new Set(groups.map(group => group.id)).size === groups.length
     && getWorkflowRatioSplitBasisPointsTotal(groups) === WORKFLOW_RATIO_SPLIT_TOTAL_BASIS_POINTS;
 }

@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import {
   QUICK_REPLY_ATTACHMENT_MAX_COUNT,
+  QUICK_REPLY_LABEL_TEXT_MAX_LENGTH,
   validateQuickReplyPayload,
   type WorkbenchQuickReplyAttachment,
   type WorkbenchQuickReplyCategoryDto,
@@ -15,7 +16,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
+import { LimitedInput } from "@/components/ui/limited-input";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
 import { uploadWorkbenchImageFile } from "@/pages/chat/api/media-upload-service";
@@ -60,8 +61,9 @@ export function QuickReplyFormDialog({
   const attachmentsRef = useRef<MessageDraftAttachment[]>(attachments);
   const [attachmentError, setAttachmentError] = useState("");
   const [contentError, setContentError] = useState("");
-  const [labelError, setLabelError] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const labelLength = labelText.length;
+  const labelTooLong = labelLength > QUICK_REPLY_LABEL_TEXT_MAX_LENGTH;
 
   useEffect(() => {
     if (open) {
@@ -76,7 +78,6 @@ export function QuickReplyFormDialog({
       setAttachments(nextAttachments);
       setAttachmentError("");
       setContentError("");
-      setLabelError("");
       setIsSubmitting(false);
     }
   }, [initialValues, open]);
@@ -112,8 +113,7 @@ export function QuickReplyFormDialog({
       return;
     }
 
-    if (normalizedLabelText.length > 10) {
-      setLabelError("短标题不能超过10个字");
+    if (labelTooLong) {
       return;
     }
 
@@ -214,21 +214,25 @@ export function QuickReplyFormDialog({
                 ))}
               </div>
             </div>
-            <Input
-              aria-invalid={labelError ? true : undefined}
-              maxLength={10}
-              onChange={(event) => {
-                setLabelText(event.target.value);
-                setLabelError("");
-              }}
-              placeholder="请输入短标题，10字以内"
-              value={labelText}
-            />
-            {labelError ? (
-              <p className="text-xs text-destructive" role="alert">
-                {labelError}
-              </p>
-            ) : null}
+            <div className="relative">
+              <LimitedInput
+                aria-invalid={labelTooLong || undefined}
+                className={cn(
+                  "pr-14",
+                  labelTooLong && "border-destructive focus-visible:border-destructive focus-visible:ring-destructive/15",
+                )}
+                maxLength={QUICK_REPLY_LABEL_TEXT_MAX_LENGTH}
+                onValueChange={setLabelText}
+                placeholder="请输入短标题，10字以内"
+                value={labelText}
+              />
+              <span className={cn(
+                "pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-xs tabular-nums text-muted-foreground",
+                labelTooLong && "text-destructive",
+              )}>
+                {labelLength}/{QUICK_REPLY_LABEL_TEXT_MAX_LENGTH}
+              </span>
+            </div>
           </div>
 
           <div className="min-w-0 space-y-2">
@@ -277,7 +281,11 @@ export function QuickReplyFormDialog({
           >
             取消
           </Button>
-          <Button disabled={isSubmitting} onClick={handleSubmit} type="button">
+          <Button
+            disabled={isSubmitting || labelTooLong}
+            onClick={handleSubmit}
+            type="button"
+          >
             {isSubmitting ? (
               <>
                 <Spinner

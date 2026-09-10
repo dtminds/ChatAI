@@ -8,8 +8,9 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
+import { LimitedInput } from "@/components/ui/limited-input";
 import { Label } from "@/components/ui/label";
+import { cn } from "@/lib/utils";
 
 type MaterialGroupFormDialogProps = {
   initialTitle?: string;
@@ -42,11 +43,13 @@ export function MaterialGroupFormDialog({
   }, [open]);
 
   const normalizedTitle = title.trim();
+  const titleLength = title.length;
+  const titleTooLong = titleLength > MATERIAL_GROUP_TITLE_MAX_LENGTH;
   const dialogTitle = mode === "edit" ? "编辑分组" : "新建分组";
   const submitLabel = mode === "edit" ? "保存" : "新建";
 
   function handleSubmit() {
-    if (!normalizedTitle) {
+    if (!normalizedTitle || titleTooLong) {
       return;
     }
 
@@ -66,22 +69,33 @@ export function MaterialGroupFormDialog({
         <div className="space-y-2 py-2">
           <div className="flex items-center justify-between gap-3">
             <Label htmlFor={inputId}>分组名称</Label>
-            <span className="text-xs text-muted-foreground">
-              {title.length}/{MATERIAL_GROUP_TITLE_MAX_LENGTH}
+            <span className={cn(
+              "text-xs tabular-nums text-muted-foreground",
+              titleTooLong && "text-destructive",
+            )}>
+              {titleLength}/{MATERIAL_GROUP_TITLE_MAX_LENGTH}
             </span>
           </div>
-          <Input
+          <LimitedInput
+            aria-invalid={titleTooLong || undefined}
             aria-label="分组名称"
             autoFocus
+            className={cn(
+              titleTooLong && "border-destructive focus-visible:border-destructive focus-visible:ring-destructive/15",
+            )}
             disabled={isSubmitting}
             id={inputId}
             maxLength={MATERIAL_GROUP_TITLE_MAX_LENGTH}
-            onChange={(event) => setTitle(event.target.value)}
             onKeyDown={(event) => {
-              if (event.key === "Enter") {
+              if (
+                event.key === "Enter"
+                && !event.nativeEvent.isComposing
+                && event.keyCode !== 229
+              ) {
                 handleSubmit();
               }
             }}
+            onValueChange={setTitle}
             placeholder="请输入分组名称"
             value={title}
           />
@@ -97,7 +111,7 @@ export function MaterialGroupFormDialog({
             取消
           </Button>
           <Button
-            disabled={isSubmitting || !normalizedTitle}
+            disabled={isSubmitting || !normalizedTitle || titleTooLong}
             onClick={handleSubmit}
             type="button"
           >

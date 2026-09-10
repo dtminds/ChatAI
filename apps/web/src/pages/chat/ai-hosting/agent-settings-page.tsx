@@ -71,7 +71,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Input } from "@/components/ui/input";
+import { LimitedInput } from "@/components/ui/limited-input";
 import { Label } from "@/components/ui/label";
 import {
   Select,
@@ -555,6 +555,10 @@ export function AgentSettingsEditor() {
       return;
     }
 
+    if (renameValue.length > agentNameMaxLength) {
+      return;
+    }
+
     setSubmitting(true);
     setRenameError("");
 
@@ -790,7 +794,11 @@ export function AgentSettingsEditor() {
             {canManage ? (
               <>
                 <Button
-                  disabled={submitting || controlsDisabled}
+                  disabled={
+                    submitting
+                    || controlsDisabled
+                    || (!isEditing && form.name.length > agentNameMaxLength)
+                  }
                   onClick={() => {
                     void handleSave();
                   }}
@@ -903,15 +911,22 @@ export function AgentSettingsEditor() {
               <div className="grid gap-5 md:grid-cols-2">
                 <div className="flex flex-col gap-2">
                   <Label htmlFor="agent-settings-name">Agent 名称</Label>
-                  <Input
-                    aria-invalid={nameError ? true : undefined}
+                  <LimitedInput
+                    aria-invalid={nameError || form.name.length > agentNameMaxLength
+                      ? true
+                      : undefined}
+                    className={cn(
+                      form.name.length > agentNameMaxLength
+                        && "border-destructive focus-visible:border-destructive focus-visible:ring-destructive/15",
+                    )}
                     disabled={isEditing || controlsDisabled}
                     id="agent-settings-name"
                     maxLength={agentNameMaxLength}
-                    onChange={(event) => updateForm("name", event.target.value)}
+                    onValueChange={(name) => updateForm("name", name)}
                     placeholder="请输入 Agent 名称"
                     value={form.name}
                   />
+                  <TextCounter maxLength={agentNameMaxLength} value={form.name} />
                   {nameError ? (
                     <p className="text-xs text-destructive" role="alert">
                       {nameError}
@@ -1416,9 +1431,15 @@ function OptionChipGroup({
 }
 
 function TextCounter({ maxLength, value }: { maxLength: number; value: string }) {
+  const valueLength = value.length;
+  const tooLong = valueLength > maxLength;
+
   return (
-    <div className="mt-1 text-right text-xs tabular-nums text-muted-foreground">
-      {value.length}/{maxLength}
+    <div className={cn(
+      "mt-1 text-right text-xs tabular-nums text-muted-foreground",
+      tooLong && "text-destructive",
+    )}>
+      {valueLength}/{maxLength}
     </div>
   );
 }
@@ -1817,6 +1838,8 @@ function RenameAgentDialog({
   onOpenChange: (open: boolean) => void;
   open: boolean;
 }) {
+  const nameTooLong = name.length > agentNameMaxLength;
+
   return (
     <Dialog onOpenChange={onOpenChange} open={open}>
       <DialogContent
@@ -1833,13 +1856,17 @@ function RenameAgentDialog({
 
         <div className="px-6 pt-5">
           <div>
-            <Input
+            <LimitedInput
               aria-label="Agent 名称"
-              aria-invalid={error ? true : undefined}
+              aria-invalid={error || nameTooLong ? true : undefined}
+              className={cn(
+                nameTooLong
+                  && "border-destructive focus-visible:border-destructive focus-visible:ring-destructive/15",
+              )}
               disabled={disabled}
               id="agent-rename-name"
               maxLength={agentNameMaxLength}
-              onChange={(event) => onChange(event.target.value)}
+              onValueChange={onChange}
               placeholder="请输入 Agent 名称"
               value={name}
             />
@@ -1858,7 +1885,11 @@ function RenameAgentDialog({
               取消
             </Button>
           </DialogClose>
-          <Button disabled={disabled} onClick={onConfirm} type="button">
+          <Button
+            disabled={disabled || nameTooLong}
+            onClick={onConfirm}
+            type="button"
+          >
             {disabled ? <ButtonSpinner label="保存中" /> : null}
             保存
           </Button>
@@ -1972,7 +2003,7 @@ function buildCreatePayload(
   const settingsPayload = buildSettingsSavePayload(form, knowledgeBases, skills);
   const name = form.name.trim();
 
-  if (!settingsPayload || !name) {
+  if (!settingsPayload || !name || form.name.length > agentNameMaxLength) {
     return null;
   }
 

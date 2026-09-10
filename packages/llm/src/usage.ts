@@ -10,6 +10,8 @@ type WithoutSchemaVersion<Event> = Event extends AiUsageEvent
 
 export type AiUsageEventInput = WithoutSchemaVersion<AiUsageEvent>;
 
+export const AI_USAGE_COLLECTION_ENABLED = false;
+
 export class InvalidAiUsageEventError extends Error {
   constructor() {
     super("Invalid AI usage event");

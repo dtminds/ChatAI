@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  AI_USAGE_COLLECTION_ENABLED,
   createAiUsageEvent,
   InvalidAiUsageEventError,
   type AiUsageEventInput,
@@ -33,6 +34,10 @@ function input(overrides: Record<string, unknown> = {}) {
 }
 
 describe("createAiUsageEvent", () => {
+  it("keeps usage collection disabled until the code-level switch is enabled", () => {
+    expect(AI_USAGE_COLLECTION_ENABLED).toBe(false);
+  });
+
   it("adds the contract version without merging the event and billing keys", () => {
     expect(createAiUsageEvent(input({
       occurredAt: "2026-09-10T08:00:00.123456789Z",

@@ -5188,7 +5188,7 @@ describe("MysqlInsightWorkerRepository", () => {
     const updateBuilders: UpdateBuilderStub[] = [];
     let nextInsertId = 7001;
     let logicalSessionSelectCount = 0;
-    const db = {
+    const transactionalDb = {
       insertInto: vi.fn((table: string) =>
         createInsertBuilder(async () => ({ insertId: nextInsertId++ }), {
           onValues: (values) =>
@@ -5216,6 +5216,11 @@ describe("MysqlInsightWorkerRepository", () => {
         }),
       ),
     };
+    const transaction = createTransactionBuilder(transactionalDb);
+    const db = {
+      ...transactionalDb,
+      transaction: vi.fn(() => transaction),
+    };
     const repository = new MysqlInsightWorkerRepository(db as never);
 
     await repository.saveAnalysisResult({
@@ -5229,7 +5234,11 @@ describe("MysqlInsightWorkerRepository", () => {
         uid: 9001,
       },
       output: {
-        actionItems: [],
+        actionItems: [{
+          evidenceMessageIds: [],
+          priority: "high",
+          title: "跟进物流异常",
+        }],
         entities: [],
         faqCandidates: [
           {
@@ -5297,6 +5306,26 @@ describe("MysqlInsightWorkerRepository", () => {
       },
       runId: "6001",
       sourceMessageHighWatermark: "9001",
+      usageEvent: {
+        billingKey: "conversation-insight:session:501",
+        billingModel: { creditMultiplier: 100, model: "analysis-model", modelId: null },
+        businessId: "501",
+        businessSnapshot: { analysisScope: "all", jobId: "job-1", mode: "final", runId: "6001" },
+        businessType: "logical_session",
+        capability: "conversation_insight",
+        eventKey: "conversation-insight:run:6001",
+        modelUsages: [{
+          inputTokens: 100,
+          model: "analysis-model",
+          modelId: null,
+          outputTokens: 20,
+          provider: "volcengine_ark",
+          requestCount: 1,
+        }],
+        occurredAt: "2026-09-10T08:00:00.000Z",
+        schemaVersion: 1,
+        uid: 9001,
+      },
       validationWarnings: [],
     });
 
@@ -5342,6 +5371,35 @@ describe("MysqlInsightWorkerRepository", () => {
           current_snapshot_id: 7001,
           qa_status: 1,
         }),
+      }),
+    );
+    expect(db.transaction).toHaveBeenCalledOnce();
+    expect(operations).toContainEqual(
+      expect.objectContaining({
+        table: "xy_wap_embed_ai_usage_outbox",
+        type: "insert",
+        values: expect.objectContaining({
+          billing_key: "conversation-insight:session:501",
+          event_key: "conversation-insight:run:6001",
+          status: "pending",
+        }),
+      }),
+    );
+    expect(operations).toContainEqual(
+      expect.objectContaining({
+        table: "xy_wap_embed_session_action_item",
+        type: "insert",
+        values: expect.objectContaining({
+          snapshot_id: 7001,
+          source_type: "ai",
+          title: "跟进物流异常",
+        }),
+      }),
+    );
+    expect(operations).toContainEqual(
+      expect.objectContaining({
+        table: "xy_wap_embed_ticket_activity",
+        type: "insert",
       }),
     );
   });

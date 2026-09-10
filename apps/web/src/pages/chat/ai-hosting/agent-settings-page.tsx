@@ -144,7 +144,7 @@ type PreviewMessage = {
 };
 
 type ModelOption = {
-  creditMultiplier: number;
+  creditMultiplier?: number;
   id: string;
   label: string;
   model: string;
@@ -240,7 +240,6 @@ export function AgentSettingsEditor() {
           model: model.model,
         }))
         : agentModelOptions.map((model) => ({
-          creditMultiplier: 100,
           id: model.value,
           label: model.label,
           model: model.model,

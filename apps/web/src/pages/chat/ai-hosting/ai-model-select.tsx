@@ -15,12 +15,16 @@ type AiModelSelectProps = {
   className?: string;
   disabled?: boolean;
   id?: string;
-  models: Array<Pick<AiHostingModel, "creditMultiplier" | "id" | "label" | "model">>;
+  models: AiModelSelectOption[];
   onValueChange: (value: string) => void;
   placeholder: string;
   unavailableModel?: { label: string; model: string };
   unavailableModelId?: string;
   value: string;
+};
+
+type AiModelSelectOption = Pick<AiHostingModel, "id" | "label" | "model"> & {
+  creditMultiplier?: AiHostingModel["creditMultiplier"];
 };
 
 export function formatCreditMultiplier(creditMultiplier: number) {
@@ -70,7 +74,7 @@ export function AiModelSelect({
         ) : null}
         {models.map((model) => (
           <SelectItem
-            className="pr-12"
+            className={model.creditMultiplier === undefined ? undefined : "pr-12"}
             key={model.id}
             value={model.id}
           >
@@ -82,13 +86,15 @@ export function AiModelSelect({
   );
 }
 
-function ModelOption({ model }: { model: Pick<AiHostingModel, "creditMultiplier" | "id" | "label" | "model"> }) {
+function ModelOption({ model }: { model: AiModelSelectOption }) {
   return (
     <span className="flex min-w-0 items-center">
       <AgentModelBadge label={model.label} model={model.model} />
-      <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground/70 tabular-nums">
-        {formatCreditMultiplier(model.creditMultiplier)}
-      </span>
+      {model.creditMultiplier === undefined ? null : (
+        <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground/70 tabular-nums">
+          {formatCreditMultiplier(model.creditMultiplier)}
+        </span>
+      )}
     </span>
   );
 }

@@ -8,7 +8,7 @@ export const agentAiCreditBillingItems = [
     credits: "1",
     id: "ai-reply",
     name: "生成回复",
-    note: "Agent 在全托管或半托管模式下完成一轮输出（回复或操作建议）",
+    note: "Agent 在全托管或半托管模式下输出回复或操作建议",
     unit: "每条",
   },
   {

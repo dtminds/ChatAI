@@ -48,7 +48,7 @@ export function AiBillingGuidePage() {
         <section className="rounded-[8px] border border-primary/20 bg-primary/5 px-5 py-4" aria-label="计费公式">
           <h2 className="text-sm font-semibold text-foreground">计费公式</h2>
           <p className="mt-1 text-sm leading-6 text-muted-foreground">
-            实际消耗积分 = 基础积分 * 模型倍率
+            应计积分 = 基础积分 * 模型倍率，内测期间暂不扣费
           </p>
         </section>
 

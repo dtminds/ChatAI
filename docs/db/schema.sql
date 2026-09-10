@@ -599,7 +599,7 @@ CREATE TABLE IF NOT EXISTS xy_wap_embed_ai_usage_outbox (
   business_id VARCHAR(255) NOT NULL COMMENT '业务对象ID',
   occurred_at DATETIME NOT NULL COMMENT '用量实际发生时间',
   payload_json JSON NOT NULL COMMENT 'Usage Event完整载荷',
-  payload_hash CHAR(64) NOT NULL COMMENT '规范化载荷SHA-256',
+  payload_hash VARCHAR(64) NOT NULL COMMENT '规范化载荷SHA-256',
   status VARCHAR(32) NOT NULL DEFAULT 'pending' COMMENT '状态：pending、leased、delivered、rejected、dead',
   attempt INT UNSIGNED NOT NULL DEFAULT 0 COMMENT '投递领取次数',
   lease_owner VARCHAR(128) NULL COMMENT '当前租约持有者',

@@ -116,7 +116,7 @@ function ModelMultiplierTable() {
                 className="grid grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)_auto] items-center gap-5 rounded-[8px] border px-4 py-3"
                 key={model.id}
               >
-                <AgentModelBadge className="font-medium text-foreground" label={model.label} model={model.model} />
+                <AgentModelBadge className="text-sm font-medium text-foreground" label={model.label} model={model.model} />
                 <span className="min-w-0 truncate text-sm text-muted-foreground">
                   {model.description || "-"}
                 </span>

@@ -13,9 +13,12 @@ const service = vi.hoisted(() => ({
   updateUserMemoryItem: vi.fn(), updateUserMemorySettings: vi.fn(),
 }));
 vi.mock("@/pages/chat/ai-hosting/api/user-memory-service", () => service);
+vi.mock("@/pages/chat/billing/billing-badge", () => ({
+  BillingBadge: () => <a aria-label="前往订阅页查看计费说明" href="/chat/ai-hosting/subscription">付费</a>,
+}));
 vi.mock("@/pages/chat/ai-hosting/ai-hosting-layout", () => ({
   AiHostingLayout: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
-  AiHostingPageHeader: ({ title, titleActions }: { title: React.ReactNode; titleActions?: React.ReactNode }) => <div><h1>{title}</h1>{titleActions}</div>,
+  AiHostingPageHeader: ({ actions, title, titleActions }: { actions?: React.ReactNode; title: React.ReactNode; titleActions?: React.ReactNode }) => <div><h1>{title}</h1>{titleActions}{actions}</div>,
 }));
 
 const overview = { enabled: false, canViewWorkerObservability: false, executionMode: "sync" as const, extractionInstruction: "", customerLimit: 100, schedule: "02:00", timezone: "Asia/Shanghai" };
@@ -70,6 +73,8 @@ describe("user memory page", () => {
       "src",
       "https://b5.bokr.com.cn/dist/ui/memory_f3.png",
     );
+    expect(screen.getByRole("link", { name: "前往订阅页查看计费说明" }))
+      .toHaveAttribute("href", "/chat/ai-hosting/subscription");
     const toggle = await screen.findByRole("switch", { name: "用户记忆" });
     expect(toggle).not.toBeChecked();
     fireEvent.click(toggle);

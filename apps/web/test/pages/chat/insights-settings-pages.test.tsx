@@ -1955,6 +1955,14 @@ describe("conversation insights settings", () => {
     });
   });
 
+  it("shows the billing entry on insights settings", async () => {
+    renderRoute("/chat/insights/settings");
+
+    expect(await screen.findByRole("heading", { name: "洞察配置" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "前往订阅页查看计费说明" }))
+      .toHaveAttribute("href", "/chat/ai-hosting/subscription");
+  });
+
   it("hides settings content for non-admin users", async () => {
     mockSession("operator");
     renderRoute("/chat/insights/settings");

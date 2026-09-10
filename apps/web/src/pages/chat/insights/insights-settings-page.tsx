@@ -81,6 +81,7 @@ import {
 } from "@/components/ui/tooltip";
 import { isRequestError } from "@/lib/request";
 import { cn } from "@/lib/utils";
+import { BillingBadge } from "@/pages/chat/billing/billing-badge";
 import { useAuthStore } from "@/store/auth-store";
 import {
   activatePresetInsightEntityDictionaryItem,
@@ -678,6 +679,7 @@ export function InsightsSettingsPage() {
             />
           )}
           title="洞察配置"
+          titleActions={<BillingBadge />}
         />
         {summary ? <SettingsSummary summary={summary} /> : null}
 

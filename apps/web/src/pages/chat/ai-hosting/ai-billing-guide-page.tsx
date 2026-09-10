@@ -120,7 +120,7 @@ function ModelMultiplierTable() {
                 <span className="min-w-0 truncate text-sm text-muted-foreground">
                   {model.description || "-"}
                 </span>
-                <span className="inline-flex h-8 min-w-20 items-center justify-center rounded-full bg-primary/10 px-4 text-sm font-semibold text-primary tabular-nums">
+                <span className="inline-flex h-8 min-w-16 items-center justify-center rounded-full bg-primary/8 px-4 text-sm font-semibold text-primary tabular-nums">
                   {formatCreditMultiplier(model.creditMultiplier)}
                 </span>
               </li>
@@ -180,7 +180,7 @@ function BillingGroup({
       {items.map((item) => (
         <TableRow className="border-b-0" key={item.id}>
           <TableCell className="py-3 font-medium text-muted-foreground">{item.name}</TableCell>
-          <TableCell className="font-medium tabular-nums">{item.credits} 积分</TableCell>
+          <TableCell className="font-bold tabular-nums">{item.credits} 积分</TableCell>
           <TableCell className="text-foreground">{item.unit}</TableCell>
           <TableCell className="text-muted-foreground">{item.note}</TableCell>
         </TableRow>

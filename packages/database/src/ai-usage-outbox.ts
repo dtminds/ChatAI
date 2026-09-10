@@ -9,6 +9,8 @@ import {
 import type { Database } from "./schema.js";
 
 const AI_USAGE_OUTBOX_TABLE = "xy_wap_embed_ai_usage_outbox" as const;
+const INVALID_PAYLOAD_ERROR_CODE = "INVALID_PAYLOAD";
+const INVALID_PAYLOAD_ERROR_MESSAGE = "AI usage outbox contains an invalid event";
 export const AI_USAGE_OUTBOX_BATCH_LIMIT = 100;
 
 export type AiUsageOutboxStatus =
@@ -140,15 +142,39 @@ export async function claimAiUsageOutboxBatch(
       .where("status", "in", ["pending", "leased"])
       .executeTakeFirstOrThrow();
 
-    return rows.map(row => mapOutboxRecord({
-      ...row,
-      attempt: row.attempt + 1,
-      last_error_code: null,
-      last_error_message: null,
-      lease_expires_at: input.leaseExpiresAt,
-      lease_owner: input.leaseOwner,
-      status: "leased",
-    }));
+    const records: AiUsageOutboxRecord[] = [];
+    const invalidIds: typeof ids = [];
+    for (const row of rows) {
+      try {
+        records.push(mapOutboxRecord({
+          ...row,
+          attempt: row.attempt + 1,
+          last_error_code: null,
+          last_error_message: null,
+          lease_expires_at: input.leaseExpiresAt,
+          lease_owner: input.leaseOwner,
+          status: "leased",
+        }));
+      } catch (error) {
+        if (!(error instanceof InvalidAiUsageOutboxPayloadError)) throw error;
+        invalidIds.push(row.id);
+      }
+    }
+
+    if (invalidIds.length > 0) {
+      await transaction.updateTable(AI_USAGE_OUTBOX_TABLE).set({
+        last_error_code: INVALID_PAYLOAD_ERROR_CODE,
+        last_error_message: INVALID_PAYLOAD_ERROR_MESSAGE,
+        lease_expires_at: null,
+        lease_owner: null,
+        status: "dead",
+      }).where("id", "in", invalidIds)
+        .where("status", "=", "leased")
+        .where("lease_owner", "=", input.leaseOwner)
+        .executeTakeFirstOrThrow();
+    }
+
+    return records;
   });
 }
 
@@ -237,11 +263,16 @@ function mapOutboxRecord(
   if (!isAiUsageOutboxStatus(row.status)) {
     throw new Error(`Unknown AI usage outbox status: ${row.status}`);
   }
-  const event = typeof row.payload_json === "string"
-    ? JSON.parse(row.payload_json) as unknown
-    : row.payload_json;
+  let event: unknown;
+  try {
+    event = typeof row.payload_json === "string"
+      ? JSON.parse(row.payload_json) as unknown
+      : row.payload_json;
+  } catch {
+    throw new InvalidAiUsageOutboxPayloadError();
+  }
   if (!isAiUsageEvent(event)) {
-    throw new Error("AI usage outbox contains an invalid event");
+    throw new InvalidAiUsageOutboxPayloadError();
   }
   return {
     attempt: row.attempt,
@@ -256,6 +287,8 @@ function mapOutboxRecord(
     status: row.status,
   };
 }
+
+class InvalidAiUsageOutboxPayloadError extends Error {}
 
 function canonicalJson(value: unknown): string {
   if (value === null || typeof value !== "object") return JSON.stringify(value);

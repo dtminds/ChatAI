@@ -116,6 +116,55 @@ describe("MySQL AI usage outbox", () => {
     expect(secondClaim.every(row => row.leaseOwner === "worker-b")).toBe(true);
   });
 
+  it("marks invalid payloads dead without blocking valid rows", async () => {
+    const db = requireDatabase();
+    const now = new Date("2026-09-10T09:30:00.000Z");
+    const invalid = await db.transaction().execute(transaction => enqueueAiUsageEvent(
+      transaction,
+      event({ eventKey: "invalid-payload" }),
+      now,
+    ));
+    await db.transaction().execute(transaction => enqueueAiUsageEvent(
+      transaction,
+      event({ eventKey: "valid-payload" }),
+      now,
+    ));
+    await db.updateTable("xy_wap_embed_ai_usage_outbox")
+      .set({ payload_json: JSON.stringify({ invalid: true }) })
+      .where("id", "=", invalid.id)
+      .executeTakeFirstOrThrow();
+
+    const claimed = await claimAiUsageOutboxBatch(db, {
+      leaseExpiresAt: new Date("2026-09-10T09:31:00.000Z"),
+      leaseOwner: "worker-a",
+      limit: 2,
+      now,
+    });
+
+    expect(claimed).toHaveLength(1);
+    expect(claimed[0]!.event.eventKey).toBe("valid-payload");
+    const rows = await db.selectFrom("xy_wap_embed_ai_usage_outbox")
+      .select(["attempt", "event_key", "last_error_code", "lease_owner", "status"])
+      .orderBy("id", "asc")
+      .execute();
+    expect(rows).toEqual([
+      {
+        attempt: 1,
+        event_key: "invalid-payload",
+        last_error_code: "INVALID_PAYLOAD",
+        lease_owner: null,
+        status: "dead",
+      },
+      {
+        attempt: 1,
+        event_key: "valid-payload",
+        last_error_code: null,
+        lease_owner: "worker-a",
+        status: "leased",
+      },
+    ]);
+  });
+
   it("fences lease ownership across delivered, retry, rejected, and dead transitions", async () => {
     const db = requireDatabase();
     const now = new Date("2026-09-10T10:00:00.000Z");

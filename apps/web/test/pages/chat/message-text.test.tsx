@@ -146,7 +146,7 @@ describe("text message bubble layout", () => {
     const retrySlot = screen.getByTestId("message-inline-status-slot");
     const quotePreview = screen.getByTestId("quote-generic-preview");
 
-    expect(screen.getByRole("button", { name: "重试发送" })).toBeInTheDocument();
+    expect(screen.getByTestId("message-send-failure-trigger")).toBeInTheDocument();
     expect(textBubble.parentElement).toContainElement(retrySlot);
     expect(textBubble.parentElement).not.toContainElement(quotePreview);
   });
@@ -163,11 +163,12 @@ describe("text message bubble layout", () => {
       />,
     );
 
-    const retryButton = screen.getByRole("button", { name: "正在重试发送" });
+    const retryStatus = screen.getByTestId("message-resend-status");
 
-    expect(retryButton).toBeDisabled();
-    expect(retryButton).toHaveAttribute("aria-busy", "true");
-    expect(screen.queryByRole("button", { name: "重试发送" })).not.toBeInTheDocument();
+    expect(retryStatus).toHaveAttribute("role", "status");
+    expect(retryStatus).toHaveAttribute("aria-busy", "true");
+    expect(screen.queryByTestId("message-send-failure-trigger")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("message-resend-button")).not.toBeInTheDocument();
   });
 
   it("does not show sending state after optimistic messages are reconciled", () => {

@@ -87,10 +87,11 @@ describe("ChatWorkbenchPage composer retry wiring", () => {
     );
 
     await waitFor(() => {
-      expect(screen.getByRole("button", { name: "重试发送" })).toBeInTheDocument();
+      expect(screen.getByTestId("message-send-failure-trigger")).toBeInTheDocument();
     });
     const scrollTo = await stubMessageViewportScroll();
-    await user.click(screen.getByRole("button", { name: "重试发送" }));
+    await user.click(screen.getByTestId("message-send-failure-trigger"));
+    await user.click(screen.getByTestId("message-resend-button"));
 
     await waitFor(() => {
       expect(retryFailedMessage).toHaveBeenCalledWith("failed-message-retry-success");
@@ -119,9 +120,10 @@ describe("ChatWorkbenchPage composer retry wiring", () => {
     );
 
     await waitFor(() => {
-      expect(screen.getByRole("button", { name: "重试发送" })).toBeInTheDocument();
+      expect(screen.getByTestId("message-send-failure-trigger")).toBeInTheDocument();
     });
-    await user.click(screen.getByRole("button", { name: "重试发送" }));
+    await user.click(screen.getByTestId("message-send-failure-trigger"));
+    await user.click(screen.getByTestId("message-resend-button"));
     const scrollTo = await stubMessageViewportScroll();
 
     await act(async () => {
@@ -158,9 +160,10 @@ describe("ChatWorkbenchPage composer retry wiring", () => {
     );
 
     await waitFor(() => {
-      expect(screen.getByRole("button", { name: "重试发送" })).toBeInTheDocument();
+      expect(screen.getByTestId("message-send-failure-trigger")).toBeInTheDocument();
     });
-    await user.click(screen.getByRole("button", { name: "重试发送" }));
+    await user.click(screen.getByTestId("message-send-failure-trigger"));
+    await user.click(screen.getByTestId("message-resend-button"));
 
     await act(async () => {
       await useWorkbenchStore.getState().setActiveConversation("conv-002");
@@ -200,9 +203,10 @@ describe("ChatWorkbenchPage composer retry wiring", () => {
     );
 
     await waitFor(() => {
-      expect(screen.getByRole("button", { name: "重试发送" })).toBeInTheDocument();
+      expect(screen.getByTestId("message-send-failure-trigger")).toBeInTheDocument();
     });
-    await user.click(screen.getByRole("button", { name: "重试发送" }));
+    await user.click(screen.getByTestId("message-send-failure-trigger"));
+    await user.click(screen.getByTestId("message-resend-button"));
 
     await waitFor(() => {
       expect(retryFailedMessage).toHaveBeenCalledWith("failed-message-without-error-message");

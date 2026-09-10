@@ -38,6 +38,7 @@ import {
   sendSmartReplyAnswer,
   confirmVoicePlaybackReady as confirmVoicePlaybackReadyRequest,
   retryMessage as retryMessageRequest,
+  getSendFailReason as getSendFailReasonRequest,
   revokeMessage as revokeMessageRequest,
   sendTextMessage,
   takeOverAccount as takeOverAccountRequest,
@@ -350,6 +351,7 @@ type WorkbenchState = {
   takeOverAccount: (accountId: string) => Promise<TakeoverResult>;
   unpinConversation: (conversationId: string) => Promise<void>;
   retryFailedMessage: (uiMessageKey: string) => Promise<RetryFailedMessageResult>;
+  loadSendFailReason: (uiMessageKey: string) => Promise<string | undefined>;
   refreshInitializingMessage: (
     conversationId: string,
     messageSeq: number,
@@ -465,6 +467,7 @@ function createInitialState(): Omit<
   | "takeOverAccount"
   | "unpinConversation"
   | "retryFailedMessage"
+  | "loadSendFailReason"
   | "refreshInitializingMessage"
   | "revokeMessage"
   | "loadOlderMessages"
@@ -6885,6 +6888,31 @@ export function createWorkbenchStore() {
       return refreshedMessage.status === "initializing"
         ? "initializing"
         : "updated";
+    },
+    async loadSendFailReason(uiMessageKey) {
+      const state = get();
+      const conversationId = state.activeConversationId;
+      const failedMessage = (state.messagesByConversationId[conversationId] ?? []).find(
+        (message) =>
+          matchesMessageKey(message, uiMessageKey) &&
+          message.role === "agent" &&
+          message.status === "failed",
+      );
+
+      if (
+        !failedMessage ||
+        failedMessage.role !== "agent" ||
+        !isValidMessageSeq(failedMessage.seq)
+      ) {
+        return undefined;
+      }
+
+      const response = await getSendFailReasonRequest({
+        conversationId,
+        messageSeq: failedMessage.seq,
+      });
+
+      return response.failReason.trim() || undefined;
     },
     async retryFailedMessage(uiMessageKey) {
       const state = get();

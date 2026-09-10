@@ -3530,6 +3530,42 @@ describe("backend app", () => {
     await app.close();
   });
 
+  it("requires authentication and allows viewer sessions to query a failed message reason", async () => {
+    const { app, authorization } = await createAuthenticatedAppWithRole("viewer");
+    const getSendFailReason = vi
+      .spyOn(app.workbenchService, "getSendFailReason")
+      .mockResolvedValue({ failReason: "当前机器人不在线" });
+
+    const unauthenticatedResponse = await app.inject({
+      method: "POST",
+      payload: {
+        conversationId: "conv-001",
+        messageSeq: 2,
+      },
+      url: "/api/server/messages/send-fail-reason",
+    });
+
+    const response = await app.inject({
+      headers: { authorization },
+      method: "POST",
+      payload: {
+        conversationId: "conv-001",
+        messageSeq: 2,
+      },
+      url: "/api/server/messages/send-fail-reason",
+    });
+
+    expect(unauthenticatedResponse.statusCode).toBe(401);
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({ failReason: "当前机器人不在线" });
+    expect(getSendFailReason).toHaveBeenCalledWith("101", {
+      conversationId: "conv-001",
+      messageSeq: 2,
+    });
+
+    await app.close();
+  });
+
   it("rejects chat writes for viewer role sessions", async () => {
     const { app, authorization } = await createAuthenticatedAppWithRole("viewer");
 

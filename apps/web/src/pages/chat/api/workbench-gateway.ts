@@ -22,6 +22,8 @@ import type {
   WorkbenchMessageFileDownloadStatusResponse,
   WorkbenchRevokeMessageResponse,
   WorkbenchRetryMessageRequest,
+  WorkbenchSendFailReasonRequest,
+  WorkbenchSendFailReasonResponse,
   WorkbenchSendMessagePayload,
   WorkbenchSendMessageResponse,
   WorkbenchSeatDto,
@@ -566,6 +568,12 @@ export async function retryMessage(
   payload: WorkbenchRetryMessageRequest,
 ): Promise<WorkbenchSendMessageResponse> {
   return getWorkbenchService().retryMessage(payload);
+}
+
+export async function getSendFailReason(
+  payload: WorkbenchSendFailReasonRequest,
+): Promise<WorkbenchSendFailReasonResponse> {
+  return getWorkbenchService().getSendFailReason(payload);
 }
 
 export async function revokeMessage(input: {

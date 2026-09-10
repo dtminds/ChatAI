@@ -25,6 +25,7 @@ import {
   useState,
 } from "react";
 import { toast } from "sonner";
+import { resolveSendFailureReason } from "@/pages/chat/lib/send-fail-reason";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -37,6 +38,11 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 import { AIHostingAvatarBadge } from "@/pages/chat/components/ai-hosting-avatar-badge";
 import {
   DropdownMenu,
@@ -109,6 +115,7 @@ type ChatMessageListProps = {
   onRefreshInitializingMessage?: (message: Message) => void | Promise<void>;
   onRevokeMessage?: (message: ChatMessage) => void;
   onRetryMessage?: (uiMessageKey: string) => void;
+  onLoadSendFailReason?: (uiMessageKey: string) => Promise<string | undefined>;
   onSendSmartReply?: (message: ChatMessage, payload: SmartReplySendPayload) => void;
   onFillSmartReplyComposer?: (message: ChatMessage, content: string) => void;
   onDismissSmartReply?: (message: ChatMessage) => void;
@@ -163,6 +170,7 @@ export function ChatMessageList({
   onRefreshInitializingMessage,
   onRevokeMessage,
   onRetryMessage,
+  onLoadSendFailReason,
   onSendSmartReply,
   onFillSmartReplyComposer,
   onDismissSmartReply,
@@ -306,6 +314,7 @@ export function ChatMessageList({
                   onRefreshInitializingMessage={onRefreshInitializingMessage}
                   onRevokeMessage={onRevokeMessage}
                   onRetryMessage={onRetryMessage}
+                  onLoadSendFailReason={onLoadSendFailReason}
                   onSendSmartReply={onSendSmartReply}
                   onFillSmartReplyComposer={onFillSmartReplyComposer}
                   onDismissSmartReply={onDismissSmartReply}
@@ -407,6 +416,7 @@ export function MessageRow({
   onRefreshInitializingMessage,
   onRevokeMessage,
   onRetryMessage,
+  onLoadSendFailReason,
   onSendSmartReply,
   onFillSmartReplyComposer,
   onDismissSmartReply,
@@ -443,6 +453,7 @@ export function MessageRow({
   onRefreshInitializingMessage?: (message: Message) => void | Promise<void>;
   onRevokeMessage?: (message: ChatMessage) => void;
   onRetryMessage?: (uiMessageKey: string) => void;
+  onLoadSendFailReason?: (uiMessageKey: string) => Promise<string | undefined>;
   onSendSmartReply?: (message: ChatMessage, payload: SmartReplySendPayload) => void;
   onFillSmartReplyComposer?: (message: ChatMessage, content: string) => void;
   onDismissSmartReply?: (message: ChatMessage) => void;
@@ -658,6 +669,7 @@ export function MessageRow({
                   canRetryMessage={canUseMessageActions}
                   isRetryingMessage={isRetryingMessage}
                   message={message}
+                  onLoadSendFailReason={onLoadSendFailReason}
                   onRetryMessage={onRetryMessage}
                   state={inlineDeliveryState}
                 />
@@ -704,6 +716,7 @@ export function MessageRow({
                     isAgent={isAgent}
                     message={message}
                     onOpenQuotedMessage={onOpenQuotedMessage}
+                    onLoadSendFailReason={onLoadSendFailReason}
                     onRetryMessage={onRetryMessage}
                   />
                 ) : (
@@ -789,6 +802,7 @@ function QuoteMessageContentWithDelivery({
   isAgent,
   message,
   onOpenQuotedMessage,
+  onLoadSendFailReason,
   onRetryMessage,
 }: {
   canRetryMessage: boolean;
@@ -798,6 +812,7 @@ function QuoteMessageContentWithDelivery({
   isAgent: boolean;
   message: ChatMessage;
   onOpenQuotedMessage?: (quoteMsgId: string) => void;
+  onLoadSendFailReason?: (uiMessageKey: string) => Promise<string | undefined>;
   onRetryMessage?: (uiMessageKey: string) => void;
 }) {
   return (
@@ -813,6 +828,7 @@ function QuoteMessageContentWithDelivery({
             canRetryMessage={canRetryMessage}
             isRetryingMessage={isRetryingMessage}
             message={message}
+            onLoadSendFailReason={onLoadSendFailReason}
             onRetryMessage={onRetryMessage}
             state={inlineDeliveryState}
           />
@@ -1149,60 +1165,146 @@ function MessageInlineStatusSlot({
   canRetryMessage,
   isRetryingMessage,
   message,
+  onLoadSendFailReason,
   onRetryMessage,
   state,
 }: {
   canRetryMessage: boolean;
   isRetryingMessage: boolean;
   message: ChatMessage;
+  onLoadSendFailReason?: (uiMessageKey: string) => Promise<string | undefined>;
   onRetryMessage?: (uiMessageKey: string) => void;
   state: InlineDeliveryState | null;
 }) {
+  const failReasonRequestIdRef = useRef(0);
+  const [loadedFailReason, setLoadedFailReason] = useState<string>();
+  const [isLoadingFailReason, setIsLoadingFailReason] = useState(false);
+
+  useEffect(() => () => {
+    failReasonRequestIdRef.current += 1;
+  }, []);
+
   if (!state) {
     return null;
   }
 
   if (state === "failed") {
-    const canRetry =
-      canRetryMessage &&
-      Boolean(onRetryMessage) &&
-      !isRetryingMessage;
+    const canRetry = canRetryMessage && Boolean(onRetryMessage);
+
+    if (isRetryingMessage) {
+      return (
+        <div
+          className="mb-1 flex h-4 shrink-0 items-center"
+          data-testid="message-inline-status-slot"
+        >
+          <TooltipProvider delayDuration={300}>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <span
+                  aria-busy="true"
+                  aria-label="正在重发"
+                  className="inline-flex size-4 items-center justify-center text-muted-foreground"
+                  data-testid="message-resend-status"
+                  role="status"
+                >
+                  <Spinner variant="classic" size={10} strokeWidth={2.4} className="text-current" />
+                </span>
+              </TooltipTrigger>
+              <TooltipContent side="top" sideOffset={6}>正在重发</TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+        </div>
+      );
+    }
+
+    const canLoadFailReason = Boolean(onLoadSendFailReason) && isValidMessageSeq(message.seq);
+
+    const handleOpenChange = (open: boolean) => {
+      const requestId = ++failReasonRequestIdRef.current;
+      setLoadedFailReason(undefined);
+
+      if (!open || !canLoadFailReason || !onLoadSendFailReason) {
+        setIsLoadingFailReason(false);
+        return;
+      }
+
+      setIsLoadingFailReason(true);
+      void onLoadSendFailReason(message.uiMessageKey)
+        .then((failReason) => {
+          if (failReasonRequestIdRef.current === requestId) {
+            setLoadedFailReason(failReason);
+          }
+        })
+        .catch(() => undefined)
+        .finally(() => {
+          if (failReasonRequestIdRef.current === requestId) {
+            setIsLoadingFailReason(false);
+          }
+        });
+    };
 
     return (
       <div
         className="mb-1 flex h-4 shrink-0 items-center"
         data-testid="message-inline-status-slot"
       >
-        <button
-          aria-busy={isRetryingMessage}
-          aria-label={isRetryingMessage ? "正在重试发送" : "重试发送"}
-          className={cn(
-            "inline-flex size-4 items-center justify-center rounded-full transition-colors disabled:cursor-not-allowed disabled:opacity-55",
-            isRetryingMessage
-              ? "bg-transparent text-muted-foreground"
-              : "bg-destructive text-destructive-foreground hover:bg-destructive/90 disabled:hover:bg-destructive",
-          )}
-          disabled={!canRetry}
-          onClick={() => {
-            if (!canRetry) {
-              return;
-            }
-
-            onRetryMessage?.(message.uiMessageKey);
-          }}
-          title={isRetryingMessage ? "正在重试发送" : "重试发送"}
-          type="button"
-        >
-          {isRetryingMessage ? (
-            <Spinner variant="classic" size={10} strokeWidth={2.4} className="text-current" />
-          ) : (
-            <HugeiconsIcon
-              icon={ExclamationMarkIcon}
-              size={10}
-              strokeWidth={2.4}
-            />
-          )}
-        </button>
+        <Popover onOpenChange={handleOpenChange}>
+          <TooltipProvider delayDuration={300}>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <PopoverTrigger asChild>
+                  <button
+                    aria-label="查看发送失败原因"
+                    className="inline-flex size-4 items-center justify-center rounded-full bg-destructive text-destructive-foreground transition-colors hover:bg-destructive/90"
+                    data-testid="message-send-failure-trigger"
+                    type="button"
+                  >
+                    <HugeiconsIcon
+                      icon={ExclamationMarkIcon}
+                      size={10}
+                      strokeWidth={2.4}
+                    />
+                  </button>
+                </PopoverTrigger>
+              </TooltipTrigger>
+              <TooltipContent side="top" sideOffset={6}>查看原因</TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+          <PopoverContent
+            align="end"
+            className="w-64 max-w-[calc(100vw-2rem)] space-y-3"
+            data-testid="message-send-failure-popover"
+          >
+            <div className="space-y-1">
+              <p className="text-xs font-medium text-foreground">发送失败</p>
+              {isLoadingFailReason ? (
+                <div className="flex items-center gap-2 text-xs text-muted-foreground" role="status">
+                  <Spinner size={14} variant="classic" />
+                  <span>正在加载</span>
+                </div>
+              ) : (
+                <p
+                  className="whitespace-pre-wrap break-words text-xs leading-5 text-muted-foreground"
+                  data-testid="message-send-failure-reason"
+                >
+                  {resolveSendFailureReason(loadedFailReason)}
+                </p>
+              )}
+            </div>
+            <div className="flex justify-end">
+              <Button
+                disabled={!canRetry}
+                data-testid="message-resend-button"
+                onClick={() => onRetryMessage?.(message.uiMessageKey)}
+                size="sm"
+                type="button"
+              >
+                <HugeiconsIcon icon={Refresh03Icon} size={14} strokeWidth={2} />
+                重发
+              </Button>
+            </div>
+          </PopoverContent>
+        </Popover>
       </div>
     );
   }

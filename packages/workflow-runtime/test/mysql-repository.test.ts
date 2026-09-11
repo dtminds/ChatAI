@@ -375,6 +375,58 @@ describe("MysqlWorkflowRuntimeRepository", () => {
     ]);
   });
 
+  it("writes Workflow LLM billing usage in the successful node completion transaction", async () => {
+    const db = createCapabilityExecutionDbMock({
+      executionStatus: "running",
+      nodeId: "llm-1",
+      nodeKind: "llm",
+      sequence: 2,
+      usageRows: [{
+        usage_json: JSON.stringify({
+          billingModel: { creditMultiplier: 150, model: "doubao-pro", modelId: 11 },
+          modelUsage: {
+            inputTokens: 120,
+            model: "doubao-pro",
+            modelId: 11,
+            outputTokens: 30,
+            provider: "volcengine_ark",
+            requestCount: 1,
+          },
+        }),
+      }],
+    });
+    const repository = new MysqlWorkflowRuntimeRepository(db as never, true);
+
+    await expect(repository.commitNodeResult({
+      context: { outputs: { "llm-1": { output: "ok" } }, trigger: {} },
+      expectedRunLockVersion: 1,
+      expectedTaskVersion: 2,
+      inbox: {
+        consumer: "workflow-task",
+        expiresAt: new Date("2026-09-11T00:00:00.000Z"),
+        messageId: "message-usage",
+      },
+      nodeExecution: {
+        executionKey: "9:5:llm-1:2",
+        input: { subjectId: "customer-1" },
+        output: { output: "ok" },
+      },
+      runId: "5",
+      taskId: "7",
+      uid: 9,
+    })).resolves.toMatchObject({ kind: "success" });
+
+    expect(db.outboxInsertedInTransaction).toBe(true);
+    const payload = JSON.parse(String(db.inserts.xy_wap_embed_ai_usage_outbox?.payload_json));
+    expect(payload).toMatchObject({
+      billingKey: "workflow-node-execution:11",
+      billingModel: { creditMultiplier: 150 },
+      businessId: "11",
+      capability: "workflow_llm",
+    });
+    expect(payload).not.toHaveProperty("modelUsages");
+  });
+
   it("locks runs before tasks while reconciling inconsistent runtime state", async () => {
     const db = createRunTaskConsistencyDbMock();
     const repository = new MysqlWorkflowRuntimeRepository(db as never);
@@ -1575,6 +1627,7 @@ function createCapabilityExecutionDbMock(options: {
   publishedExecutionSpec?: Record<string, unknown>;
   runtimeStatus?: "active" | "paused";
   sequence?: number;
+  usageRows?: Array<{ usage_json: string }>;
 } = {}) {
   const nodeId = options.nodeId ?? "message";
   const nodeKind = options.nodeKind ?? "message";
@@ -1645,6 +1698,8 @@ function createCapabilityExecutionDbMock(options: {
   const db = {
     inserts: {} as Record<string, Record<string, unknown>>,
     lockOrder: [] as string[],
+    outboxInsertedInTransaction: false,
+    transactionActive: false,
     updates: {} as Record<string, Record<string, unknown>>,
     insertInto(table: string) {
       const builder = {
@@ -1653,7 +1708,14 @@ function createCapabilityExecutionDbMock(options: {
           db.inserts[table] = values;
           return builder;
         },
-        async executeTakeFirstOrThrow() { return {}; },
+        async executeTakeFirstOrThrow() {
+          if (table === "xy_wap_embed_ai_usage_outbox") {
+            db.outboxInsertedInTransaction = db.transactionActive;
+          }
+          return table === "xy_wap_embed_workflow_node_execution"
+            ? { insertId: 11n }
+            : { insertId: 99n };
+        },
       };
       return builder;
     },
@@ -1670,11 +1732,18 @@ function createCapabilityExecutionDbMock(options: {
         },
         select() { return builder; },
         selectAll() { return builder; },
+        orderBy() { return builder; },
+        limit() { return builder; },
         where() { return builder; },
+        async execute() {
+          if (table === "xy_wap_embed_workflow_inference_job") return options.usageRows ?? [];
+          return [];
+        },
         async executeTakeFirst() {
           if (table === "xy_wap_embed_workflow_run") return run;
           if (table === "xy_wap_embed_workflow_task") return task;
           if (table === "xy_wap_embed_workflow_node_execution") return execution;
+          if (table === "xy_wap_embed_workflow_inference_job") return options.usageRows?.[0];
           if (table === "xy_wap_embed_workflow_definition") {
             return {
               biz_status: 1,
@@ -1694,7 +1763,14 @@ function createCapabilityExecutionDbMock(options: {
       return builder;
     },
     transaction() {
-      return { execute: async (operation: (transaction: typeof db) => unknown) => operation(db) };
+      return { execute: async (operation: (transaction: typeof db) => unknown) => {
+        db.transactionActive = true;
+        try {
+          return await operation(db);
+        } finally {
+          db.transactionActive = false;
+        }
+      } };
     },
     updateTable(table: string) {
       const builder = {

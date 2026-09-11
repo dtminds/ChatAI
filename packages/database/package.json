@@ -16,13 +16,15 @@
     }
   },
   "scripts": {
-    "build": "tsc -p tsconfig.json",
+    "build": "pnpm --filter @chatai/contracts build && tsc -p tsconfig.json",
     "db:codegen": "node scripts/codegen-db-schema.mjs",
     "test": "vitest run",
+    "test:repository:mysql": "vitest run --config vitest.mysql.config.ts",
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@chatai/contracts": "workspace:*",
     "kysely": "^0.29.0",
     "mysql2": "^3.15.3"
   },

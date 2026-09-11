@@ -493,58 +493,78 @@ export class TicketsRepository {
       return [];
     }
 
-    return this.db.transaction().execute(async (transaction) => {
-      const assigneeSubUserId = await this.resolveAiTicketAssignee(transaction, input);
-      const ticketIds: number[] = [];
+    return this.db.transaction().execute((transaction) =>
+      this.createAiTicketsInTransaction(transaction, input)
+    );
+  }
 
-      for (const item of input.items) {
-        const insertResult = await transaction
-          .insertInto("xy_wap_embed_session_action_item")
-          .values({
-            action_type: "follow_up",
-            anchor_message_id: null,
-            assignee_sub_user_id: assigneeSubUserId,
-            canceled_at: null,
-            canceled_by_sub_user_id: null,
-            completed_at: null,
-            completed_by_sub_user_id: null,
-            conversation_id: input.conversationId,
-            created_by_sub_user_id: null,
-            description: null,
-            due_at: null,
-            priority: item.priority,
-            session_id: input.sessionId,
-            snapshot_id: input.snapshotId,
-            source_type: "ai",
-            status: "open",
-            title: item.title,
-            uid: input.uid,
-          })
-          .executeTakeFirstOrThrow();
-        const ticketId = Number(insertResult.insertId);
+  async createAiTicketsInTransaction(
+    transaction: Transaction<Database>,
+    input: {
+      conversationId: number;
+      items: Array<{
+        priority: TicketPriority;
+        title: string;
+      }>;
+      sessionId: number;
+      snapshotId: number;
+      uid: number;
+    },
+  ) {
+    if (input.items.length === 0) {
+      return [];
+    }
 
-        if (!Number.isSafeInteger(ticketId) || ticketId <= 0) {
-          throw new Error("TICKET_INSERT_ID_MISSING");
-        }
+    const assigneeSubUserId = await this.resolveAiTicketAssignee(transaction, input);
+    const ticketIds: number[] = [];
 
-        ticketIds.push(ticketId);
+    for (const item of input.items) {
+      const insertResult = await transaction
+        .insertInto("xy_wap_embed_session_action_item")
+        .values({
+          action_type: "follow_up",
+          anchor_message_id: null,
+          assignee_sub_user_id: assigneeSubUserId,
+          canceled_at: null,
+          canceled_by_sub_user_id: null,
+          completed_at: null,
+          completed_by_sub_user_id: null,
+          conversation_id: input.conversationId,
+          created_by_sub_user_id: null,
+          description: null,
+          due_at: null,
+          priority: item.priority,
+          session_id: input.sessionId,
+          snapshot_id: input.snapshotId,
+          source_type: "ai",
+          status: "open",
+          title: item.title,
+          uid: input.uid,
+        })
+        .executeTakeFirstOrThrow();
+      const ticketId = Number(insertResult.insertId);
+
+      if (!Number.isSafeInteger(ticketId) || ticketId <= 0) {
+        throw new Error("TICKET_INSERT_ID_MISSING");
       }
 
-      await transaction
-        .insertInto("xy_wap_embed_ticket_activity")
-        .values(ticketIds.map((ticketId) => ({
-          activity_type: "created" as const,
-          content: null,
-          detail_json: null,
-          operator_sub_user_id: null,
-          operator_type: "ai" as const,
-          ticket_id: ticketId,
-          uid: input.uid,
-        })))
-        .executeTakeFirstOrThrow();
+      ticketIds.push(ticketId);
+    }
 
-      return ticketIds;
-    });
+    await transaction
+      .insertInto("xy_wap_embed_ticket_activity")
+      .values(ticketIds.map((ticketId) => ({
+        activity_type: "created" as const,
+        content: null,
+        detail_json: null,
+        operator_sub_user_id: null,
+        operator_type: "ai" as const,
+        ticket_id: ticketId,
+        uid: input.uid,
+      })))
+      .executeTakeFirstOrThrow();
+
+    return ticketIds;
   }
 
   async createWorkflowTicket(input: {

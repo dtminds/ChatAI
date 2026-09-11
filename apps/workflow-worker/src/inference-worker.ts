@@ -4,6 +4,7 @@ import {
 import {
   type WorkflowInferenceRepository,
   type WorkflowChatCompletionPort,
+  type WorkflowInferenceUsage,
 } from "@chatai/workflow-runtime";
 import { WorkflowCapabilityExecutionError } from "@chatai/workflow-engine";
 import { Value } from "@sinclair/typebox/value";
@@ -50,10 +51,12 @@ export async function processWorkflowInferenceBatch(input: {
       });
     }, input.heartbeatIntervalMs);
     try {
+      let usage: WorkflowInferenceUsage | undefined;
       const output = await raceAbort(input.adapter.execute({
           contractVersion: job.contractVersion,
           deadlineAt: job.deadlineAt,
           executionKey: job.executionKey,
+          onUsage: value => { usage = value; },
           payload: job.payload,
           signal: controller.signal,
           uid: job.uid,
@@ -84,6 +87,7 @@ export async function processWorkflowInferenceBatch(input: {
         id: job.id,
         leaseOwner: input.leaseOwner,
         result: output,
+        ...(usage ? { usage } : {}),
       })) result.succeeded += 1;
     } catch (error) {
       const classified = classifyInferenceError(error, controller.signal.aborted, leaseLost);

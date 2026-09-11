@@ -1,12 +1,15 @@
 import { useState } from "react";
 import { fireEvent, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { MemoryRouter } from "react-router-dom";
 import { describe, expect, it, vi } from "vitest";
 import { createNodeFromKind } from "@/pages/chat/workflow/graph";
 import { createDefaultNodeData } from "@/pages/chat/workflow/node-definitions";
 import { NodeConfigPanel } from "@/pages/chat/workflow/panels";
+import { BasePanel } from "@/pages/chat/workflow/panels/base-panel";
 import { WORKFLOW_NODE_TYPE } from "@/pages/chat/workflow/constants";
 import type { WorkflowNode } from "@/pages/chat/workflow/types";
+import { WorkflowSurfaceProvider } from "@/pages/chat/workflow/workflow-surface";
 
 describe("workflow node settings chrome", () => {
   it("keeps node naming in the header menu instead of a settings field", async () => {
@@ -124,7 +127,49 @@ describe("workflow node settings chrome", () => {
     const panel = screen.getByRole("complementary", { name: "节点配置" });
     expect(within(panel).queryByRole("button", { name: "更多节点操作" })).not.toBeInTheDocument();
   });
+
+  it.each(["ai-intent", "llm", "ai-collect"] as const)(
+    "shows the billing entry for the %s node",
+    (kind) => {
+      renderBasePanel(createNodeFromKind(kind, `${kind}-billing`, 0));
+
+      expect(screen.getByRole("link", { name: "前往 AI Pro 页面" }))
+        .toHaveAttribute("href", "/chat/ai-hosting/subscription");
+    },
+  );
+
+  it("keeps the billing entry out of non-AI and embedded workflow panels", () => {
+    const { rerender } = renderBasePanel(createWaitNode());
+    expect(screen.queryByRole("link", { name: "前往 AI Pro 页面" }))
+      .not.toBeInTheDocument();
+
+    rerender(
+      <MemoryRouter>
+        <WorkflowSurfaceProvider surface="sop_embed">
+          {createBasePanel(createNodeFromKind("llm", "embedded-llm", 0))}
+        </WorkflowSurfaceProvider>
+      </MemoryRouter>,
+    );
+    expect(screen.queryByRole("link", { name: "前往 AI Pro 页面" }))
+      .not.toBeInTheDocument();
+  });
 });
+
+function renderBasePanel(node: WorkflowNode) {
+  return render(<MemoryRouter>{createBasePanel(node)}</MemoryRouter>);
+}
+
+function createBasePanel(node: WorkflowNode) {
+  return (
+    <BasePanel
+      node={node}
+      onClose={vi.fn()}
+      onRenameNode={vi.fn()}
+    >
+      <div>节点设置</div>
+    </BasePanel>
+  );
+}
 
 function renderPanel(
   node: WorkflowNode,

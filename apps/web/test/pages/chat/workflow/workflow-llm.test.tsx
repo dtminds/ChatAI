@@ -54,6 +54,7 @@ vi.mock("@/pages/chat/ai-hosting/agent-service", () => agentServiceMock);
 vi.mock("@/pages/chat/workflow/nodes/llm/test-service", () => llmTestServiceMock);
 
 const model = {
+  creditMultiplier: 150,
   description: "通用文本模型",
   id: "model-1",
   label: "Doubao Seed",
@@ -421,7 +422,9 @@ describe("workflow LLM node", () => {
 
     expect(await screen.findByRole("combobox", { name: "模型" })).toBeInTheDocument();
     await user.click(screen.getByRole("combobox", { name: "模型" }));
-    await user.click(await screen.findByRole("option", { name: model.label }));
+    await user.click(await screen.findByRole("option", {
+      name: new RegExp(`${model.label}.*1\\.5x`),
+    }));
     expect(onNodeChange).toHaveBeenCalledWith(expect.objectContaining({
       modelId: model.id,
       modelLabel: model.label,

@@ -96,6 +96,13 @@ const AgentSubscriptionPage = lazy(() =>
     }),
   ),
 );
+const AiBillingGuidePage = lazy(() =>
+  import("@/pages/chat/ai-hosting/ai-billing-guide-page").then(
+    ({ AiBillingGuidePage }) => ({
+      default: AiBillingGuidePage,
+    }),
+  ),
+);
 const AiSkillsPage = lazy(() =>
   import("@/pages/chat/ai-hosting/ai-skills-page").then(({ AiSkillsPage }) => ({
     default: AiSkillsPage,
@@ -426,6 +433,10 @@ export const routerConfig = [
       {
         path: "chat/ai-hosting/subscription",
         element: withRouteSuspense(<AgentSubscriptionPage />),
+      },
+      {
+        path: "chat/ai-hosting/subscription/billing",
+        element: withRouteSuspense(<AiBillingGuidePage />),
       },
       {
         path: "*",

@@ -472,7 +472,128 @@ describe("user memory candidate selection", () => {
     expect(complete).not.toHaveBeenCalled();
     expect(internals.aggregateOrRelease).toHaveBeenCalledOnce();
   });
+
+  it("writes usage for a successful item even when memory is unchanged", async () => {
+    const queries = await runSuccessfulMemoryMerge(true);
+    const outboxInsert = queries.find((query) =>
+      query.sql.startsWith("insert into `xy_wap_embed_ai_usage_outbox`")
+    );
+    expect(outboxInsert).toBeDefined();
+    const payload = outboxInsert?.parameters.find((parameter) =>
+      typeof parameter === "string" && parameter.includes('"capability":"user_memory"')
+    );
+    expect(JSON.parse(String(payload))).toMatchObject({
+      billingKey: "user-memory:item:11",
+      billingModel: {
+        creditMultiplier: 100,
+        model: "memory-model",
+        modelId: null,
+      },
+      businessId: "11",
+      businessSnapshot: {
+        changed: false,
+        messageCount: 1,
+        platform: 5,
+        runId: "7",
+        sessionCount: 2,
+      },
+      eventKey: "user-memory:item:11",
+    });
+    expect(JSON.parse(String(payload))).not.toHaveProperty("modelUsages");
+  });
+
+  it("does not write usage while the code-level switch is disabled", async () => {
+    const queries = await runSuccessfulMemoryMerge();
+
+    expect(queries.some((query) =>
+      query.sql.startsWith("insert into `xy_wap_embed_ai_usage_outbox`")
+    )).toBe(false);
+  });
 });
+
+async function runSuccessfulMemoryMerge(usageCollectionEnabled?: boolean) {
+  const leaseUntil = new Date(Date.now() + 60_000);
+  const run = {
+    claim_token: "claim-1",
+    config_generation: 2,
+    id: 7,
+    input_tokens: 0,
+    lease_until: leaseUntil,
+    locked_by: "worker-1",
+    output_tokens: 0,
+    quota_date: new Date("2026-09-09T12:00:00+08:00"),
+    status: "running",
+    uid: 272,
+  };
+  const item = {
+    base_memory_version: 0,
+    id: 11,
+    input_tokens: 0,
+    output_tokens: 0,
+    platform: 5,
+    run_id: 7,
+    session_count: 2,
+    status: "submitted",
+    third_external_userid: "customer-1",
+    uid: 272,
+  };
+  const { db, queries } = createRecordingDatabase((query) => {
+    if (query.sql.includes("from `xy_wap_embed_agent_user_memory_config`")) {
+      return { rows: [{ active_run_id: 7, enabled: 1, generation: 2, uid: 272 }] };
+    }
+    if (query.sql.includes("from `xy_wap_embed_agent_user_memory_run_item`")) {
+      return {
+        rows: query.sql.includes("`memory_added_count`")
+          ? [{ memory_added_count: 0, memory_removed_count: 0, memory_updated_count: 0, status: "succeeded" }]
+          : [item],
+      };
+    }
+    if (query.sql.includes("from `xy_wap_embed_agent_user_memory_run`")) {
+      return { rows: [run] };
+    }
+    if (query.sql.includes("from `xy_wap_embed_agent_user_memory`")) {
+      return { rows: [] };
+    }
+    if (query.sql.startsWith("insert")) {
+      return { insertId: 1, numAffectedRows: 1n, rows: [] };
+    }
+    if (query.sql.startsWith("update")) {
+      return { numAffectedRows: 1n, rows: [] };
+    }
+    throw new Error(`Unexpected query: ${query.sql}`);
+  });
+  const worker = new UserMemoryWorker({
+    customerLimitResolver: { resolve: () => 100 },
+    db,
+    logger: { error: vi.fn(), info: vi.fn(), warn: vi.fn() } as never,
+    provider: { complete: vi.fn() } as never,
+    usageCollectionEnabled,
+    usageModel: "memory-model",
+    workerId: "worker-1",
+  });
+  const mergeResult = (worker as unknown as {
+    mergeResult: (
+      claim: unknown,
+      item: unknown,
+      prepared: unknown,
+      result: unknown,
+    ) => Promise<void>;
+  }).mergeResult.bind(worker);
+
+  await mergeResult(
+    { run, token: "claim-1" },
+    item,
+    {
+      document: { ai: [], manual: [], nextItemId: 1, schemaVersion: 1 },
+      extractionInstruction: "",
+      messages: [{ occurredAt: 1, senderRole: "customer", sessionId: 20, sourceMessageId: 101, text: "你好" }],
+      version: 0,
+    },
+    { inputTokens: 120, operations: [], outputTokens: 30 },
+  );
+  await db.destroy();
+  return queries;
+}
 
 function createRecordingDatabase(resolve: (query: CompiledQuery) => QueryResult<unknown>) {
   const queries: CompiledQuery[] = [];

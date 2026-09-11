@@ -17,8 +17,11 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
+import { isBillableWorkflowNodeKind } from "@/pages/chat/billing/ai-credit-billing";
+import { BillingBadge } from "@/pages/chat/billing/billing-badge";
 import { canRenameNodeKind, nodeVisuals } from "../node-definitions";
 import type { WorkflowNode } from "../types";
+import { useWorkflowSurface } from "../workflow-surface";
 
 export function BasePanel({
   children,
@@ -67,7 +70,9 @@ function PanelHeader({
   readOnly: boolean;
 }) {
   const visual = nodeVisuals[node.data.kind];
+  const surface = useWorkflowSurface();
   const showNodeType = node.data.title !== visual.label;
+  const showBillingBadge = !surface.embedded && isBillableWorkflowNodeKind(node.data.kind);
   const canRename = canRenameNodeKind(node.data.kind);
   const [isRenaming, setIsRenaming] = useState(false);
   const [renameValue, setRenameValue] = useState(node.data.title);
@@ -139,6 +144,7 @@ function PanelHeader({
                 {visual.label}
               </Badge>
             ) : null}
+            {showBillingBadge && !isRenaming ? <BillingBadge /> : null}
           </div>
         </div>
         <div className="flex shrink-0 items-center gap-1">

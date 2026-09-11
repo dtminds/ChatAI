@@ -1,5 +1,22 @@
 # Database Change Log
 
+## 2026-09-10 Workflow 推理用量快照
+
+- `xy_wap_embed_workflow_inference_job` 增加模型调用用量快照，独立保留内部成本数据并提供调用时的计费模型快照；Usage Event 不汇总 Token。
+- Workflow 表尚未进入生产环境；新环境直接执行 `docs/db/schema.sql`。已创建测试表时执行以下 DDL。
+
+```sql
+ALTER TABLE xy_wap_embed_workflow_inference_job
+  ADD COLUMN usage_json JSON NULL COMMENT '模型调用用量快照' AFTER result_json;
+```
+
+## 2026-09-10 AI 用量 Outbox
+
+- 新增 `xy_wap_embed_ai_usage_outbox`，保存 Node 业务事务内生成的 AI Usage Event，并支持后续批量投递至 Java Billing Service。
+- `(uid, event_key)` 保证同一实际用量事件幂等；`billing_key` 独立保存，由 Java 对客户计费去重。
+- 新环境执行 `docs/db/schema.sql`；已存在的测试环境可直接执行其中该表的最终 `CREATE TABLE` 语句。
+- 本阶段只建 Node Outbox，不创建 Java 账单表，不启用 HTTP 投递，也不扣积分。
+
 ## 2026-09-02 Workflow模板软删除状态
 
 - 模板状态收敛为 `draft`、`published`、`deleted`；删除草稿改为软删除，保留记录但不再对外展示或操作。

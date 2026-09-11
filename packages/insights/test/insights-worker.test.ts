@@ -3213,7 +3213,7 @@ describe("InsightsWorkerService", () => {
   });
 
   it("accumulates every model response usage into the analysis run", async () => {
-    const repository = createRepository({
+    const createAnalysisRepository = () => createRepository({
       claimNextAnalyzeJob: vi.fn()
         .mockResolvedValueOnce({
           analysisScope: "all",
@@ -3225,19 +3225,18 @@ describe("InsightsWorkerService", () => {
           uid: 9001,
         })
         .mockResolvedValue(undefined),
-      listSessionMessagesForAnalysis: vi.fn(async () => [
-        {
-          chatType: 1,
-          content: JSON.stringify({ content: "物流不更新" }),
-          conversationId: "301",
-          fromType: 2,
-          id: "9001",
-          msgtime: 1_780_244_000_000,
-          msgtype: "text",
-          thirdUserId: "user-1",
-        },
-      ]),
+      listSessionMessagesForAnalysis: vi.fn(async () => [{
+        chatType: 1,
+        content: JSON.stringify({ content: "物流不更新" }),
+        conversationId: "301",
+        fromType: 2,
+        id: "9001",
+        msgtime: 1_780_244_000_000,
+        msgtype: "text",
+        thirdUserId: "user-1",
+      }]),
     });
+    const repository = createAnalysisRepository();
     const model: InsightSessionAnalyzer = {
       analyzeSession: vi.fn(async (input) => {
         input.onTokenUsage?.({
@@ -3246,14 +3245,14 @@ describe("InsightsWorkerService", () => {
           prompt_tokens: 100,
           prompt_tokens_details: { cached_tokens: 30 },
           total_tokens: 120,
-        });
+        }, { model: "analysis-model", provider: "volcengine_ark" });
         input.onTokenUsage?.({
           completion_tokens: 10,
           completion_tokens_details: { reasoning_tokens: 1 },
           prompt_tokens: 50,
           prompt_tokens_details: { cached_tokens: 5 },
           total_tokens: 60,
-        });
+        }, { model: "classification-model", provider: "volcengine_ark" });
 
         return {
           actionItems: [],
@@ -3278,7 +3277,11 @@ describe("InsightsWorkerService", () => {
         };
       }),
     };
-    const service = new InsightsWorkerService(repository, { model });
+    const service = new InsightsWorkerService(repository, {
+      model,
+      now: () => Date.parse("2026-09-10T08:00:00.000Z"),
+      usageCollectionEnabled: true,
+    });
 
     await service.runAnalysisOnce();
 
@@ -3291,8 +3294,24 @@ describe("InsightsWorkerService", () => {
           prompt_tokens_details: { cached_tokens: 35 },
           total_tokens: 180,
         },
+        usageEvent: expect.objectContaining({
+          billingKey: "conversation-insight:session:501",
+          billingModel: expect.objectContaining({ creditMultiplier: 100 }),
+          businessId: "501",
+          capability: "conversation_insight",
+          eventKey: "conversation-insight:run:run-1",
+          occurredAt: "2026-09-10T08:00:00.000Z",
+        }),
       }),
     );
+
+    const disabledRepository = createAnalysisRepository();
+    const disabledService = new InsightsWorkerService(disabledRepository, { model });
+
+    await disabledService.runAnalysisOnce();
+
+    expect(vi.mocked(disabledRepository.saveAnalysisResult).mock.calls[0]?.[0])
+      .not.toHaveProperty("usageEvent");
   });
 
   it("persists observed usage and retries a final analysis after the first execution failure", async () => {
@@ -4312,42 +4331,55 @@ describe("InsightsWorkerService", () => {
       ]),
     });
     const model = {
-      analyzeSession: vi.fn(async () => ({
-        actionItems: [
-          {
+      analyzeSession: vi.fn(async (input: Parameters<InsightSessionAnalyzer["analyzeSession"]>[0]) => {
+        input.onTokenUsage?.({
+          completion_tokens: 4,
+          completion_tokens_details: { reasoning_tokens: 1 },
+          prompt_tokens: 16,
+          prompt_tokens_details: { cached_tokens: 2 },
+          total_tokens: 20,
+        }, { model: "analysis-model", provider: "volcengine_ark" });
+        return {
+          actionItems: [
+            {
+              evidenceMessageIds: ["9001"],
+              priority: "high" as const,
+              title: "跟进物流",
+            },
+          ],
+          entities: [],
+          faqCandidates: [
+            {
+              answerHint: "查询物流异常处理流程",
+              evidenceMessageIds: ["9001"],
+              question: "物流不更新怎么办",
+              status: "candidate",
+            },
+          ],
+          intents: [],
+          problemResolution: {
+            confidence: 0.8,
+            evidence: [],
             evidenceMessageIds: ["9001"],
-            priority: "high" as const,
-            title: "跟进物流",
+            problemDetected: true,
+            problemSummary: "客户反馈物流异常",
+            resolutionStatus: "unknown" as const,
           },
-        ],
-        entities: [],
-        faqCandidates: [
-          {
-            answerHint: "查询物流异常处理流程",
-            evidenceMessageIds: ["9001"],
-            question: "物流不更新怎么办",
-            status: "candidate",
+          qaFindings: [],
+          sentiment: [],
+          summary: {
+            sessionTitle: "查物流",
+            text: "客服处理中",
           },
-        ],
-        intents: [],
-        problemResolution: {
-          confidence: 0.8,
-          evidence: [],
-          evidenceMessageIds: ["9001"],
-          problemDetected: true,
-          problemSummary: "客户反馈物流异常",
-          resolutionStatus: "unknown" as const,
-        },
-        qaFindings: [],
-        sentiment: [],
-        summary: {
-          sessionTitle: "查物流",
-          text: "客服处理中",
-        },
-        tags: [],
-      })),
+          tags: [],
+        };
+      }),
     };
-    const service = new InsightsWorkerService(repository, { model });
+    const service = new InsightsWorkerService(repository, {
+      model,
+      now: () => Date.parse("2026-09-10T09:00:00.000Z"),
+      usageCollectionEnabled: true,
+    });
 
     await service.runOnce();
 
@@ -4357,6 +4389,10 @@ describe("InsightsWorkerService", () => {
         output: expect.objectContaining({
           actionItems: [],
           faqCandidates: [],
+        }),
+        usageEvent: expect.objectContaining({
+          billingKey: "conversation-insight:job:job-1",
+          eventKey: "conversation-insight:run:run-1",
         }),
       }),
     );

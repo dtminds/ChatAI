@@ -1,4 +1,10 @@
-import type { InsightRescanAnalysisScope } from "@chatai/contracts";
+import type { AiUsageEvent, InsightRescanAnalysisScope } from "@chatai/contracts";
+import {
+  AI_USAGE_COLLECTION_ENABLED,
+  createAiUsageEvent,
+  VOLCENGINE_ARK_INSIGHTS_ANALYSIS_MODEL,
+  VOLCENGINE_ARK_INSIGHTS_CLASSIFICATION_MODEL,
+} from "@chatai/llm";
 import {
   buildInsightMessageInput,
   parseInsightMessageContent,
@@ -238,6 +244,11 @@ export type InsightTokenUsage = {
   total_tokens: number;
 };
 
+export type InsightTokenUsageSource = {
+  model: string;
+  provider: string;
+};
+
 export type InsightAnalysisOutput = {
   actionItems: Array<{
     evidenceMessageIds: string[];
@@ -340,6 +351,7 @@ export type SaveAnalysisResultInput = {
   runId: string;
   sourceMessageHighWatermark: string | null;
   tokenUsage?: InsightTokenUsage;
+  usageEvent?: AiUsageEvent;
   validationWarnings: string[];
 };
 
@@ -365,7 +377,7 @@ export type InsightSessionAnalyzer = {
     generateActionItems?: boolean;
     job: ClaimedAnalyzeJob;
     messages: AiMessageInput[];
-    onTokenUsage?: (usage: InsightTokenUsage) => void;
+    onTokenUsage?: (usage: InsightTokenUsage, source?: InsightTokenUsageSource) => void;
     previousSessionContexts: InsightPreviousSessionContext[];
     previousOutput?: InsightAnalysisOutput;
   }): Promise<InsightAnalyzerOutput>;
@@ -373,7 +385,7 @@ export type InsightSessionAnalyzer = {
     context: InsightPromptContext;
     job: ClaimedAnalyzeJob;
     messages: AiMessageInput[];
-    onTokenUsage?: (usage: InsightTokenUsage) => void;
+    onTokenUsage?: (usage: InsightTokenUsage, source?: InsightTokenUsageSource) => void;
     previousGateSkip?: InsightLiveGateSkipRecord;
     previousSessionContexts: InsightPreviousSessionContext[];
     previousOutput?: InsightAnalysisOutput;
@@ -577,6 +589,7 @@ export class InsightsWorkerService {
   private readonly discoveryBatchSize: number;
   private readonly discoveryMaxBatchesPerTick: number;
   private readonly model?: InsightSessionAnalyzer;
+  private readonly usageCollectionEnabled: boolean;
   private nextTerminalJobArchiveAttemptAt = 0;
 
   constructor(
@@ -589,6 +602,7 @@ export class InsightsWorkerService {
       model?: InsightSessionAnalyzer;
       now?: () => number;
       observability?: InsightsWorkerObservability;
+      usageCollectionEnabled?: boolean;
     } = {},
   ) {
     this.batchSize = options.batchSize ?? 200;
@@ -598,6 +612,7 @@ export class InsightsWorkerService {
     this.model = options.model;
     this.now = options.now ?? Date.now;
     this.observability = options.observability;
+    this.usageCollectionEnabled = options.usageCollectionEnabled ?? AI_USAGE_COLLECTION_ENABLED;
   }
 
   private readonly logger?: WorkerLogger;
@@ -2079,6 +2094,15 @@ export class InsightsWorkerService {
         runId,
         sourceMessageHighWatermark: sourceMessageIds.at(-1) ?? null,
         ...(tokenUsage ? { tokenUsage } : {}),
+        ...(this.usageCollectionEnabled
+          ? {
+              usageEvent: createConversationInsightUsageEvent(
+                job,
+                runId,
+                new Date(this.now()),
+              ),
+            }
+          : {}),
         validationWarnings,
       });
       await this.finishAnalyzeJobSucceeded(job);
@@ -2337,6 +2361,34 @@ function addTokenUsage(
     },
     total_tokens: (current?.total_tokens ?? 0) + next.total_tokens,
   };
+}
+
+function createConversationInsightUsageEvent(
+  job: ClaimedAnalyzeJob,
+  runId: string,
+  occurredAt: Date,
+) {
+  const billingModel = job.analysisScope === "classification"
+    ? VOLCENGINE_ARK_INSIGHTS_CLASSIFICATION_MODEL
+    : VOLCENGINE_ARK_INSIGHTS_ANALYSIS_MODEL;
+  return createAiUsageEvent({
+    billingKey: job.mode === "manual_reanalyze"
+      ? `conversation-insight:job:${job.jobId}`
+      : `conversation-insight:session:${job.sessionId}`,
+    billingModel: { creditMultiplier: 100, model: billingModel, modelId: null },
+    businessId: job.sessionId,
+    businessSnapshot: {
+      analysisScope: job.analysisScope,
+      jobId: job.jobId,
+      mode: job.mode,
+      runId,
+    },
+    businessType: "logical_session",
+    capability: "conversation_insight",
+    eventKey: `conversation-insight:run:${runId}`,
+    occurredAt: occurredAt.toISOString(),
+    uid: job.uid,
+  });
 }
 
 function hasConfiguredRescanWork(

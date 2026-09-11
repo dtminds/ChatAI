@@ -19,6 +19,7 @@ import type {
   WorkflowTriggerBindingFilter,
   WorkflowType,
 } from "@chatai/contracts";
+import type { WorkflowInferenceUsage } from "./inference-port.js";
 import type { WorkflowCapabilityFailureKind } from "@chatai/workflow-engine";
 import type { WorkflowTaskDeferReasonCode } from "./task-deferral.js";
 import type { WorkflowAiCollectMessageCursor } from "./ai-collect.js";
@@ -243,6 +244,7 @@ export type WorkflowInferenceJobRecord = {
   taskId: string;
   uid: number;
   updatedAt: Date;
+  usage: WorkflowInferenceUsage | null;
 };
 
 export type WorkflowAiCollectDirectiveStatus =
@@ -499,6 +501,7 @@ export type WorkflowInferenceRepository = {
     id: string;
     leaseOwner: string;
     result: WorkflowInferenceResult;
+    usage?: WorkflowInferenceUsage;
   }): Promise<boolean>;
   failInference(input: {
     errorCode: string;
@@ -541,6 +544,7 @@ export type WorkflowNodeExecutionRecord = {
   errorCode: string | null;
   errorMessage: string | null;
   failureKind: WorkflowCapabilityFailureKind | null;
+  id?: string;
   executionKey: string;
   input: Record<string, unknown>;
   nodeId: string;

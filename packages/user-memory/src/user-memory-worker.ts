@@ -1,6 +1,11 @@
 import { randomUUID } from "node:crypto";
 import { sql, type ExpressionBuilder, type Kysely, type Selectable, type Transaction } from "kysely";
-import type { Database, JsonValue } from "@chatai/database";
+import { enqueueAiUsageEvent, type Database, type JsonValue } from "@chatai/database";
+import {
+  AI_USAGE_COLLECTION_ENABLED,
+  createAiUsageEvent,
+  VOLCENGINE_ARK_MEMORY_MODEL,
+} from "@chatai/llm";
 import type { UserMemoryWorkerLogger } from "./user-memory-logger.js";
 import { applyAiMemoryOperations, emptyUserMemoryDocument, filterActiveUserMemoryDocument, parseUserMemoryDocument } from "./user-memory-domain.js";
 import { buildUserMemoryMessageWindow, USER_MEMORY_MESSAGE_LIMIT } from "./user-memory-message-window.js";
@@ -17,11 +22,20 @@ type CandidateSession = { id: number; conversation_id: number; started_at: numbe
 export type UserMemoryCustomerGroup = { platform: number; thirdExternalUserId: string; sessions: CandidateSession[] };
 
 type Claim = { extractionInstruction: string; run: RunRow; token: string };
+type UserMemoryWorkerInput = {
+  customerLimitResolver: UserMemoryCustomerLimitResolver;
+  db: Kysely<Database>;
+  logger: UserMemoryWorkerLogger;
+  provider: UserMemoryProvider;
+  usageCollectionEnabled?: boolean;
+  usageModel?: string;
+  workerId: string;
+};
 
 export class UserMemoryWorker {
   private nextCleanupAt = 0;
 
-  constructor(private readonly input: { db: Kysely<Database>; logger: UserMemoryWorkerLogger; provider: UserMemoryProvider; workerId: string; customerLimitResolver: UserMemoryCustomerLimitResolver }) {}
+  constructor(private readonly input: UserMemoryWorkerInput) {}
 
   async tick() {
     await this.cleanupTerminalRunsIfDue();
@@ -270,6 +284,27 @@ export class UserMemoryWorker {
         finished_at: new Date(),
         last_error_code: null,
       }).where("id", "=", item.id).execute();
+      if (this.input.usageCollectionEnabled ?? AI_USAGE_COLLECTION_ENABLED) {
+        const occurredAt = new Date();
+        const model = this.input.usageModel ?? VOLCENGINE_ARK_MEMORY_MODEL;
+        await enqueueAiUsageEvent(trx, createAiUsageEvent({
+          billingKey: `user-memory:item:${item.id}`,
+          billingModel: { creditMultiplier: 100, model, modelId: null },
+          businessId: String(item.id),
+          businessSnapshot: {
+            changed: merged.changed,
+            messageCount: prepared.messages.length,
+            platform: item.platform,
+            runId: String(claim.run.id),
+            sessionCount: item.session_count,
+          },
+          businessType: "user_memory_run_item",
+          capability: "user_memory",
+          eventKey: `user-memory:item:${item.id}`,
+          occurredAt: occurredAt.toISOString(),
+          uid: item.uid,
+        }), occurredAt);
+      }
       await aggregateRun(trx, claim);
     });
   }

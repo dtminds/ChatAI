@@ -85,6 +85,7 @@ export const AiHostingAgentPromptConfigSchema = Type.Object({
 }, { additionalProperties: false });
 
 export const AiHostingModelSchema = Type.Object({
+  creditMultiplier: Type.Integer({ minimum: 1 }),
   description: Type.String(),
   id: Type.String(),
   label: Type.String(),
@@ -94,6 +95,7 @@ export const AiHostingModelSchema = Type.Object({
 });
 
 export const AiHostingAgentModelSummarySchema = Type.Object({
+  creditMultiplier: Type.Integer({ minimum: 1 }),
   id: Type.String(),
   label: Type.String(),
   model: Type.String(),

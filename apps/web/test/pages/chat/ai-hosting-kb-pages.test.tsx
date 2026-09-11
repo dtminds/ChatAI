@@ -192,6 +192,7 @@ vi.mock("sonner", async (importOriginal) => {
 const mockModels = [
   {
     description: "系统默认",
+    creditMultiplier: 100,
     id: "10",
     label: "默认模型",
     model: "default-model",
@@ -200,6 +201,7 @@ const mockModels = [
   },
   {
     description: "租户自定义",
+    creditMultiplier: 100,
     id: "11",
     label: "Doubao-2.0-lite",
     model: "doubao-2.0-lite",
@@ -223,6 +225,7 @@ const mockAgents = [
       },
     ],
     model: {
+      creditMultiplier: 100,
       id: "11",
       label: "Doubao-2.0-lite",
       model: "doubao-2.0-lite",
@@ -237,6 +240,7 @@ const mockAgents = [
     id: "302",
     kbList: [],
     model: {
+      creditMultiplier: 100,
       id: "11",
       label: "Doubao-2.0-lite",
       model: "doubao-2.0-lite",
@@ -315,6 +319,7 @@ const mockAgentDetail = {
   hasUnpublishedChanges: true,
   id: "301",
   model: {
+    creditMultiplier: 100,
     id: "11",
     label: "Doubao-2.0-lite",
     model: "doubao-2.0-lite",

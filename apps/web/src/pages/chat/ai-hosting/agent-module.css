@@ -1,3 +1,25 @@
+.billing-badge {
+  --billing-badge-background: light-dark(#f0eeff, #2d2750);
+  --billing-badge-background-hover: light-dark(#e8e5ff, #37305f);
+  --billing-badge-foreground: light-dark(#5b45ff, #b8aeff);
+  --billing-badge-focus-ring: color-mix(
+    in srgb,
+    var(--billing-badge-foreground) 15%,
+    transparent
+  );
+
+  background-color: var(--billing-badge-background);
+  color: var(--billing-badge-foreground);
+}
+
+.billing-badge:hover {
+  background-color: var(--billing-badge-background-hover);
+}
+
+.billing-badge:focus-visible {
+  box-shadow: 0 0 0 4px var(--billing-badge-focus-ring);
+}
+
 .agent-module-surface {
   background: linear-gradient(
     180deg,

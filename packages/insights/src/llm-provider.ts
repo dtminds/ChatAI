@@ -9,6 +9,7 @@ import type {
   InsightLiveAnalysisGateDecision,
   InsightSessionAnalyzer,
   InsightTokenUsage,
+  InsightTokenUsageSource,
 } from "./insights-worker.js";
 import {
   buildInsightClassificationPromptMessages,
@@ -323,7 +324,7 @@ export class OpenAiCompatibleInsightAnalyzer implements InsightSessionAnalyzer {
       maxTokens: number;
       messages: InsightPromptMessage[];
       model: string;
-      onTokenUsage?: (usage: InsightTokenUsage) => void;
+      onTokenUsage?: (usage: InsightTokenUsage, source?: InsightTokenUsageSource) => void;
       uid: number;
     },
   ): Promise<InsightAnalyzerOutput> {
@@ -369,7 +370,7 @@ export class OpenAiCompatibleInsightAnalyzer implements InsightSessionAnalyzer {
     maxTokens: number;
     messages: InsightPromptMessage[];
     model: string;
-    onTokenUsage?: (usage: InsightTokenUsage) => void;
+    onTokenUsage?: (usage: InsightTokenUsage, source?: InsightTokenUsageSource) => void;
     step: LlmStep;
     uid: number;
   }) {
@@ -380,7 +381,7 @@ export class OpenAiCompatibleInsightAnalyzer implements InsightSessionAnalyzer {
     maxTokens: number;
     messages: InsightPromptMessage[];
     model: string;
-    onTokenUsage?: (usage: InsightTokenUsage) => void;
+    onTokenUsage?: (usage: InsightTokenUsage, source?: InsightTokenUsageSource) => void;
     step: LlmStep;
     uid: number;
   }) {
@@ -401,7 +402,7 @@ export class OpenAiCompatibleInsightAnalyzer implements InsightSessionAnalyzer {
     maxTokens: number;
     messages: InsightPromptMessage[];
     model: string;
-    onTokenUsage?: (usage: InsightTokenUsage) => void;
+    onTokenUsage?: (usage: InsightTokenUsage, source?: InsightTokenUsageSource) => void;
     step: LlmStep;
     uid: number;
   }) {
@@ -455,7 +456,10 @@ export class OpenAiCompatibleInsightAnalyzer implements InsightSessionAnalyzer {
     };
     const tokenUsage = normalizeTokenUsage(payload.usage);
     if (tokenUsage) {
-      input.onTokenUsage?.(tokenUsage);
+      input.onTokenUsage?.(tokenUsage, {
+        model: input.model,
+        provider: this.config.providerCode,
+      });
     }
     const content = payload.choices?.[0]?.message?.content;
 

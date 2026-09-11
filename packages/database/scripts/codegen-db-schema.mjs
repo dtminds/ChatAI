@@ -89,7 +89,7 @@ function appendDatabaseAlias(output) {
     return output;
   }
 
-  return `${output.trimEnd()}\n\nexport type Database = DB & import("./workflow-schema.js").WorkflowTables;\n`;
+  return `${output.trimEnd()}\n\nexport type Database = DB\n  & import("./ai-usage-schema.js").AiUsageTables\n  & import("./workflow-schema.js").WorkflowTables;\n`;
 }
 
 const databaseUrl = getDatabaseUrl();

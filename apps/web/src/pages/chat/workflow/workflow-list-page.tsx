@@ -72,7 +72,7 @@ import {
   WorkflowSurfaceProvider,
 } from "./workflow-surface";
 import { WorkflowTemplateSection } from "./workflow-template-section";
-import { createEmptyWorkflowTemplateRepository, createWorkflowTemplateRepository, type WorkflowTemplateRepository } from "./workflow-template-repository";
+import { createEmptyWorkflowTemplateRepository, createWorkflowTemplateRepository, type WorkflowTemplateListInput, type WorkflowTemplateRepository } from "./workflow-template-repository";
 import { canCreateWorkflows, canManageWorkflowTemplates } from "./workflow-template-access";
 import { WorkflowTemplateConversionDialog } from "./workflow-template-conversion-dialog";
 
@@ -161,6 +161,12 @@ export function WorkflowListPage({
   const canCreateWorkflow = canCreateWorkflows(templateManagerSubject);
   const canConvertToTemplate = Boolean(repository.convertToTemplate)
     && canManageWorkflowTemplates(templateManagerSubject);
+  const listTemplateDrafts = useMemo(() => {
+    const listDrafts = resolvedTemplateRepository.listDrafts;
+    return listDrafts
+      ? (input: WorkflowTemplateListInput) => Promise.resolve(listDrafts(input))
+      : undefined;
+  }, [resolvedTemplateRepository]);
   useEffect(() => {
     setPagination(current => current.filterKey === listFilterKey
       ? current
@@ -450,6 +456,7 @@ export function WorkflowListPage({
         <WorkflowTemplateConversionDialog
           draftVersion={conversionTarget.draftVersion ?? 1}
           onConvert={input => Promise.resolve(repository.convertToTemplate!(conversionTarget.id, input))}
+          onListDrafts={listTemplateDrafts}
           onPublish={repository.publishTemplate
             ? templateId => Promise.resolve(repository.publishTemplate!(templateId))
             : undefined}
@@ -461,6 +468,7 @@ export function WorkflowListPage({
           }}
           open
           workflowName={conversionTarget.name}
+          workflowType={conversionTarget.workflowType}
         />
       ) : null}
 

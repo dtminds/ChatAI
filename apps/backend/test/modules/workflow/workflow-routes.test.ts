@@ -105,6 +105,69 @@ describe("workflow routes", () => {
     expect(emptyListResponse.json().data).toEqual({ items: [], total: 0 });
   });
 
+  it("filters template drafts by Workflow type and replaces a selected draft", async () => {
+    const templateRepository = new InMemoryWorkflowTemplateRepository();
+    const app = await createApp("owner", undefined, {
+      subUserId: "2",
+      templateRepository,
+      uid: 101,
+    });
+    const chataiSource = (await app.inject({
+      method: "POST",
+      payload: { name: "ChatAI 模板来源", workflowType: "chatai_sop" },
+      url: "/api/server/workflows",
+    })).json().data;
+    const target = (await app.inject({
+      method: "POST",
+      payload: {
+        description: "待更新",
+        expectedDraftVersion: chataiSource.draftVersion,
+        name: "原模板",
+      },
+      url: `/api/server/workflows/${chataiSource.id}/template-conversions`,
+    })).json().data;
+    await templateRepository.create({
+      configurationItems: [],
+      coverUrl: null,
+      description: "企微模板",
+      draft: chataiSource.draft,
+      name: "企微模板",
+      sortOrder: 0,
+      status: "draft",
+      tags: [],
+      templateVersion: 1,
+      workflowType: "wecom_sop",
+    });
+
+    const listResponse = await app.inject({
+      method: "GET",
+      url: "/api/server/workflow-template-drafts?limit=50&page=1&workflowType=chatai_sop",
+    });
+    const updateResponse = await app.inject({
+      method: "POST",
+      payload: {
+        description: "已更新",
+        expectedDraftVersion: chataiSource.draftVersion,
+        name: "更新后的模板",
+        targetTemplateId: target.id,
+      },
+      url: `/api/server/workflows/${chataiSource.id}/template-conversions`,
+    });
+
+    expect(listResponse.statusCode).toBe(200);
+    expect(listResponse.json().data).toMatchObject({
+      items: [expect.objectContaining({ id: target.id, workflowType: "chatai_sop" })],
+      total: 1,
+    });
+    expect(updateResponse.statusCode).toBe(200);
+    expect(updateResponse.json().data).toMatchObject({
+      description: "已更新",
+      id: target.id,
+      name: "更新后的模板",
+      status: "draft",
+    });
+  });
+
   it("withdraws a published template to the draft box", async () => {
     const app = await createApp("owner", undefined, {
       subUserId: "2",

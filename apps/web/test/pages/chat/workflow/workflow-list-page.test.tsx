@@ -1661,6 +1661,82 @@ describe("Agent workflow page", () => {
     ));
   });
 
+  it("updates a selected template draft from the conversion dialog", async () => {
+    const user = userEvent.setup();
+    useAuthStore.getState().setSession({
+      accountType: "sub",
+      displayName: "模板运营",
+      permissions: ["chat.access", "chat.send", "chat.takeover", "workflow_template_manage"],
+      role: "admin",
+      subUserId: "2",
+      uid: 101,
+    });
+    const draftTemplate = {
+      coverUrl: "https://example.com/existing.png",
+      description: "已有模板描述",
+      id: "18",
+      name: "已有模板",
+      nodeKinds: ["message"] as WorkflowNodeKind[],
+      nodeCount: 3,
+      publishedAt: "2026-09-01T00:00:00.000Z",
+      sortOrder: 20,
+      tags: ["scene:customer_care"],
+      trigger: "添加好友",
+      updatedAt: "2026-09-01T00:00:00.000Z",
+      version: 3,
+      workflowType: "chatai_sop" as const,
+    };
+    const listDrafts = vi.fn().mockResolvedValue({ items: [draftTemplate], total: 1 });
+    const templateRepository: WorkflowTemplateRepository = {
+      apply: vi.fn(),
+      get: vi.fn(),
+      list: vi.fn().mockResolvedValue({ items: [], total: 0 }),
+      listDrafts,
+    };
+    const baseRepository = getWorkflowDraftRepository();
+    const convertToTemplate = vi.fn().mockResolvedValue({
+      ...draftTemplate,
+      configurationItems: [],
+      draft: createInitialDraft(),
+      status: "draft" as const,
+    });
+
+    renderWorkflowPage(
+      "/chat/workflows",
+      { ...baseRepository, convertToTemplate },
+      templateRepository,
+    );
+
+    await screen.findByText("新人转化旅程");
+    await user.click(screen.getByRole("button", { name: "操作 新人转化旅程" }));
+    await user.click(screen.getByRole("menuitem", { name: "转换为模板" }));
+    await waitFor(() => expect(listDrafts).toHaveBeenCalledWith({
+      limit: 50,
+      page: 1,
+      workflowType: "chatai_sop",
+    }));
+    await user.click(screen.getByRole("combobox", { name: "保存到" }));
+    await user.click(await screen.findByRole("option", { name: "已有模板" }));
+
+    expect(screen.getByRole("textbox", { name: "模板名称" })).toHaveValue("已有模板");
+    expect(screen.getByRole("textbox", { name: "模板描述" })).toHaveValue("已有模板描述");
+    expect(screen.getByRole("spinbutton", { name: "排序权重" })).toHaveValue(20);
+    expect(screen.getByRole("button", { name: "客户关怀" })).toHaveAttribute("aria-pressed", "true");
+    await user.click(screen.getByRole("button", { name: "更新模板" }));
+
+    await waitFor(() => expect(convertToTemplate).toHaveBeenCalledWith(
+      "newcomer-conversion",
+      expect.objectContaining({
+        coverUrl: "https://example.com/existing.png",
+        description: "已有模板描述",
+        name: "已有模板",
+        sortOrder: 20,
+        tags: ["scene:customer_care"],
+        targetTemplateId: "18",
+      }),
+    ));
+  });
+
   it("does not offer activation for an unpublished draft", async () => {
     const user = userEvent.setup();
     await getWorkflowDraftRepository().createDocument({

@@ -2474,6 +2474,140 @@ describe("WorkflowService", () => {
     expect(JSON.stringify(first.draft)).not.toContain("123");
   });
 
+  it("replaces an existing template draft while preserving its identity and configuration metadata", async () => {
+    const templateRepository = new InMemoryWorkflowTemplateRepository();
+    const service = createService(new InMemoryWorkflowRepository(), { templateRepository });
+    const manager = { roles: ["owner"], subUserId: "2", uid: 101 };
+    const source = await service.create(manager, { workflowType: "chatai_sop" });
+    const existing = await service.convertToTemplate(manager, source.id, {
+      coverUrl: "https://example.com/existing.png",
+      description: "旧描述",
+      expectedDraftVersion: source.draftVersion,
+      name: "旧模板",
+      tags: ["scene:customer_care"],
+    });
+    const existingRecord = await templateRepository.find(existing.id, "draft");
+    await templateRepository.update({
+      ...existingRecord!,
+      configurationItems: [
+        ...existingRecord!.configurationItems.map(item => "bindingKey" in item && item.bindingKey === "seatIds"
+          ? { ...item, requirement: "recommended" as const, title: "选择默认托管账号" }
+          : item),
+        {
+          fieldKey: "obsolete",
+          id: "obsolete",
+          kind: "review" as const,
+          nodeId: "start",
+          requirement: "required" as const,
+          title: "已失效配置",
+        },
+      ],
+    });
+    const configuredReplacementDraft = withStartConfig(source.draft, {
+      triggers: [{ sourceIds: ["new-source"], type: "contact.friend_added" }],
+    });
+    const replacementDraft = {
+      ...configuredReplacementDraft,
+      nodes: configuredReplacementDraft.nodes.map(node => node.id === "start"
+        ? {
+            ...node,
+            data: { ...node.data, label: "新的开始节点", title: "新的开始节点" },
+            position: { x: 360, y: 180 },
+          }
+        : node),
+      viewport: { x: 40, y: 60, zoom: 0.8 },
+    };
+    const saved = await service.saveDraft(manager, source.id, {
+      draft: replacementDraft,
+      expectedDraftVersion: source.draftVersion,
+    });
+
+    const updated = await service.convertToTemplate(manager, source.id, {
+      description: "新描述",
+      expectedDraftVersion: saved.draftVersion,
+      name: "更新后的模板",
+      targetTemplateId: existing.id,
+    });
+
+    expect(updated).toMatchObject({
+      coverUrl: "https://example.com/existing.png",
+      description: "新描述",
+      id: existing.id,
+      name: "更新后的模板",
+      status: "draft",
+      tags: ["scene:customer_care"],
+      version: existing.version,
+    });
+    expect(updated.draft.nodes.find(node => node.id === "start")).toMatchObject({
+      data: { title: "新的开始节点" },
+      position: { x: 360, y: 180 },
+    });
+    expect(updated.draft.viewport).toEqual({ x: 40, y: 60, zoom: 0.8 });
+    expect(updated.configurationItems).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        bindingKey: "seatIds",
+        requirement: "recommended",
+        title: "选择默认托管账号",
+      }),
+      expect.objectContaining({
+        bindingKey: "triggers.sourceIds",
+        requirement: "required",
+        title: "选择添加方式",
+      }),
+    ]));
+    expect(updated.configurationItems).not.toEqual(expect.arrayContaining([
+      expect.objectContaining({ fieldKey: "obsolete" }),
+    ]));
+    await expect(service.listTemplateDrafts(manager, {
+      limit: 8,
+      page: 1,
+      workflowType: "chatai_sop",
+    })).resolves.toMatchObject({
+      items: [expect.objectContaining({ id: existing.id, name: "更新后的模板" })],
+      total: 1,
+    });
+  });
+
+  it("rejects replacing a template draft with a different Workflow type", async () => {
+    const templateRepository = new InMemoryWorkflowTemplateRepository();
+    const service = createService(new InMemoryWorkflowRepository(), { templateRepository });
+    const manager = { roles: ["owner"], subUserId: "2", uid: 101 };
+    const targetSource = await service.create(manager, { workflowType: "chatai_sop" });
+    const target = await service.convertToTemplate(manager, targetSource.id, {
+      description: "企微模板不能覆盖",
+      expectedDraftVersion: targetSource.draftVersion,
+      name: "ChatAI 模板",
+    });
+    const source = await service.create(manager, { workflowType: "wecom_sop" });
+
+    await expect(service.convertToTemplate(manager, source.id, {
+      description: "类型不一致",
+      expectedDraftVersion: source.draftVersion,
+      name: "企微模板",
+      targetTemplateId: target.id,
+    })).rejects.toMatchObject({ code: "WORKFLOW_TEMPLATE_TYPE_MISMATCH", statusCode: 400 });
+  });
+
+  it("requires a published template to be withdrawn before replacing it", async () => {
+    const templateRepository = new InMemoryWorkflowTemplateRepository();
+    const service = createService(new InMemoryWorkflowRepository(), { templateRepository });
+    const manager = { roles: ["owner"], subUserId: "2", uid: 101 };
+    const source = await service.create(manager, { workflowType: "chatai_sop" });
+    const target = await service.convertToTemplate(manager, source.id, {
+      description: "已发布模板",
+      expectedDraftVersion: source.draftVersion,
+      name: "已发布模板",
+    });
+    await service.publishTemplate(manager, target.id);
+
+    await expect(service.convertToTemplate(manager, source.id, {
+      description: "不能直接覆盖",
+      expectedDraftVersion: source.draftVersion,
+      name: "不能直接覆盖",
+      targetTemplateId: target.id,
+    })).rejects.toMatchObject({ code: "WORKFLOW_TEMPLATE_DRAFT_NOT_FOUND", statusCode: 404 });
+  });
+
   it("removes custom-field LLM inputs while preserving workflow node variables", async () => {
     const repository = new InMemoryWorkflowRepository();
     const templateRepository = new InMemoryWorkflowTemplateRepository();

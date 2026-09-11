@@ -1033,10 +1033,10 @@ describe("Agent workflow page", () => {
       workflowType: "chatai_sop" as const,
     });
     const list = vi.fn<WorkflowTemplateRepository["list"]>(async (input = {}) => input.featured
-      ? { items: [createTemplateItem("1", "推荐模板样例")], total: 40 }
+      ? { items: [createTemplateItem("1", "推荐模板样例")], total: 1 }
       : {
           items: [createTemplateItem(String(input.page ?? 1), `第 ${input.page ?? 1} 页模板`)],
-          total: 40,
+          total: 240,
         });
     const templateRepository: WorkflowTemplateRepository = {
       apply: vi.fn(),
@@ -1054,7 +1054,7 @@ describe("Agent workflow page", () => {
 
     expect(await screen.findByText("第 5 页模板")).toBeInTheDocument();
     expect(list).toHaveBeenCalledTimes(3);
-    expect(list).toHaveBeenLastCalledWith(expect.objectContaining({ limit: 8, page: 5 }));
+    expect(list).toHaveBeenLastCalledWith(expect.objectContaining({ limit: 48, page: 5 }));
     expect(list).not.toHaveBeenCalledWith(expect.objectContaining({ page: 2 }));
     expect(list).not.toHaveBeenCalledWith(expect.objectContaining({ page: 3 }));
     expect(list).not.toHaveBeenCalledWith(expect.objectContaining({ page: 4 }));

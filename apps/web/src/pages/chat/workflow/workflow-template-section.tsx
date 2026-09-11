@@ -287,7 +287,7 @@ function WorkflowTemplateCenterContent({ repository }: { repository?: WorkflowTe
     && Boolean(templateRepository.deleteDraft && templateRepository.listDrafts && templateRepository.getDraft && templateRepository.publish);
   const applyRequestRef = useRef<{ requestId: string; templateId: string } | null>(null);
   const loadRequestRef = useRef(0);
-  const pageSize = 8;
+  const pageSize = surface.surface === "chatai" ? 48 : 8;
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
 
   const load = useCallback(async (input: { page: number; query?: string; tags?: string[] }) => {

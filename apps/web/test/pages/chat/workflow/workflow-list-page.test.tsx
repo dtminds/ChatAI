@@ -1154,6 +1154,7 @@ describe("Agent workflow page", () => {
       nodeCount: 2,
       publishedAt: "2026-09-01T00:00:00.000Z",
       sortOrder: 0,
+      tags: ["scene:customer_care"],
       trigger: "添加好友",
       updatedAt: "2026-09-01T00:00:00.000Z",
       version: 1,
@@ -1194,7 +1195,9 @@ describe("Agent workflow page", () => {
 
     const previewDialog = await screen.findByRole("dialog");
     expect(get).toHaveBeenCalledWith("featured-1");
+    expect(previewDialog).toHaveClass("gap-2");
     expect(await within(previewDialog).findByRole("application", { name: "工作流预览" })).toHaveAttribute("data-preview", "true");
+    expect(within(previewDialog).queryByLabelText("模板标签")).not.toBeInTheDocument();
     expect(within(previewDialog).getByTestId("workflow-react-flow")).toHaveAttribute("data-pan-on-drag", "true");
     expect(within(previewDialog).getByTestId("workflow-react-flow")).toHaveAttribute("data-zoom-on-scroll", "true");
     expect(within(previewDialog).getAllByTestId(/workflow-handle-/).length).toBeGreaterThan(0);

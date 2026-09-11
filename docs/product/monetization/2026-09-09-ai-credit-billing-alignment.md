@@ -23,7 +23,7 @@
 
 - 回复成功生成即计量，未发送也计量；同一结果拆成多条消息不重复计量。
 - 同一逻辑会话的实时更新、最终分析、内部重试合计只计费一次；用户主动重刷另算一次。
-- 洞察混用模型时，按事先确定的对外档位计价，不叠加内部模型倍率；实际 Token 按模型分别保留。
+- 洞察混用模型时，按事先确定的对外档位计价，不叠加内部模型倍率；实际 Token 仅保留在业务运行记录中。
 - 记忆成功分析但无变更也计量；未调用模型就跳过、任务失败不收费。
 - Workflow 未执行分支不计量，循环每次执行分别计量；内部重试不重复收费。
 - 编辑器试运行记录用量，首期标记调试减免，不扣积分。
@@ -58,13 +58,13 @@ flowchart TD
 
 Node 不计算正式积分、不写 Java 账单表，Java 不调用 Node。业务成功与 outbox 的持久化必须保证一致，投递故障不重新执行模型任务。批量响应逐条区分接收、重复、拒绝；超时后使用原事件键重发。
 
-自动洞察的计费键应按逻辑会话稳定，不能每个分析 job 都生成新账单；主动重刷使用独立业务操作键。记忆按 run item，Workflow 按节点执行实例去重。内部调用成本与客户计费事件分开，自动洞察后续更新的成本不能因账单去重被丢弃。
+自动洞察的计费键应按逻辑会话稳定，不能每个分析 job 都生成新账单；主动重刷使用独立业务操作键。记忆按 run item，Workflow 按节点执行实例去重。内部调用成本与客户计费事件分开；Token 不写入 Usage Event，由各业务运行记录独立保存。
 
 ### Usage Event 契约
 
 - `eventKey` 标识一次实际完成的用量事件，用于 Node 重试幂等；`billingKey` 标识客户计费单元，由 Java 去重。两者不得合并。
 - `occurredAt` 使用 UTC RFC 3339，并在 Node 构造事件时统一为三位毫秒的 `.sssZ`；免费期和价格版本均按该业务发生时间判断。
-- `billingModel.creditMultiplier` 使用整数基点；`modelUsages` 按实际模型汇总请求次数、输入 Token 和输出 Token，可记录洞察内部的多模型调用。
+- `billingModel.creditMultiplier` 使用整数基点；Usage Event 不包含模型 Token，Java 不得根据 Token 计算客户积分。
 - `businessSnapshot` 仅保存运行模式、节点标识等审计所需标量字段，最多 16 项；不得写入消息正文、Prompt、客户资料或嵌套业务对象。
 - `capability` 与 `businessType` 固定配对：回复对应 `agent_reply`，洞察对应 `logical_session`，记忆对应 `user_memory_run_item`，三类 Workflow AI 节点对应 `workflow_node_execution`。
 - 单批最多 100 个事件，Java 按 `uid + eventKey` 对每条返回 `accepted`、`duplicate` 或 `rejected`。账单查询金额使用六位小数字符串，避免跨 Java/Node 的浮点误差。

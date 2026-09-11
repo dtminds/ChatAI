@@ -498,15 +498,8 @@ describe("user memory candidate selection", () => {
         sessionCount: 2,
       },
       eventKey: "user-memory:item:11",
-      modelUsages: [{
-        inputTokens: 120,
-        model: "memory-model",
-        modelId: null,
-        outputTokens: 30,
-        provider: "volcengine_ark",
-        requestCount: 1,
-      }],
     });
+    expect(JSON.parse(String(payload))).not.toHaveProperty("modelUsages");
   });
 
   it("does not write usage while the code-level switch is disabled", async () => {

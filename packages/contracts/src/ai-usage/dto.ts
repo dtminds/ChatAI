@@ -60,7 +60,6 @@ const commonEventProperties = {
   billingModel: AiUsageModelSchema,
   businessSnapshot: AiUsageBusinessSnapshotSchema,
   eventKey: UsageKeySchema,
-  modelUsages: Type.Array(AiUsageModelTokenSchema, { minItems: 1, maxItems: 32 }),
   occurredAt: UtcInstantSchema,
   schemaVersion: Type.Literal(1),
   uid: Type.Integer({ minimum: 1, maximum: MAX_SAFE_INTEGER }),

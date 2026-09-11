@@ -43,7 +43,6 @@ import { formatWorkflowMetricDate } from "./workflow-date.js";
 import {
   createWorkflowNodeUsageEvent,
   isWorkflowInferenceUsage,
-  WORKFLOW_AI_COLLECT_MAX_INFERENCE_JOBS,
 } from "./workflow-ai-usage.js";
 import {
   WORKFLOW_MYSQL_WRITE_CHUNK_SIZE,
@@ -2826,30 +2825,31 @@ export class MysqlWorkflowRuntimeRepository implements
       if (this.usageCollectionEnabled && !failed
         && (task.nodeKind === "ai-intent" || task.nodeKind === "llm" || task.nodeKind === "ai-collect")) {
         if (nodeExecutionId === null) throw new Error("Node Execution insert did not return an ID");
-        const usageRows = await trx.selectFrom(INFERENCE_JOB_TABLE)
+        const usageRow = await trx.selectFrom(INFERENCE_JOB_TABLE)
           .select("usage_json")
           .where("uid", "=", input.uid)
           .where("task_id", "=", task.id)
           .where("status", "=", "succeeded")
           .where("usage_json", "is not", null)
           .orderBy("id", "asc")
-          .limit(task.nodeKind === "ai-collect" ? WORKFLOW_AI_COLLECT_MAX_INFERENCE_JOBS : 1)
-          .execute();
-        const usages = usageRows.map(row => {
-          const usage = parseJson(row.usage_json!);
+          .limit(1)
+          .executeTakeFirst();
+        const usage = usageRow
+          ? parseJson(usageRow.usage_json!)
+          : null;
+        if (usage !== null) {
           if (!isWorkflowInferenceUsage(usage)) {
             throw new Error("Database returned an invalid Workflow inference usage snapshot");
           }
-          return usage;
-        });
+        }
         const event = createWorkflowNodeUsageEvent({
+          billingModel: usage?.billingModel ?? null,
           executionId: nodeExecutionId,
           nodeId: task.nodeId,
           nodeKind: task.nodeKind,
           occurredAt: now,
           runId: run.id,
           uid: input.uid,
-          usages,
           workflowId: run.workflowId,
         });
         if (event) await enqueueAiUsageEvent(trx, event, now);

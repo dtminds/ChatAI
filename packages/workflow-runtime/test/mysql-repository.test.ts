@@ -375,7 +375,7 @@ describe("MysqlWorkflowRuntimeRepository", () => {
     ]);
   });
 
-  it("writes Workflow LLM usage in the successful node completion transaction", async () => {
+  it("writes Workflow LLM billing usage in the successful node completion transaction", async () => {
     const db = createCapabilityExecutionDbMock({
       executionStatus: "running",
       nodeId: "llm-1",
@@ -417,14 +417,14 @@ describe("MysqlWorkflowRuntimeRepository", () => {
     })).resolves.toMatchObject({ kind: "success" });
 
     expect(db.outboxInsertedInTransaction).toBe(true);
-    expect(JSON.parse(String(db.inserts.xy_wap_embed_ai_usage_outbox?.payload_json)))
-      .toMatchObject({
-        billingKey: "workflow-node-execution:11",
-        billingModel: { creditMultiplier: 150 },
-        businessId: "11",
-        capability: "workflow_llm",
-        modelUsages: [{ inputTokens: 120, outputTokens: 30, requestCount: 1 }],
-      });
+    const payload = JSON.parse(String(db.inserts.xy_wap_embed_ai_usage_outbox?.payload_json));
+    expect(payload).toMatchObject({
+      billingKey: "workflow-node-execution:11",
+      billingModel: { creditMultiplier: 150 },
+      businessId: "11",
+      capability: "workflow_llm",
+    });
+    expect(payload).not.toHaveProperty("modelUsages");
   });
 
   it("locks runs before tasks while reconciling inconsistent runtime state", async () => {
@@ -1743,6 +1743,7 @@ function createCapabilityExecutionDbMock(options: {
           if (table === "xy_wap_embed_workflow_run") return run;
           if (table === "xy_wap_embed_workflow_task") return task;
           if (table === "xy_wap_embed_workflow_node_execution") return execution;
+          if (table === "xy_wap_embed_workflow_inference_job") return options.usageRows?.[0];
           if (table === "xy_wap_embed_workflow_definition") {
             return {
               biz_status: 1,

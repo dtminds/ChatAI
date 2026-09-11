@@ -275,9 +275,9 @@ describe("workflow inference worker", () => {
         billingModel: expect.objectContaining({ creditMultiplier: expectedMultiplier }),
         businessType: "workflow_node_execution",
         capability: expectedCapability,
-        modelUsages: [expect.objectContaining({ inputTokens: 120, outputTokens: 30 })],
       }),
     ]);
+    expect(repository.usageEvents[0]).not.toHaveProperty("modelUsages");
   });
 
   it("routes empty AI Intent input to fallback without creating an Inference Job", async () => {

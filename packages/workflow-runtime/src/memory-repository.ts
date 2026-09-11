@@ -1495,21 +1495,21 @@ export class InMemoryWorkflowRuntimeRepository implements WorkflowRuntimeReposit
     }
     if (this.usageCollectionEnabled && !failed
       && (task.nodeKind === "ai-intent" || task.nodeKind === "llm" || task.nodeKind === "ai-collect")) {
-      const usages = this.inferenceJobs
+      const usage = this.inferenceJobs
         .filter(job => job.uid === input.uid
           && job.taskId === task.id
           && job.status === "succeeded"
           && job.usage !== null)
         .sort(compareById)
-        .map(job => clone(job.usage!));
+        .at(0)?.usage ?? null;
       const event = createWorkflowNodeUsageEvent({
+        billingModel: usage?.billingModel ?? null,
         executionId: nodeExecutionId,
         nodeId: task.nodeId,
         nodeKind: task.nodeKind,
         occurredAt: this.now(),
         runId: run.id,
         uid: input.uid,
-        usages,
         workflowId: run.workflowId,
       });
       if (event && !this.usageEvents.some(existing =>

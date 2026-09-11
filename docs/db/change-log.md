@@ -2,7 +2,7 @@
 
 ## 2026-09-10 Workflow 推理用量快照
 
-- `xy_wap_embed_workflow_inference_job` 增加模型调用用量快照，供节点成功事务生成 AI Usage Event。
+- `xy_wap_embed_workflow_inference_job` 增加模型调用用量快照，独立保留内部成本数据并提供调用时的计费模型快照；Usage Event 不汇总 Token。
 - Workflow 表尚未进入生产环境；新环境直接执行 `docs/db/schema.sql`。已创建测试表时执行以下 DDL。
 
 ```sql

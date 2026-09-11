@@ -58,9 +58,9 @@ describe("AI Collect runtime", () => {
       expect.objectContaining({
         billingModel: { creditMultiplier: 100, model: "ep-ai-collect", modelId: null },
         capability: "workflow_ai_collect",
-        modelUsages: [expect.objectContaining({ inputTokens: 90, outputTokens: 15 })],
       }),
     ]);
+    expect(harness.runtime.usageEvents[0]).not.toHaveProperty("modelUsages");
   });
 
   it("activates Agent guidance only after the initial input remains incomplete", async () => {

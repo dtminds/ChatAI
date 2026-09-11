@@ -8,7 +8,6 @@ import { Cancel01Icon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import type { LexicalEditor } from "lexical";
 import { Button } from "@/components/ui/button";
-import { Separator } from "@/components/ui/separator";
 import {
   Sheet,
   SheetContent,
@@ -358,6 +357,7 @@ export function ChatPanel({
   const sidebarPanelLabel = activeConversation?.mode === "group"
     ? "群成员信息栏"
     : "客户信息栏";
+
   const historyPanelNode = historyPanel ? (
     <MessageHistorySidePanel
       accountAvatarUrl={accountAvatarUrl}
@@ -550,171 +550,215 @@ export function ChatPanel({
                 />
               ) : null}
 
-              <ChatMessagePanel
-                activeHistoryStatus={activeHistoryStatus}
-                bottomOverlay={
-                  hasActiveFileUpload ? (
-                    <FileUploadQueueBar
-                      items={fileUploadQueue}
-                      onCancelFileUpload={onCancelFileUpload}
-                    />
-                  ) : null
-                }
-                canCollectMaterialActions={canCollectMaterialActions}
-                canUseMessageActions={canSendMessage}
-                canUseMessageForward={canUseMessageForward}
-                hasBottomOverlay={hasActiveFileUpload}
-                hasMoreHistory={hasMoreHistory}
-                historyLoadLabel={historyLoadLabel}
-                isConversationLoading={isConversationLoading}
-                conversationId={activeConversation.id}
-                conversationMode={activeConversation.mode}
-                customerAvatarFallbackUrl={
-                  activeConversation.customerBindType === 2
-                    ? activeConversation.customerAvatarUrl
-                    : undefined
-                }
-                messages={messages}
-                multiSelectMode={multiSelectMode}
-                selectedMessageKeys={selectedMessageKeys}
-                messageViewportRef={messageViewportRef}
-                onCollectMaterial={onCollectMaterial}
-                onEnterMultiSelectMode={onEnterMultiSelectMode}
-                onForwardMessage={onForwardMessage}
-                onDownloadMessageFile={onDownloadMessageFile}
-                onMentionMessage={onMentionMessage}
-                onLoadOlderMessages={onLoadOlderMessages}
-                onOpenQuotedMessage={onOpenQuotedMessage}
-                onQuoteMessage={onQuoteMessage}
-                onSendSmartReply={onSendSmartReply}
-                onFillSmartReplyComposer={onFillSmartReplyComposer}
-                onDismissSmartReply={onDismissSmartReply}
-                onMakeShorterSmartReply={onMakeShorterSmartReply}
-                onTriggerSmartReply={onTriggerSmartReply}
-                onToggleMessageSelection={onToggleMessageSelection}
-                onRevokeMessage={onRevokeMessage}
-                onMessageViewportScroll={onMessageViewportScroll}
-                onRetryMessage={onRetryMessage}
-                onLoadSendFailReason={onLoadSendFailReason}
-                onTranscribeVoice={onTranscribeVoice}
-                onVoicePlaybackReady={onVoicePlaybackReady}
-                retryingMessageIds={retryingMessageIds}
-              />
+              <div className="relative flex min-h-0 flex-1">
+                <ChatMessagePanel
+                  activeHistoryStatus={activeHistoryStatus}
+                  canCollectMaterialActions={canCollectMaterialActions}
+                  canUseMessageActions={canSendMessage}
+                  canUseMessageForward={canUseMessageForward}
+                  hasMoreHistory={hasMoreHistory}
+                  historyLoadLabel={historyLoadLabel}
+                  isConversationLoading={isConversationLoading}
+                  conversationId={activeConversation.id}
+                  conversationMode={activeConversation.mode}
+                  customerAvatarFallbackUrl={
+                    activeConversation.customerBindType === 2
+                      ? activeConversation.customerAvatarUrl
+                      : undefined
+                  }
+                  messages={messages}
+                  multiSelectMode={multiSelectMode}
+                  selectedMessageKeys={selectedMessageKeys}
+                  messageViewportRef={messageViewportRef}
+                  onCollectMaterial={onCollectMaterial}
+                  onEnterMultiSelectMode={onEnterMultiSelectMode}
+                  onForwardMessage={onForwardMessage}
+                  onDownloadMessageFile={onDownloadMessageFile}
+                  onMentionMessage={onMentionMessage}
+                  onLoadOlderMessages={onLoadOlderMessages}
+                  onOpenQuotedMessage={onOpenQuotedMessage}
+                  onQuoteMessage={onQuoteMessage}
+                  onSendSmartReply={onSendSmartReply}
+                  onFillSmartReplyComposer={onFillSmartReplyComposer}
+                  onDismissSmartReply={onDismissSmartReply}
+                  onMakeShorterSmartReply={onMakeShorterSmartReply}
+                  onTriggerSmartReply={onTriggerSmartReply}
+                  onToggleMessageSelection={onToggleMessageSelection}
+                  onRevokeMessage={onRevokeMessage}
+                  onMessageViewportScroll={onMessageViewportScroll}
+                  onRetryMessage={onRetryMessage}
+                  onLoadSendFailReason={onLoadSendFailReason}
+                  onTranscribeVoice={onTranscribeVoice}
+                  onVoicePlaybackReady={onVoicePlaybackReady}
+                  retryingMessageIds={retryingMessageIds}
+                />
 
-              <Separator className="bg-divider" />
-
-              <div className="relative">
-                {scopeTransitionError ? (
+                <div className="pointer-events-none absolute inset-x-0 bottom-0 z-10 flex flex-col">
                   <div
-                    className="absolute bottom-full left-0 right-0 z-20 mb-0 flex min-h-8 items-center justify-between gap-3 border-t border-destructive/10 bg-destructive/55 px-5 py-1.5 text-xs font-medium leading-5 text-destructive-foreground/90 shadow-[0_-4px_16px_var(--shadow-soft)] backdrop-blur-md"
-                    data-testid="scope-transition-error"
-                    role="status"
-                  >
-                    <span className="min-w-0 truncate">{scopeTransitionError}</span>
-                    <button
-                      aria-label="关闭错误提示"
-                      className="inline-flex size-6 shrink-0 items-center justify-center rounded-[6px] text-destructive-foreground/75 outline-none transition-colors hover:bg-white/10 hover:text-destructive-foreground focus-visible:ring-2 focus-visible:ring-white/30"
-                      onClick={onDismissScopeTransitionError}
-                      type="button"
-                    >
-                      <HugeiconsIcon
-                        aria-hidden="true"
-                        icon={Cancel01Icon}
-                        size={14}
-                        strokeWidth={2}
-                      />
-                    </button>
-                  </div>
-                ) : null}
-
-                <div className="relative overflow-visible bg-surface">
-                  {agentHostingStatus ? (
+                    aria-hidden="true"
+                    className="absolute inset-y-0 left-0 right-[var(--scrollbar-size)] bg-linear-to-b from-transparent via-surface/85 to-surface"
+                  />
+                  {scopeTransitionError ? (
                     <div
-                      className="absolute bottom-12 left-1/2 z-30 w-4/5 max-w-[520px] -translate-x-1/2"
-                      data-testid="chat-agent-hosting-status-bar-anchor"
+                      className="pointer-events-auto relative z-20 flex min-h-8 items-center justify-between gap-3 border-t border-destructive/10 bg-destructive/55 px-5 py-1.5 text-xs font-medium leading-5 text-destructive-foreground/90 shadow-[0_-4px_16px_var(--shadow-soft)] backdrop-blur-md"
+                      data-testid="scope-transition-error"
+                      role="status"
                     >
-                      <ChatAgentHostingStatusBar
-                        onCancel={onCancelAgentHosting}
-                        onEnable={onEnableAgentHosting}
-                        status={agentHostingStatus}
-                      />
+                      <span className="min-w-0 truncate">
+                        {scopeTransitionError}
+                      </span>
+                      <button
+                        aria-label="关闭错误提示"
+                        className="inline-flex size-6 shrink-0 items-center justify-center rounded-[6px] text-destructive-foreground/75 outline-none transition-colors hover:bg-destructive-foreground/10 hover:text-destructive-foreground focus-visible:ring-2 focus-visible:ring-destructive-foreground/30"
+                        onClick={onDismissScopeTransitionError}
+                        type="button"
+                      >
+                        <HugeiconsIcon
+                          aria-hidden="true"
+                          icon={Cancel01Icon}
+                          size={14}
+                          strokeWidth={2}
+                        />
+                      </button>
                     </div>
                   ) : null}
-                  <div
-                    className={cn(
-                      "relative",
-                      multiSelectMode && "z-40",
-                    )}
-                  >
-                    <div
-                      className={cn(multiSelectMode && "pointer-events-none")}
-                      inert={multiSelectMode || undefined}
-                    >
-                      <ChatComposer
-                      canConfigureSeatAIHosting={canConfigureSeatAIHosting}
-                      canConfigureSeatSemiAuto={canConfigureSeatSemiAuto}
-                      canToggleConversationAIHosting={canToggleConversationAIHosting}
-                      canSendMessage={canSendMessage}
-                      historyKey={activeConversation.id}
-                      shouldShowConversationAIHostingControl={
-                        shouldShowConversationAIHostingControl
-                      }
-                      fullAutoActionPending={fullAutoActionPending}
-                      seatAgentModeActionPending={seatAgentModeActionPending}
-                      hasActiveFileUpload={hasActiveFileUpload}
-                      currentSeatThirdUserId={activeConversation.thirdUserId}
-                      groupMembers={groupMembers}
-                      hidePlaceholder={!!agentHostingStatus}
-                      isGroupConversation={activeConversation.mode === "group"}
-                      inputEnterBehavior={inputEnterBehavior}
-                      isEmojiPickerOpen={isEmojiPickerOpen}
-                      isMobileLayout={isMobileLayout}
-                      isSending={isSendingDraft}
-                      isHistoryPanelOpen={resolvedAuxiliaryPanel === "history"}
-                      accountAvatarUrl={activeAccount?.avatarUrl ?? accountAvatarUrl}
-                      accountName={activeAccount?.name ?? accountName}
-                      seatAIHostingAuth={activeAccount?.seatAIHostingAuth === true}
-                      seatSemiAutoAuth={activeAccount?.semiAutoAuth === true}
-                      conversationAIHostingConfigured={conversationAIHostingConfigured}
-                      fullAutoSwitch={activeAccount?.fullAutoSwitch === true}
-                      semiAutoSwitch={activeAccount?.semiAutoSwitch === true}
-                      collectedExpressions={collectedExpressions}
-                      hasMoreCollectedExpressions={hasMoreCollectedExpressions}
-                      isCollectedExpressionLoadingMore={
-                        isCollectedExpressionLoadingMore
-                      }
-                      sendingCollectedExpressionId={sendingCollectedExpressionId}
-                      onClearQuotedMessage={onClearQuotedMessage}
-                      onDeleteCollectedExpression={onDeleteCollectedExpression}
-                      onDraftChange={onDraftChange}
-                      onEmojiPickerOpenChange={onEmojiPickerOpenChange}
-                      onEnterBehaviorChange={onEnterBehaviorChange}
-                      onFileSelect={onFileSelect}
-                      onChangeSeatAgentMode={onChangeSeatAgentMode ?? noopChangeSeatAgentMode}
-                      onChangeFullAuto={onChangeFullAuto ?? noopChangeFullAuto}
-                      onLoadMoreCollectedExpressions={
-                        onLoadMoreCollectedExpressions
-                      }
-                      onOpenCollectedExpressions={onOpenCollectedExpressions}
-                      onOpenMaterialLibrary={onOpenMaterialLibrary ?? noop}
-                      onOpenHistory={handleOpenHistory}
-                      onSelectCollectedExpression={onSelectCollectedExpression}
-                      onSegmentsChange={onComposerSegmentsChange}
-                      onSendDraft={onSendDraft}
-                      onTopCollectedExpression={onTopCollectedExpression}
-                      placeholder={composerPlaceholder}
-                      quotedMessage={quotedMessage}
-                      composerRef={composerRef}
-                    />
-                    </div>
-                    {multiSelectMode && multiSelectToolbar ? (
-                      <div
-                        className="absolute inset-0 z-10 flex items-center justify-center bg-background"
-                        data-testid="message-multi-select-composer-overlay"
-                      >
-                        {multiSelectToolbar}
+
+                  <div className="pointer-events-auto relative z-10 flex flex-col overflow-visible">
+                    {hasActiveFileUpload ? (
+                      <div className="absolute inset-x-4 top-3 z-20 -translate-y-full">
+                        <FileUploadQueueBar
+                          items={fileUploadQueue}
+                          onCancelFileUpload={onCancelFileUpload}
+                        />
                       </div>
                     ) : null}
+                    {agentHostingStatus ? (
+                      <div
+                        className="absolute bottom-12 left-1/2 z-30 w-4/5 max-w-[520px] -translate-x-1/2"
+                        data-testid="chat-agent-hosting-status-bar-anchor"
+                      >
+                        <ChatAgentHostingStatusBar
+                          onCancel={onCancelAgentHosting}
+                          onEnable={onEnableAgentHosting}
+                          status={agentHostingStatus}
+                        />
+                      </div>
+                    ) : null}
+                    <div
+                      className={cn(
+                        "relative flex flex-col",
+                        multiSelectMode && "z-40",
+                      )}
+                    >
+                      <div
+                        className={cn(
+                          "flex flex-col",
+                          multiSelectMode && "pointer-events-none",
+                        )}
+                        inert={multiSelectMode || undefined}
+                      >
+                        <ChatComposer
+                          canConfigureSeatAIHosting={canConfigureSeatAIHosting}
+                          canConfigureSeatSemiAuto={canConfigureSeatSemiAuto}
+                          canToggleConversationAIHosting={
+                            canToggleConversationAIHosting
+                          }
+                          canSendMessage={canSendMessage}
+                          historyKey={activeConversation.id}
+                          shouldShowConversationAIHostingControl={
+                            shouldShowConversationAIHostingControl
+                          }
+                          fullAutoActionPending={fullAutoActionPending}
+                          seatAgentModeActionPending={seatAgentModeActionPending}
+                          hasActiveFileUpload={hasActiveFileUpload}
+                          currentSeatThirdUserId={
+                            activeConversation.thirdUserId
+                          }
+                          groupMembers={groupMembers}
+                          hidePlaceholder={!!agentHostingStatus}
+                          isGroupConversation={
+                            activeConversation.mode === "group"
+                          }
+                          inputEnterBehavior={inputEnterBehavior}
+                          isEmojiPickerOpen={isEmojiPickerOpen}
+                          isMobileLayout={isMobileLayout}
+                          isSending={isSendingDraft}
+                          isHistoryPanelOpen={
+                            resolvedAuxiliaryPanel === "history"
+                          }
+                          accountAvatarUrl={
+                            activeAccount?.avatarUrl ?? accountAvatarUrl
+                          }
+                          accountName={activeAccount?.name ?? accountName}
+                          seatAIHostingAuth={
+                            activeAccount?.seatAIHostingAuth === true
+                          }
+                          seatSemiAutoAuth={
+                            activeAccount?.semiAutoAuth === true
+                          }
+                          conversationAIHostingConfigured={
+                            conversationAIHostingConfigured
+                          }
+                          fullAutoSwitch={
+                            activeAccount?.fullAutoSwitch === true
+                          }
+                          semiAutoSwitch={
+                            activeAccount?.semiAutoSwitch === true
+                          }
+                          collectedExpressions={collectedExpressions}
+                          hasMoreCollectedExpressions={
+                            hasMoreCollectedExpressions
+                          }
+                          isCollectedExpressionLoadingMore={
+                            isCollectedExpressionLoadingMore
+                          }
+                          sendingCollectedExpressionId={
+                            sendingCollectedExpressionId
+                          }
+                          onClearQuotedMessage={onClearQuotedMessage}
+                          onDeleteCollectedExpression={
+                            onDeleteCollectedExpression
+                          }
+                          onDraftChange={onDraftChange}
+                          onEmojiPickerOpenChange={onEmojiPickerOpenChange}
+                          onEnterBehaviorChange={onEnterBehaviorChange}
+                          onFileSelect={onFileSelect}
+                          onChangeSeatAgentMode={
+                            onChangeSeatAgentMode ?? noopChangeSeatAgentMode
+                          }
+                          onChangeFullAuto={
+                            onChangeFullAuto ?? noopChangeFullAuto
+                          }
+                          onLoadMoreCollectedExpressions={
+                            onLoadMoreCollectedExpressions
+                          }
+                          onOpenCollectedExpressions={
+                            onOpenCollectedExpressions
+                          }
+                          onOpenMaterialLibrary={
+                            onOpenMaterialLibrary ?? noop
+                          }
+                          onOpenHistory={handleOpenHistory}
+                          onSelectCollectedExpression={
+                            onSelectCollectedExpression
+                          }
+                          onSegmentsChange={onComposerSegmentsChange}
+                          onSendDraft={onSendDraft}
+                          onTopCollectedExpression={onTopCollectedExpression}
+                          placeholder={composerPlaceholder}
+                          quotedMessage={quotedMessage}
+                          composerRef={composerRef}
+                        />
+                      </div>
+                      {multiSelectMode && multiSelectToolbar ? (
+                        <div
+                          className="absolute inset-0 z-10 flex items-center justify-center bg-surface"
+                          data-testid="message-multi-select-composer-overlay"
+                        >
+                          {multiSelectToolbar}
+                        </div>
+                      ) : null}
+                    </div>
                   </div>
                 </div>
               </div>

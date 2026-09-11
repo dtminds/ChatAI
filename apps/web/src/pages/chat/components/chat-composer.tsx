@@ -271,7 +271,7 @@ export function ChatComposer({
       },
       theme: {
         paragraph: "m-0",
-        root: "chat-composer-editor min-h-28 outline-none",
+        root: "chat-composer-editor min-h-18 outline-none",
       },
     }),
     [],
@@ -707,7 +707,7 @@ export function ChatComposer({
   return (
     <TooltipProvider delayDuration={300}>
       <div
-        className="relative space-y-1.5 bg-surface px-4 pb-3 pt-3"
+        className="relative mx-4 mb-4 mt-3 flex flex-col gap-1.5 rounded-[18px] border border-divider bg-card px-4 pb-2 pt-3 shadow-[0_2px_8px_var(--shadow-soft)]"
         data-testid="chat-composer"
         onDragEnter={handleComposerDragEnter}
         onDragLeave={handleComposerDragLeave}
@@ -716,7 +716,7 @@ export function ChatComposer({
       >
         {imageDragState ? (
           <div
-            className="pointer-events-none absolute inset-0 z-40 flex items-center justify-center bg-surface-muted/80 text-sm font-medium text-muted-foreground backdrop-blur-sm"
+            className="pointer-events-none absolute inset-0 z-40 flex items-center justify-center rounded-[18px] bg-surface-muted/80 text-sm font-medium text-muted-foreground backdrop-blur-sm"
             data-testid="chat-composer-image-drop-overlay"
             role="status"
           >
@@ -736,7 +736,7 @@ export function ChatComposer({
 
         {isMobileLayout ? (
           <div
-            className="flex items-center justify-between gap-3 text-sm text-muted-foreground"
+            className="order-last flex items-center justify-between gap-3 text-sm text-muted-foreground"
             data-testid="chat-composer-mobile-toolbar"
           >
             <div className="ml-[-6px] flex items-center gap-1.5">
@@ -1059,7 +1059,7 @@ export function ChatComposer({
             </Button>
           </div>
         ) : (
-          <div className="flex items-center justify-between gap-3 text-sm text-muted-foreground">
+          <div className="order-last flex items-center justify-between gap-3 text-sm text-muted-foreground">
             <div className="ml-[-6px] flex items-center gap-1.5">
               <div className="relative" ref={emojiPickerRef}>
                 <ComposerActionTooltip
@@ -1475,7 +1475,7 @@ export function ChatComposer({
                 <ContentEditable
                   aria-label={placeholder}
                   aria-multiline="true"
-                  className="chat-composer-textarea min-h-28 max-h-80 overflow-y-auto rounded-none border-0 bg-transparent py-1 pl-0 pr-0.5 text-[14px] leading-6 shadow-none outline-none focus-visible:ring-0"
+                  className="chat-composer-textarea min-h-18 max-h-80 overflow-y-auto rounded-none border-0 bg-transparent py-1 pl-0 pr-0.5 text-[14px] leading-6 shadow-none outline-none focus-visible:ring-0"
                   data-testid="chat-composer-editor"
                 />
               }

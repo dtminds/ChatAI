@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 import { AgentModelBadge } from "@/pages/chat/ai-hosting/agent-model-badge";
 
 describe("AgentModelBadge", () => {
-  it("uses provider icons for versioned Doubao and DeepSeek model names", () => {
+  it("uses provider icons for versioned Doubao, DeepSeek, and GLM model names", () => {
     const { rerender } = render(<AgentModelBadge model="Doubao-Seed-2.0-pro" />);
 
     expect(screen.getByTitle("模型图标：Doubao-Seed-2.0-pro").querySelector("img")).toHaveAttribute(
@@ -24,6 +24,13 @@ describe("AgentModelBadge", () => {
     expect(screen.getByTitle("模型图标：DeepSeek-V3.2").querySelector("img")).toHaveAttribute(
       "src",
       "https://b5.bokr.com.cn/dist/llm/deepseek-color.svg",
+    );
+
+    rerender(<AgentModelBadge model="GLM-5.3-Flash" />);
+
+    expect(screen.getByTitle("模型图标：GLM-5.3-Flash").querySelector("img")).toHaveAttribute(
+      "src",
+      "https://b5.bokr.com.cn/dist/llm/zai.svg",
     );
   });
 

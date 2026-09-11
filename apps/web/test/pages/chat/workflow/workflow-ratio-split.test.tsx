@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { useState } from "react";
 import { HierarchySquare08Icon } from "@hugeicons/core-free-icons";
@@ -9,6 +9,7 @@ import { createDefaultNodeData, getNodeDefinition } from "@/pages/chat/workflow/
 import { RatioSplitConfig } from "@/pages/chat/workflow/nodes/ratio-split/panel";
 import {
   addWorkflowRatioSplitGroup,
+  isWorkflowRatioSplitLocallyComplete,
   removeWorkflowRatioSplitGroup,
 } from "@/pages/chat/workflow/nodes/ratio-split/groups";
 import type {
@@ -16,6 +17,7 @@ import type {
   WorkflowNode,
   WorkflowNodeConfigPatch,
 } from "@/pages/chat/workflow/types";
+import { validateWorkflowNodeConfig } from "@/pages/chat/workflow/validation/workflow-validation";
 
 describe("workflow Ratio Split node", () => {
   it("registers the requested visual and two complete default groups", () => {
@@ -77,15 +79,41 @@ describe("workflow Ratio Split node", () => {
     expect(screen.getByRole("button", { name: "添加分组" })).toBeDisabled();
   });
 
-  it("limits group names to ten characters", async () => {
-    const user = userEvent.setup();
-    render(<StatefulRatioSplitConfig />);
+  it("keeps composition drafts local and commits a limited group name", () => {
+    const onNodeChange = vi.fn();
+    render(<StatefulRatioSplitConfig onNodeChange={onNodeChange} />);
 
     const firstGroupName = screen.getAllByRole("textbox", { name: /分组 [A-E]/ })[0]!;
-    await user.clear(firstGroupName);
-    await user.type(firstGroupName, "一二三四五六七八九十一");
+    fireEvent.compositionStart(firstGroupName);
+    fireEvent.change(firstGroupName, { target: { value: "一二三四五六七八九十一" } });
+
+    expect(firstGroupName).toHaveValue("一二三四五六七八九十一");
+    expect(onNodeChange).not.toHaveBeenCalled();
+
+    fireEvent.compositionEnd(firstGroupName);
 
     expect(firstGroupName).toHaveValue("一二三四五六七八九十");
+    expect(firstGroupName).not.toHaveAttribute("aria-invalid");
+    expect(screen.getByText("10/10")).toBeInTheDocument();
+    expect(onNodeChange).toHaveBeenLastCalledWith(expect.objectContaining({
+      groups: [expect.objectContaining({ label: "一二三四五六七八九十" }), expect.anything()],
+    }));
+  });
+
+  it("blocks publishing and warns when a group name exceeds the limit", () => {
+    const node = createRatioSplitNode();
+    const groups = node.data.groups.map((group, index) => index === 0
+      ? { ...group, label: "一二三四五六七八九十一" }
+      : group);
+    const invalidNode: WorkflowNode<"ratio-split"> = {
+      ...node,
+      data: { ...node.data, groups },
+    };
+
+    expect(isWorkflowRatioSplitLocallyComplete(groups)).toBe(false);
+    expect(validateWorkflowNodeConfig(invalidNode, [invalidNode], [])).toContainEqual(
+      expect.objectContaining({ code: "ratio-split-label-too-long" }),
+    );
   });
 
   it("confirms deletion when the removable group already has a downstream edge", async () => {

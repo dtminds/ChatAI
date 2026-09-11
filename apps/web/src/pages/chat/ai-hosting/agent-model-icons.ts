@@ -33,6 +33,13 @@ const agentModelProviderIconRules: Array<{
     },
     match: /\bdeepseek\b/,
   },
+  {
+    config: {
+      iconUrl: "https://b5.bokr.com.cn/dist/llm/zai.svg",
+      label: "GLM",
+    },
+    match: /\bglm\b/,
+  },
 ];
 
 function normalizeModelKey(model: string) {

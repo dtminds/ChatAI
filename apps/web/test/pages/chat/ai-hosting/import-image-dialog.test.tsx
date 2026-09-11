@@ -202,6 +202,36 @@ describe("ImportImageDialog", () => {
     expect(screen.queryByRole("region", { name: "已选择图片" })).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "确认提交" })).toBeDisabled();
   });
+
+  it("limits an image knowledge name before submit", async () => {
+    const user = userEvent.setup();
+    const imageFile = new File(["image"], "商品主图.png", { type: "image/png" });
+
+    renderDialog();
+
+    await user.upload(screen.getByLabelText("选择图片知识文件"), imageFile);
+    const nameInput = screen.getByLabelText(/知识名称/);
+    await waitFor(() => {
+      expect(nameInput).toHaveValue("商品主图");
+    });
+    await user.clear(nameInput);
+    await user.type(nameInput, "一二三四五六七八九十一二三四五六甲");
+
+    expect(nameInput).toHaveValue("一二三四五六七八九十一二三四五六");
+
+    await user.type(screen.getByLabelText(/图片描述/), "晨间护肤套装商品主图");
+    expect(nameInput).not.toHaveAttribute("aria-invalid");
+    expect(screen.getByText("16/16")).toBeInTheDocument();
+    expect(screen.queryByText("知识名称不能超过16字")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "确认提交" })).toBeEnabled();
+
+    await user.click(screen.getByRole("button", { name: "确认提交" }));
+    await waitFor(() => {
+      expect(importKbImageDoc).toHaveBeenCalledWith(expect.objectContaining({
+        name: "一二三四五六七八九十一二三四五六",
+      }));
+    });
+  });
 });
 
 function renderDialog({

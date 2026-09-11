@@ -20,13 +20,14 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { LimitedInput } from "@/components/ui/limited-input";
 import {
   InputGroup,
   InputGroupAddon,
   InputGroupInput,
 } from "@/components/ui/input-group";
 import { Label } from "@/components/ui/label";
+import { cn } from "@/lib/utils";
 import { WorkflowSettingsSection } from "../../panels/settings-section";
 import type { NodeSettingsProps } from "../../panels/types";
 import {
@@ -70,7 +71,11 @@ export function RatioSplitConfig({ edges, node, onNodeChange }: NodeSettingsProp
       title="分流设置"
     >
       <div className="space-y-3">
-        {groups.map((group, index) => (
+        {groups.map((group, index) => {
+          const labelLength = group.label.length;
+          const labelTooLong = labelLength > WORKFLOW_RATIO_SPLIT_GROUP_LABEL_MAX_LENGTH;
+
+          return (
           <section
             className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-x-2 gap-y-2 rounded-[8px] border p-3"
             key={group.id}
@@ -78,12 +83,27 @@ export function RatioSplitConfig({ edges, node, onNodeChange }: NodeSettingsProp
             <Label htmlFor={`ratio-split-label-${node.id}-${group.id}`}>
               分组 {String.fromCharCode(65 + index)}
             </Label>
-            <Input
-              id={`ratio-split-label-${node.id}-${group.id}`}
-              maxLength={WORKFLOW_RATIO_SPLIT_GROUP_LABEL_MAX_LENGTH}
-              onChange={event => updateGroup(group.id, { label: event.target.value })}
-              value={group.label}
-            />
+            <div className="relative min-w-0">
+              <LimitedInput
+                aria-invalid={labelTooLong || undefined}
+                className={cn(
+                  "pr-12",
+                  labelTooLong && "border-destructive focus-visible:border-destructive focus-visible:ring-destructive/15",
+                )}
+                id={`ratio-split-label-${node.id}-${group.id}`}
+                maxLength={WORKFLOW_RATIO_SPLIT_GROUP_LABEL_MAX_LENGTH}
+                onValueChange={label => updateGroup(group.id, { label })}
+                value={group.label}
+              />
+              <span
+                className={cn(
+                  "pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-[11px] tabular-nums text-muted-foreground",
+                  labelTooLong && "text-destructive",
+                )}
+              >
+                {labelLength}/{WORKFLOW_RATIO_SPLIT_GROUP_LABEL_MAX_LENGTH}
+              </span>
+            </div>
             <Button
               aria-label={`删除${group.label || `分组 ${String.fromCharCode(65 + index)}`}`}
               className="size-7 p-0 text-destructive hover:text-destructive"
@@ -102,7 +122,8 @@ export function RatioSplitConfig({ edges, node, onNodeChange }: NodeSettingsProp
               onChange={basisPoints => updateGroup(group.id, { basisPoints })}
             />
           </section>
-        ))}
+          );
+        })}
 
         <Button
           className="h-9 w-full rounded-[8px]"

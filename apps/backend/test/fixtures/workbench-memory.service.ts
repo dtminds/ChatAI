@@ -1518,6 +1518,20 @@ export function createMemoryWorkbenchService() {
         status: "accepted",
       };
     },
+    getSendFailReason(
+      _subUserId: string,
+      payload: { conversationId: string; messageSeq: number },
+    ) {
+      const message = findMemoryMessageBySeq(
+        state,
+        payload.conversationId,
+        payload.messageSeq,
+      );
+
+      return {
+        failReason: message?.failReason?.trim() ?? "",
+      };
+    },
     takeOverSeat(_subUserId: string, seatId: string): WorkbenchTakeOverSeatResponse {
       const seat = findSeat(state, seatId);
 

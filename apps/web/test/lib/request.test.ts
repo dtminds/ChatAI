@@ -11,6 +11,7 @@ import {
 import { getAuthScopeForHostname } from "@/lib/auth-request-adapter";
 import { http, request, RequestNormalizedError, requestInstance } from "@/lib/request";
 import { fetchWorkbenchSidebarIframeParams } from "@/pages/chat/api/sidebar-iframe-params";
+import { createHttpWorkbenchService } from "@/pages/chat/api/workbench-service";
 import { useAuthStore } from "@/store/auth-store";
 
 const mock = new MockAdapter(requestInstance);
@@ -343,6 +344,9 @@ describe("request", () => {
     });
     mock.onPost("/server/messages/send").reply(200, { ok: true });
     mock.onPost("/server/messages/download").reply(200, { ok: true });
+    mock.onPost("/server/messages/send-fail-reason").reply(200, {
+      failReason: "当前机器人不在线",
+    });
     mock.onPost("/server/sidebar-iframe-params").reply(200, {
       fsw: "encrypted-fsw",
       rd: "encrypted-rd",
@@ -372,11 +376,22 @@ describe("request", () => {
       rd: "encrypted-rd",
       ts: "encrypted-ts",
     });
+    await expect(
+      createHttpWorkbenchService().getSendFailReason({
+        conversationId: "conv-001",
+        messageSeq: 1,
+      }),
+    ).resolves.toEqual({
+      failReason: "当前机器人不在线",
+    });
     expect(
       mock.history.post.filter((item) => item.url === "/server/messages/send"),
     ).toHaveLength(0);
     expect(
       mock.history.post.filter((item) => item.url === "/server/messages/download"),
+    ).toHaveLength(1);
+    expect(
+      mock.history.post.filter((item) => item.url === "/server/messages/send-fail-reason"),
     ).toHaveLength(1);
     expect(
       mock.history.post.filter((item) => item.url === "/server/sidebar-iframe-params"),

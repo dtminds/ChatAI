@@ -8301,6 +8301,59 @@ describe("useWorkbenchStore", () => {
     expect(state.pendingMessages).toHaveLength(0);
   });
 
+  it("requests the send failReason again after a failed request without writing message state", async () => {
+    const baseService = createMockWorkbenchService();
+    const getSendFailReason = vi
+      .fn()
+      .mockRejectedValueOnce(new Error("temporary failure"))
+      .mockResolvedValueOnce({ failReason: "最新原因" });
+    setWorkbenchService({
+      ...baseService,
+      getSendFailReason,
+    });
+    await useWorkbenchStore.getState().initializeWorkbench();
+    useWorkbenchStore.setState((state) => ({
+      messagesByConversationId: {
+        ...state.messagesByConversationId,
+        "conv-001": [
+          {
+            author: "客服一号",
+            content: {
+              text: "发送失败消息",
+              type: "text",
+            },
+            conversationId: "conv-001",
+            uiMessageKey: "failed-6991",
+            role: "agent",
+            sender: {
+              id: "agent-001",
+              name: "客服一号",
+            },
+            sentAt: "2026-05-20 10:00:00",
+            seq: 6991,
+            status: "failed",
+          },
+        ],
+      },
+    }));
+
+    await expect(
+      useWorkbenchStore.getState().loadSendFailReason("failed-6991"),
+    ).rejects.toThrow("temporary failure");
+    await expect(
+      useWorkbenchStore.getState().loadSendFailReason("failed-6991"),
+    ).resolves.toBe("最新原因");
+
+    expect(getSendFailReason).toHaveBeenCalledTimes(2);
+    expect(getSendFailReason).toHaveBeenNthCalledWith(1, {
+      conversationId: "conv-001",
+      messageSeq: 6991,
+    });
+    expect(useWorkbenchStore.getState().messagesByConversationId["conv-001"][0]).not.toHaveProperty(
+      "failReason",
+    );
+  });
+
   it("retries a failed text message by resending it as a new pending message", async () => {
     await useWorkbenchStore.getState().initializeWorkbench();
     await useWorkbenchStore.getState().sendAgentTextMessage("这条消息会失败 [fail]");

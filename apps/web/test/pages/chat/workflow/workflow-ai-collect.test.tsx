@@ -13,6 +13,7 @@ import {
   AI_COLLECT_COMPLETED_HANDLE_ID,
   AI_COLLECT_FIELD_MAX_COUNT,
   AI_COLLECT_INCOMPLETE_HANDLE_ID,
+  getAiCollectStatus,
   normalizeAiCollectTimeout,
 } from "@/pages/chat/workflow/nodes/ai-collect/config";
 import { AiCollectNodeBody } from "@/pages/chat/workflow/nodes/ai-collect/body";
@@ -168,6 +169,43 @@ describe("workflow AI Collect", () => {
     expect(screen.getByRole("button", { name: "从模板选择" })).toBeDisabled();
   });
 
+  it("keeps composition drafts local and commits a limited field name", () => {
+    const onNodeChange = vi.fn();
+    const collect = createAiCollectNode({
+      fields: [{
+        id: "field-city",
+        instruction: "提取所在城市",
+        name: "一二三四五六七八九",
+        type: "text",
+      }],
+    });
+
+    render(
+      <StatefulAiCollectConfig
+        edges={[]}
+        initialNode={collect}
+        nodes={[collect]}
+        onNodeChange={onNodeChange}
+      />,
+    );
+
+    const fieldName = screen.getByRole("textbox", { name: "字段 1 名称" });
+    fireEvent.compositionStart(fieldName);
+    fireEvent.change(fieldName, { target: { value: "一二三四五六七八九城市" } });
+
+    expect(fieldName).toHaveValue("一二三四五六七八九城市");
+    expect(onNodeChange).not.toHaveBeenCalled();
+
+    fireEvent.compositionEnd(fieldName);
+
+    expect(fieldName).toHaveValue("一二三四五六七八九城");
+    expect(fieldName).not.toHaveAttribute("aria-invalid");
+    expect(screen.getByText("10/10")).toBeInTheDocument();
+    expect(onNodeChange).toHaveBeenLastCalledWith(expect.objectContaining({
+      fields: [expect.objectContaining({ name: "一二三四五六七八九城" })],
+    }));
+  });
+
   it("enforces the 10-minute to 24-hour wait range and offers no day unit", async () => {
     const user = userEvent.setup();
     const onNodeChange = vi.fn();
@@ -277,6 +315,22 @@ describe("workflow AI Collect", () => {
 
     expect(issueCodes).toContain("ai-collect-field-name-required");
     expect(issueCodes).not.toContain("ai-collect-field-name-duplicate");
+  });
+
+  it("blocks publishing and warns when a field name exceeds the limit", () => {
+    const collect = createAiCollectNode({
+      fields: [{
+        id: "field-order",
+        instruction: "提取订单号",
+        name: "一二三四五六七八九十一",
+        type: "text",
+      }],
+    });
+
+    expect(getAiCollectStatus(collect.data)).toBe("warning");
+    expect(validateWorkflowNodeConfig(collect, [collect], [])).toContainEqual(
+      expect.objectContaining({ code: "ai-collect-field-name-too-long" }),
+    );
   });
 
   it("derives warning status when a configured input becomes unavailable", () => {

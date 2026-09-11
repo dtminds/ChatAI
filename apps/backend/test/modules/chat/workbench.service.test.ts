@@ -8754,6 +8754,78 @@ describe("MysqlWorkbenchService", () => {
     });
   });
 
+  it("reads send failReason from Java async-operation get-info by message optNo", async () => {
+    const javaClient = createJavaClient();
+    vi.mocked(javaClient.getAsyncOperationInfo).mockResolvedValue({
+      failReason: "当前机器人不在线",
+      optNo: "20260907007548741182212507699",
+      status: 2,
+    });
+    const repository = createMaterialRepository({
+      findRetryMessage: vi.fn().mockResolvedValue({
+        id: 538,
+        optNo: "20260907007548741182212507699",
+        senderType: "agent",
+      }),
+      getConversationLookup: vi.fn().mockResolvedValue({
+        id: "conv-001",
+        platform: 5,
+        seatHostSubUserId: "101",
+        seatId: "12",
+        thirdExternalUserId: "external-001",
+        thirdUserId: "seat-user-001",
+        uid: 272,
+      }),
+    });
+    const service = createWorkbenchService(repository, javaClient);
+
+    await expect(
+      service.getSendFailReason("101", {
+        conversationId: "conv-001",
+        messageSeq: 538,
+      }),
+    ).resolves.toEqual({
+      failReason: "当前机器人不在线",
+    });
+
+    expect(javaClient.getAsyncOperationInfo).toHaveBeenCalledWith({
+      optNo: "20260907007548741182212507699",
+      platform: 5,
+      uid: 272,
+    });
+  });
+
+  it("returns an empty send failReason when the failed message has no optNo", async () => {
+    const javaClient = createJavaClient();
+    const repository = createMaterialRepository({
+      findRetryMessage: vi.fn().mockResolvedValue({
+        id: 538,
+        optNo: null,
+        senderType: "agent",
+      }),
+      getConversationLookup: vi.fn().mockResolvedValue({
+        id: "conv-001",
+        platform: 5,
+        seatHostSubUserId: "101",
+        seatId: "12",
+        thirdExternalUserId: "external-001",
+        thirdUserId: "seat-user-001",
+        uid: 272,
+      }),
+    });
+    const service = createWorkbenchService(repository, javaClient);
+
+    await expect(
+      service.getSendFailReason("101", {
+        conversationId: "conv-001",
+        messageSeq: 538,
+      }),
+    ).resolves.toEqual({
+      failReason: "",
+    });
+    expect(javaClient.getAsyncOperationInfo).not.toHaveBeenCalled();
+  });
+
   it("reports retry failure when the failed message is missing", async () => {
     const repository = createMaterialRepository({
       findAsyncOperationByOptNo: vi.fn(),
@@ -9325,6 +9397,11 @@ function createJavaClient(): WorkbenchJavaClient {
     recognizeSentence: vi.fn().mockResolvedValue("这是一段语音转文字测试文本"),
     revokeMessage: vi.fn().mockResolvedValue(undefined),
     sendMessage: vi.fn(),
+    getAsyncOperationInfo: vi.fn().mockResolvedValue({
+      failReason: "",
+      optNo: "opt-001",
+      status: 2,
+    }),
     sendRecommendAnswer: vi.fn().mockResolvedValue(undefined),
     sendSmartHeartbeat: vi.fn().mockResolvedValue(undefined),
     setGroupSeatHostUserSeatIds: vi.fn().mockResolvedValue(undefined),

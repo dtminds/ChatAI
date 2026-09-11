@@ -800,6 +800,21 @@ export type WorkbenchRetryMessageRequest = {
   messageSeq: number;
 };
 
+export type WorkbenchSendFailReasonRequest = {
+  conversationId: string;
+  messageSeq: number;
+};
+
+export type WorkbenchSendFailReasonResponse = {
+  failReason: string;
+};
+
+export type WorkbenchAsyncOperationInfoDto = {
+  failReason: string;
+  optNo: string;
+  status: number;
+};
+
 export type WorkbenchConversationReadResponse = {
   conversationId: string;
   seatId: string;

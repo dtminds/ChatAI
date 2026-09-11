@@ -15,7 +15,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Input } from "@/components/ui/input";
+import { LimitedInput } from "@/components/ui/limited-input";
 import { cn } from "@/lib/utils";
 import { WORKFLOW_AI_BADGE_URL } from "../constants";
 import {
@@ -110,20 +110,24 @@ function WorkflowBaseNodeComponent({
               setRenameValue(data.title);
               setIsRenaming(false);
             }}
-            onCommitRename={() => {
+            onCommitRename={(nextRenameValue) => {
               if (renameCancelledRef.current) {
                 renameCancelledRef.current = false;
                 return;
               }
 
-              const title = renameValue.trim();
+              const title = nextRenameValue.trim();
+
+              if (!title || nextRenameValue.length > WORKFLOW_NODE_TITLE_MAX_LENGTH) {
+                setRenameValue(data.title);
+                setIsRenaming(false);
+                return;
+              }
+
               setIsRenaming(false);
 
-              if (title && title !== data.title) {
+              if (title !== data.title) {
                 data.onRename?.(id, title);
-              }
-              else {
-                setRenameValue(data.title);
               }
             }}
             onRenameValueChange={setRenameValue}
@@ -164,12 +168,15 @@ function NodeHeader({
   data: WorkflowNodeRenderData;
   isRenaming: boolean;
   onCancelRename: () => void;
-  onCommitRename: () => void;
+  onCommitRename: (value: string) => void;
   onRenameValueChange: (value: string) => void;
   onStartRename: () => void;
   renameValue: string;
   visual: NodeVisual;
 }) {
+  const renameLength = renameValue.length;
+  const renameTooLong = renameLength > WORKFLOW_NODE_TITLE_MAX_LENGTH;
+
   return (
     <span className="workflow-node-header flex items-center rounded-t-2xl py-3 pl-4 pr-10">
       <span
@@ -183,30 +190,50 @@ function NodeHeader({
       <span className="flex min-h-7 min-w-0 flex-1 items-center">
         {isRenaming ? (
           <span className="flex min-w-0 flex-1 items-center gap-2">
-            <Input
-              aria-label="节点名称"
-              autoFocus
-              className="nodrag nopan h-7 min-w-0 rounded px-2.5 text-xs font-normal"
-              maxLength={WORKFLOW_NODE_TITLE_MAX_LENGTH}
-              onBlur={onCommitRename}
-              onChange={(event) => onRenameValueChange(event.target.value)}
-              onClick={(event) => event.stopPropagation()}
-              onKeyDown={(event) => {
-                event.stopPropagation();
+            <span className="relative min-w-0 flex-1">
+              <LimitedInput
+                aria-invalid={renameTooLong || undefined}
+                aria-label="节点名称"
+                autoFocus
+                className={cn(
+                  "nodrag nopan h-7 min-w-0 rounded px-2.5 pr-10 text-xs font-normal",
+                  renameTooLong && "border-destructive focus-visible:border-destructive focus-visible:ring-destructive/15",
+                )}
+                onBlur={(event) => onCommitRename(event.currentTarget.value)}
+                maxLength={WORKFLOW_NODE_TITLE_MAX_LENGTH}
+                onClick={(event) => event.stopPropagation()}
+                onKeyDown={(event) => {
+                  event.stopPropagation();
 
-                if (event.key === "Enter") {
-                  event.preventDefault();
-                  event.currentTarget.blur();
-                }
+                  if (
+                    event.key === "Enter"
+                    && !event.nativeEvent.isComposing
+                    && event.keyCode !== 229
+                  ) {
+                    event.preventDefault();
+                    if (!renameTooLong) {
+                      event.currentTarget.blur();
+                    }
+                  }
 
-                if (event.key === "Escape") {
-                  event.preventDefault();
-                  onCancelRename();
-                }
-              }}
-              onPointerDown={(event) => event.stopPropagation()}
-              value={renameValue}
-            />
+                  if (event.key === "Escape") {
+                    event.preventDefault();
+                    onCancelRename();
+                  }
+                }}
+                onValueChange={onRenameValueChange}
+                onPointerDown={(event) => event.stopPropagation()}
+                value={renameValue}
+              />
+              <span
+                className={cn(
+                  "pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-[10px] tabular-nums text-muted-foreground",
+                  renameTooLong && "text-destructive",
+                )}
+              >
+                {renameLength}/{WORKFLOW_NODE_TITLE_MAX_LENGTH}
+              </span>
+            </span>
             <NodeAiBadge visual={visual} />
           </span>
         ) : (

@@ -91,7 +91,7 @@ export function WorkflowListTable({
     : "托管账号");
 
   return (
-    <div className="overflow-hidden rounded-[10px] border border-border/40 bg-card px-1 pb-1">
+    <div className="overflow-hidden rounded-[10px] border border-border/40 bg-muted px-1 pb-1">
       <Table aria-label="列表" className="min-w-[1220px] table-fixed border-separate border-spacing-x-0 border-spacing-y-1">
         <colgroup>
           <col className="w-[300px]" />
@@ -108,7 +108,7 @@ export function WorkflowListTable({
             <TableHead className="h-8 whitespace-nowrap px-3">{resolvedSourceColumnLabel}</TableHead>
             <TableHead className="h-8 whitespace-nowrap px-3">执行概览</TableHead>
             <TableHead className="h-8 whitespace-nowrap px-3">最近一次运行</TableHead>
-            <TablePinnedHead className="h-8 whitespace-nowrap bg-card px-3 text-right">操作</TablePinnedHead>
+            <TablePinnedHead className="h-8 whitespace-nowrap bg-muted/50 px-3 text-right">操作</TablePinnedHead>
           </TableRow>
         </TableHeader>
         <TableBody>

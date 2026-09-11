@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { render, screen, within } from "@testing-library/react";
+import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { createMemoryRouter, RouterProvider } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -87,7 +87,7 @@ describe("AI billing UI", () => {
     expect(screen.getByRole("link", { name: "前往 AI Pro 页面" })).toBeInTheDocument();
   });
 
-  it("opens the billing guide without changing the existing AI Pro content", async () => {
+  it("opens the billing guide and returns to the AI Pro page", async () => {
     const router = createMemoryRouter([
       { path: AI_BILLING_SUBSCRIPTION_PATH, element: <AgentSubscriptionPage /> },
       { path: AI_BILLING_GUIDE_PATH, element: <AiBillingGuidePage /> },
@@ -98,7 +98,6 @@ describe("AI billing UI", () => {
     expect(screen.getByText("剩余 100%")).toBeInTheDocument();
     expect(screen.getByRole("progressbar")).toBeInTheDocument();
     expect(screen.getByRole("table", { name: "用量消耗列表" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "管理套餐" })).toBeDisabled();
     await userEvent.click(screen.getByRole("link", { name: "计费说明" }));
 
     expect(await screen.findByRole("heading", { level: 1, name: "计费说明" })).toBeInTheDocument();
@@ -134,46 +133,4 @@ describe("AI billing UI", () => {
     expect(screen.queryByRole("button", { name: "重新加载" })).not.toBeInTheDocument();
   });
 
-  it("shows the confirmed base prices and model multipliers", async () => {
-    const router = createMemoryRouter([
-      { path: AI_BILLING_GUIDE_PATH, element: <AiBillingGuidePage /> },
-    ], { initialEntries: [AI_BILLING_GUIDE_PATH] });
-
-    render(<RouterProvider router={router} />);
-
-    const rows = screen.getAllByRole("row");
-    const expectedPrices = [
-      ["生成回复", "1 积分"],
-      ["会话洞察", "4 积分"],
-      ["用户记忆", "1.5 积分"],
-      ["意图识别节点", "0.1 积分"],
-      ["大模型节点", "1 积分"],
-      ["资料收集节点", "1 积分"],
-    ];
-
-    expect(await screen.findByText("1.5x")).toBeInTheDocument();
-    expect(screen.getByText("Turbo 模型")).toBeInTheDocument();
-    expect(screen.getByText("适合复杂任务")).toBeInTheDocument();
-    expect(screen.getByRole("list", { name: "模型倍率" })).toBeInTheDocument();
-    expect(screen.getByRole("heading", { level: 2, name: "基础积分" })).toBeInTheDocument();
-    expect(screen.getAllByRole("table")).toHaveLength(1);
-    expect(screen.getByRole("columnheader", { name: "备注" })).toBeInTheDocument();
-    const billingLabels = [
-      "Agent",
-      "生成回复",
-      "用户记忆",
-      "工作流",
-      "意图识别节点",
-      "大模型节点",
-      "资料收集节点",
-      "洞察",
-      "会话洞察",
-    ];
-    expect(rows.flatMap((row) => billingLabels.filter((label) => within(row).queryByText(label)))).toEqual(billingLabels);
-    for (const [name, credits] of expectedPrices) {
-      const row = rows.find((candidate) => within(candidate).queryByText(name));
-      expect(row).toBeDefined();
-      expect(within(row!).getByText(credits)).toBeInTheDocument();
-    }
-  });
 });

@@ -22,7 +22,7 @@ export const agentAiCreditBillingItems = [
 
 export const insightAiCreditBillingItems = [
   {
-    credits: "4",
+    credits: "2~4",
     id: "conversation-insights",
     name: "会话洞察",
     note: "完成一个咨询会话的摘要、质检和洞察",
@@ -32,9 +32,9 @@ export const insightAiCreditBillingItems = [
 
 export const workflowAiCreditBillingItems = [
   { credits: "0.1", id: "ai-intent", name: "意图识别节点", note: "-", unit: "每次" },
-  { credits: "1", id: "llm", name: "大模型节点", note: "-", unit: "每次" },
+  { credits: "1~4", id: "llm", name: "大模型节点", note: "-", unit: "每次" },
   {
-    credits: "1",
+    credits: "1~2",
     id: "ai-collect",
     name: "资料收集节点",
     note: "-",

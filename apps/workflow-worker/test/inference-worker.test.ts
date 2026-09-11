@@ -24,6 +24,17 @@ describe("workflow inference worker", () => {
       adapter: { execute: async request => {
         expect(request.contractVersion).toBe(1);
         expect(request.executionKey).toBe(job.executionKey);
+        request.onUsage?.({
+          billingModel: { creditMultiplier: 150, model: "doubao-pro", modelId: 11 },
+          modelUsage: {
+            inputTokens: 5,
+            model: "doubao-pro",
+            modelId: 11,
+            outputTokens: 3,
+            provider: "volcengine_ark",
+            requestCount: 1,
+          },
+        });
         return { content: "summary", type: "text" };
       } },
       heartbeatIntervalMs: 10_000,
@@ -39,7 +50,14 @@ describe("workflow inference worker", () => {
 
     expect(result).toEqual({ claimed: 1, failed: 0, retried: 0, succeeded: 1 });
     await expect(repository.findInferenceByExecutionKey(9, job.executionKey))
-      .resolves.toMatchObject({ result: { content: "summary", type: "text" }, status: "succeeded" });
+      .resolves.toMatchObject({
+        result: { content: "summary", type: "text" },
+        status: "succeeded",
+        usage: {
+          billingModel: { creditMultiplier: 150, model: "doubao-pro", modelId: 11 },
+          modelUsage: { inputTokens: 5, outputTokens: 3, requestCount: 1 },
+        },
+      });
     await expect(repository.findTask(9, taskId)).resolves.toMatchObject({
       status: "dispatched",
       taskType: "execute",
@@ -164,12 +182,16 @@ describe("workflow inference worker", () => {
 
   it.each([
     {
+      expectedCapability: "workflow_llm" as const,
+      expectedMultiplier: 150,
       expectedNodeId: "end",
       expectedOutput: { "output-id": "客户询问退款进度" },
       javaResult: { content: "客户询问退款进度", type: "text" } as const,
       nodeKind: "llm" as const,
     },
     {
+      expectedCapability: "workflow_intent" as const,
+      expectedMultiplier: 100,
       expectedNodeId: "refund",
       expectedOutput: { matchedIntentDescription: "咨询退款", reason: "用户询问退款" },
       javaResult: {
@@ -180,6 +202,8 @@ describe("workflow inference worker", () => {
     },
   ])("resumes one $nodeKind Task after its durable Java job succeeds", async ({
     expectedNodeId,
+    expectedCapability,
+    expectedMultiplier,
     expectedOutput,
     javaResult,
     nodeKind,
@@ -187,7 +211,7 @@ describe("workflow inference worker", () => {
     const spec = inferenceSpec(nodeKind);
     const completedAt = new Date(now.getTime() + 5_000);
     let runtimeNow = now;
-    const repository = new InMemoryWorkflowRuntimeRepository(undefined, () => now);
+    const repository = new InMemoryWorkflowRuntimeRepository(undefined, () => now, undefined, true);
     const service = new InferenceTestRuntimeService(control(spec), repository, undefined, {
       clock: () => runtimeNow,
       entitlementPort: { check: async () => ({ activeRunLimit: 10_000, entitled: true }) },
@@ -201,7 +225,22 @@ describe("workflow inference worker", () => {
     await expect(service.executeTask(taskInput(startResult.nextTask, "inference-message")))
       .resolves.toEqual({ kind: "inference-waiting", type: "inference-wait" });
     expect(repository.inferenceJobs).toHaveLength(1);
-    const adapter = new FakeChatCompletionAdapter(vi.fn(async () => javaResult));
+    const adapter = new FakeChatCompletionAdapter(vi.fn(async request => {
+      const model = nodeKind === "llm" ? "doubao-pro" : "ep-intent";
+      const modelId = nodeKind === "llm" ? 11 : null;
+      request.onUsage?.({
+        billingModel: { creditMultiplier: expectedMultiplier, model, modelId },
+        modelUsage: {
+          inputTokens: 120,
+          model,
+          modelId,
+          outputTokens: 30,
+          provider: "volcengine_ark",
+          requestCount: 1,
+        },
+      });
+      return javaResult;
+    }));
     await processWorkflowInferenceBatch({
       adapter,
       heartbeatIntervalMs: 10_000,
@@ -231,10 +270,18 @@ describe("workflow inference worker", () => {
     });
     expect(repository.inferenceJobs).toHaveLength(1);
     expect(adapter.calls).toHaveLength(1);
+    expect(repository.usageEvents).toEqual([
+      expect.objectContaining({
+        billingModel: expect.objectContaining({ creditMultiplier: expectedMultiplier }),
+        businessType: "workflow_node_execution",
+        capability: expectedCapability,
+      }),
+    ]);
+    expect(repository.usageEvents[0]).not.toHaveProperty("modelUsages");
   });
 
   it("routes empty AI Intent input to fallback without creating an Inference Job", async () => {
-    const repository = new InMemoryWorkflowRuntimeRepository(undefined, () => now);
+    const repository = new InMemoryWorkflowRuntimeRepository(undefined, () => now, undefined, true);
     const service = new InferenceTestRuntimeService(
       control(inferenceSpec("ai-intent")),
       repository,
@@ -253,6 +300,7 @@ describe("workflow inference worker", () => {
     await expect(service.executeTask(taskInput(startResult.nextTask, "execute-empty-intent")))
       .resolves.toMatchObject({ kind: "success", nextTask: { nodeId: "end" } });
     expect(repository.inferenceJobs).toHaveLength(0);
+    expect(repository.usageEvents).toHaveLength(0);
     await expect(repository.findRun(9, started.run.id)).resolves.toMatchObject({
       context: {
         outputs: {
@@ -295,7 +343,7 @@ describe("workflow inference worker", () => {
 
   it("fails a resumed Task once after the Java job reaches a terminal state", async () => {
     const spec = inferenceSpec("llm");
-    const repository = new InMemoryWorkflowRuntimeRepository(undefined, () => now);
+    const repository = new InMemoryWorkflowRuntimeRepository(undefined, () => now, undefined, true);
     const service = new InferenceTestRuntimeService(control(spec), repository, undefined, {
       clock: () => now,
       entitlementPort: { check: async () => ({ activeRunLimit: 10_000, entitled: true }) },
@@ -329,6 +377,7 @@ describe("workflow inference worker", () => {
     await expect(service.executeTask(taskInput(resumedTask, "failed-resume-message")))
       .resolves.toMatchObject({ errorCode: "JAVA_FAILED", failureKind: "terminal", kind: "failed" });
     await expect(repository.findRun(9, started.run.id)).resolves.toMatchObject({ status: "failed" });
+    expect(repository.usageEvents).toHaveLength(0);
   });
 });
 

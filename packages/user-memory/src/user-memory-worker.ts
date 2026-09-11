@@ -29,7 +29,6 @@ type UserMemoryWorkerInput = {
   provider: UserMemoryProvider;
   usageCollectionEnabled?: boolean;
   usageModel?: string;
-  usageProvider?: string;
   workerId: string;
 };
 
@@ -302,14 +301,6 @@ export class UserMemoryWorker {
           businessType: "user_memory_run_item",
           capability: "user_memory",
           eventKey: `user-memory:item:${item.id}`,
-          modelUsages: [{
-            inputTokens: result.inputTokens,
-            model,
-            modelId: null,
-            outputTokens: result.outputTokens,
-            provider: this.input.usageProvider ?? "volcengine_ark",
-            requestCount: 1,
-          }],
           occurredAt: occurredAt.toISOString(),
           uid: item.uid,
         }), occurredAt);

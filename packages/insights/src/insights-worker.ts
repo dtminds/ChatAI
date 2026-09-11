@@ -1752,27 +1752,8 @@ export class InsightsWorkerService {
 
     let runId: string | undefined;
     let tokenUsage: InsightTokenUsage | undefined;
-    const modelUsages = new Map<string, {
-      inputTokens: number;
-      model: string;
-      modelId: null;
-      outputTokens: number;
-      provider: string;
-      requestCount: number;
-    }>();
-    const onTokenUsage = (usage: InsightTokenUsage, source?: InsightTokenUsageSource) => {
+    const onTokenUsage = (usage: InsightTokenUsage) => {
       tokenUsage = addTokenUsage(tokenUsage, usage);
-      if (!source) return;
-      const key = `${source.provider}\u0000${source.model}`;
-      const current = modelUsages.get(key);
-      modelUsages.set(key, {
-        inputTokens: (current?.inputTokens ?? 0) + usage.prompt_tokens,
-        model: source.model,
-        modelId: null,
-        outputTokens: (current?.outputTokens ?? 0) + usage.completion_tokens,
-        provider: source.provider,
-        requestCount: (current?.requestCount ?? 0) + 1,
-      });
     };
     const startedAt = Date.now();
 
@@ -2113,12 +2094,11 @@ export class InsightsWorkerService {
         runId,
         sourceMessageHighWatermark: sourceMessageIds.at(-1) ?? null,
         ...(tokenUsage ? { tokenUsage } : {}),
-        ...(this.usageCollectionEnabled && modelUsages.size > 0
+        ...(this.usageCollectionEnabled
           ? {
               usageEvent: createConversationInsightUsageEvent(
                 job,
                 runId,
-                [...modelUsages.values()],
                 new Date(this.now()),
               ),
             }
@@ -2386,14 +2366,6 @@ function addTokenUsage(
 function createConversationInsightUsageEvent(
   job: ClaimedAnalyzeJob,
   runId: string,
-  modelUsages: Array<{
-    inputTokens: number;
-    model: string;
-    modelId: null;
-    outputTokens: number;
-    provider: string;
-    requestCount: number;
-  }>,
   occurredAt: Date,
 ) {
   const billingModel = job.analysisScope === "classification"
@@ -2414,7 +2386,6 @@ function createConversationInsightUsageEvent(
     businessType: "logical_session",
     capability: "conversation_insight",
     eventKey: `conversation-insight:run:${runId}`,
-    modelUsages,
     occurredAt: occurredAt.toISOString(),
     uid: job.uid,
   });

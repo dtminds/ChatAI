@@ -1,5 +1,15 @@
 # Database Change Log
 
+## 2026-09-10 Workflow 推理用量快照
+
+- `xy_wap_embed_workflow_inference_job` 增加模型调用用量快照，独立保留内部成本数据并提供调用时的计费模型快照；Usage Event 不汇总 Token。
+- Workflow 表尚未进入生产环境；新环境直接执行 `docs/db/schema.sql`。已创建测试表时执行以下 DDL。
+
+```sql
+ALTER TABLE xy_wap_embed_workflow_inference_job
+  ADD COLUMN usage_json JSON NULL COMMENT '模型调用用量快照' AFTER result_json;
+```
+
 ## 2026-09-10 AI 用量 Outbox
 
 - 新增 `xy_wap_embed_ai_usage_outbox`，保存 Node 业务事务内生成的 AI Usage Event，并支持后续批量投递至 Java Billing Service。

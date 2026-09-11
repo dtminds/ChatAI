@@ -157,6 +157,17 @@ export function runWorkflowRuntimeRepositoryContract(
       id: jobs[0]!.id,
       leaseOwner: "inference-worker-1",
       result: { content: "summary", type: "text" },
+      usage: {
+        billingModel: { creditMultiplier: 150, model: "doubao-pro", modelId: 11 },
+        modelUsage: {
+          inputTokens: 120,
+          model: "doubao-pro",
+          modelId: 11,
+          outputTokens: 30,
+          provider: "volcengine_ark",
+          requestCount: 1,
+        },
+      },
     })).resolves.toBe(true);
     await expect(harness.repository.completeInference({
       completedAt: new Date("2099-01-01T00:00:31.000Z"),
@@ -169,6 +180,13 @@ export function runWorkflowRuntimeRepositoryContract(
       taskType: "execute",
       taskVersion: 4,
     });
+    await expect(harness.repository.findInferenceByExecutionKey(9, input.executionKey))
+      .resolves.toMatchObject({
+        usage: {
+          billingModel: { creditMultiplier: 150, model: "doubao-pro", modelId: 11 },
+          modelUsage: { inputTokens: 120, outputTokens: 30, requestCount: 1 },
+        },
+      });
     const outbox = await harness.repository.claimOutboxBatch({
       leaseExpiresAt: new Date("2099-01-01T00:03:00.000Z"),
       leaseOwner: "publisher-1",

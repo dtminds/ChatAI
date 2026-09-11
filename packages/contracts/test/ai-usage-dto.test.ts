@@ -24,14 +24,6 @@ function event(overrides: Record<string, unknown> = {}) {
     businessType: "logical_session",
     capability: "conversation_insight",
     eventKey: "insight-job:99",
-    modelUsages: [{
-      inputTokens: 1_200,
-      model: "ep-analysis",
-      modelId: null,
-      outputTokens: 300,
-      provider: "volcengine_ark",
-      requestCount: 2,
-    }],
     occurredAt: "2026-09-10T08:00:00.000Z",
     schemaVersion: 1,
     uid: 9,
@@ -55,16 +47,21 @@ describe("AI usage contracts", () => {
       businessId: "i".repeat(255),
       businessSnapshot: { source: "s".repeat(255) },
       eventKey: "e".repeat(255),
+    }))).toBe(true);
+    expect(Value.Check(AiUsageEventSchema, event({ eventKey: "e".repeat(256) }))).toBe(false);
+  });
+
+  it("rejects model token details in billing events", () => {
+    expect(Value.Check(AiUsageEventSchema, event({
       modelUsages: [{
         inputTokens: 1_200,
-        model: "u".repeat(255),
+        model: "ep-analysis",
         modelId: null,
         outputTokens: 300,
         provider: "volcengine_ark",
         requestCount: 2,
       }],
-    }))).toBe(true);
-    expect(Value.Check(AiUsageEventSchema, event({ eventKey: "e".repeat(256) }))).toBe(false);
+    }))).toBe(false);
   });
 
   it("rejects decimal multiplier values instead of treating them as basis points", () => {

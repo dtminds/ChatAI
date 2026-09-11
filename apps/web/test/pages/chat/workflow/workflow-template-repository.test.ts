@@ -36,11 +36,16 @@ describe("HTTP Workflow template repository", () => {
     const deleteRequest = vi.fn().mockResolvedValue({ data: { id: "18" } });
     const repository = createWorkflowTemplateRepository({ delete: deleteRequest, get, post: vi.fn() });
 
-    await repository.listDrafts?.({ limit: 8, page: 2, query: "欢迎" });
+    await repository.listDrafts?.({
+      limit: 8,
+      page: 2,
+      query: "欢迎",
+      workflowType: "chatai_sop",
+    });
     await repository.getDraft?.("18");
     await repository.deleteDraft?.("18");
 
-    expect(get).toHaveBeenNthCalledWith(1, "/server/workflow-template-drafts?limit=8&page=2&query=%E6%AC%A2%E8%BF%8E");
+    expect(get).toHaveBeenNthCalledWith(1, "/server/workflow-template-drafts?limit=8&page=2&query=%E6%AC%A2%E8%BF%8E&workflowType=chatai_sop");
     expect(get).toHaveBeenNthCalledWith(2, "/server/workflow-template-drafts/18");
     expect(deleteRequest).toHaveBeenCalledWith("/server/workflow-template-drafts/18");
   });

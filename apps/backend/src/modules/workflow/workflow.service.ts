@@ -750,13 +750,14 @@ export class WorkflowService {
     return { items: page.items.map(toTemplateListItem), total: page.total };
   }
 
-  async listTemplateDrafts(scope: WorkflowOperatorScope, input: { limit: number; page?: number; query?: string }): Promise<WorkflowTemplateListPage> {
+  async listTemplateDrafts(scope: WorkflowOperatorScope, input: { limit: number; page?: number; query?: string; workflowType?: WorkflowType }): Promise<WorkflowTemplateListPage> {
     assertWorkflowTemplateManage(scope);
     const page = await this.requireTemplateRepository().list({
       limit: input.limit,
       offset: ((input.page ?? 1) - 1) * input.limit,
       query: input.query?.trim() || undefined,
       status: "draft",
+      workflowType: input.workflowType,
     });
     return { items: page.items.map(toTemplateListItem), total: page.total };
   }
@@ -857,8 +858,40 @@ export class WorkflowService {
     const draft = sanitizeTemplateDraft(sourceDraft);
     assertWorkflowDraftNodeContracts(draft);
     assertTemplateResourceNeutral(draft);
-    const tags = assertWorkflowTemplateTagIds(input.tags);
-    const template = await this.requireTemplateRepository().create({ workflowType: definition.workflowType, name, description, tags, coverUrl: input.coverUrl?.trim() || null, draft, configurationItems: inferTemplateConfigurationItems(sourceDraft), templateVersion: 1, status: "draft", sortOrder: input.sortOrder ?? 0 });
+    const requestedTags = input.tags === undefined
+      ? undefined
+      : assertWorkflowTemplateTagIds(input.tags);
+    const configurationItems = inferTemplateConfigurationItems(sourceDraft);
+    const targetTemplate = input.targetTemplateId
+      ? await this.requireTemplateRepository().find(input.targetTemplateId, "draft")
+      : null;
+    if (input.targetTemplateId && !targetTemplate) {
+      throw new NotFoundError("WORKFLOW_TEMPLATE_DRAFT_NOT_FOUND", "目标模板草稿不存在，请先撤回模板");
+    }
+    if (targetTemplate && targetTemplate.workflowType !== definition.workflowType) {
+      throw new BadRequestError("WORKFLOW_TEMPLATE_TYPE_MISMATCH", "只能更新相同类型的模板");
+    }
+    const tags = targetTemplate && requestedTags === undefined
+      ? targetTemplate.tags
+      : requestedTags ?? [];
+    const template = targetTemplate
+      ? await this.requireTemplateRepository().update({
+          ...targetTemplate,
+          coverUrl: input.coverUrl === undefined
+            ? targetTemplate.coverUrl
+            : input.coverUrl.trim() || null,
+          configurationItems: mergeTemplateConfigurationItems(
+            targetTemplate.configurationItems,
+            configurationItems,
+          ),
+          description,
+          draft,
+          name,
+          sortOrder: input.sortOrder ?? targetTemplate.sortOrder,
+          tags,
+        })
+      : await this.requireTemplateRepository().create({ workflowType: definition.workflowType, name, description, tags, coverUrl: input.coverUrl?.trim() || null, draft, configurationItems, templateVersion: 1, status: "draft", sortOrder: input.sortOrder ?? 0 });
+    if (!template) throw new NotFoundError("WORKFLOW_TEMPLATE_DRAFT_NOT_FOUND", "目标模板草稿不存在，请先撤回模板");
     return toTemplateDetail(template);
   }
 
@@ -2452,4 +2485,25 @@ function inferTemplateConfigurationItems(draft: WorkflowDraft) {
   };
   for (const node of draft.nodes) walk(node.data, node.id);
   return items;
+}
+
+function mergeTemplateConfigurationItems(
+  existing: WorkflowTemplateConfigurationItem[],
+  inferred: WorkflowTemplateConfigurationItem[],
+): WorkflowTemplateConfigurationItem[] {
+  const existingByKey = new Map(existing.map(item => [getTemplateConfigurationItemKey(item), item]));
+  return inferred.map((item) => {
+    const existingItem = existingByKey.get(getTemplateConfigurationItemKey(item));
+    return existingItem
+      ? { ...item, requirement: existingItem.requirement, title: existingItem.title }
+      : item;
+  });
+}
+
+function getTemplateConfigurationItemKey(item: WorkflowTemplateConfigurationItem) {
+  return JSON.stringify([
+    item.kind,
+    item.nodeId,
+    "bindingKey" in item ? item.bindingKey : item.fieldKey,
+  ]);
 }

@@ -83,6 +83,7 @@ export const WorkflowTemplateConversionRequestSchema = Type.Object({
     minimum: WORKFLOW_TEMPLATE_SORT_ORDER_MIN,
   })),
   tags: Type.Optional(Type.Array(WorkflowTemplateTagIdSchema, { maxItems: 40, uniqueItems: true })),
+  targetTemplateId: Type.Optional(WorkflowIdSchema),
 });
 
 export const WorkflowTemplateDraftUpdateRequestSchema = Type.Object({

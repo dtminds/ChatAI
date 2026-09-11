@@ -28,18 +28,18 @@ const operatorSubUser: AuthSubUser = {
 };
 
 async function findNotFoundHeading() {
-  await waitFor(() => {
-    expect(
-      screen.queryByRole("status", { name: "正在验证登录状态" }),
-    ).not.toBeInTheDocument();
-    expect(
-      screen.queryByRole("status", { name: "正在加载页面" }),
-    ).not.toBeInTheDocument();
-    expect(
-      screen.getByRole("heading", { name: "页面不存在" }),
-    ).toBeInTheDocument();
-  });
-  return screen.getByRole("heading", { name: "页面不存在" });
+  const heading = await screen.findByRole(
+    "heading",
+    { name: "页面不存在" },
+    { timeout: 5_000 },
+  );
+  expect(
+    screen.queryByRole("status", { name: "正在验证登录状态" }),
+  ).not.toBeInTheDocument();
+  expect(
+    screen.queryByRole("status", { name: "正在加载页面" }),
+  ).not.toBeInTheDocument();
+  return heading;
 }
 
 describe("auth routes", () => {

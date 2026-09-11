@@ -1,5 +1,5 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, type AnimationEvent } from "react";
-import { getWorkflowTemplateTagLabel, normalizeWorkflowTemplateTagIds, workflowTemplateTagDimensions, type WorkflowTemplateDetail, type WorkflowTemplateDraftUpdateRequest, type WorkflowTemplateListItem } from "@chatai/contracts";
+import { workflowTemplateTagDimensions, type WorkflowTemplateDetail, type WorkflowTemplateDraftUpdateRequest, type WorkflowTemplateListItem } from "@chatai/contracts";
 import { AlertCircleIcon, ArrowLeft02Icon, Cancel01Icon, DashboardCircleAddIcon, Delete01Icon, FlashIcon, MoreHorizontalIcon, ToolCaseIcon, WorkflowSquare06Icon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon, type IconSvgElement } from "@hugeicons/react";
 import {
@@ -200,7 +200,7 @@ export function WorkflowTemplateSection({ repository }: { repository?: WorkflowT
     <div className="flex items-center justify-between px-1.5"><h2 className="flex items-center gap-2 text-base font-semibold"><HugeiconsIcon aria-hidden="true" icon={ToolCaseIcon} size={17} strokeWidth={1.8} />推荐模板</h2><Button onClick={openBrowser} type="button" variant="link">查看更多</Button></div>
     {featuredLoading && featuredItems.length === 0 ? <div className="flex min-h-56 items-center justify-center" role="status"><Spinner /></div> : featuredError ? <TemplateLoadErrorState onRetry={() => void loadFeatured()} /> : featuredItems.length === 0 ? <TemplateEmptyState /> : <div className="workflow-template-featured-container"><div className="workflow-template-featured-grid">{featuredItems.map(item => <TemplateCard item={item} key={item.id} onPreview={() => void openDetail(item)} />)}</div></div>}
     <Dialog onOpenChange={value => { if (!withdrawing) setOpen(value); }} open={open}>
-      <DialogContent className="flex h-[85vh] max-h-[85vh] w-[85vw] max-w-[85vw] flex-col" closeButtonDisabled={withdrawing} closeButtonVisible={!detail} onAnimationEnd={event => { if (isTemplateDialogCloseAnimation(event)) clearDetail(); }}>
+      <DialogContent className="flex h-[85vh] max-h-[85vh] w-[85vw] max-w-[85vw] flex-col gap-2" closeButtonDisabled={withdrawing} closeButtonVisible={!detail} onAnimationEnd={event => { if (isTemplateDialogCloseAnimation(event)) clearDetail(); }}>
         <DialogHeader className={detail ? "shrink-0 flex-row items-center justify-between gap-4 space-y-0" : "shrink-0"}>
           <DialogTitle className={detail ? "w-0 min-w-0 flex-1 truncate" : undefined}>{detail?.name ?? detailItem?.name ?? "模板详情"}</DialogTitle>
           {detail ? <TemplateDetailActions
@@ -434,7 +434,7 @@ function WorkflowTemplateCenterContent({ repository }: { repository?: WorkflowTe
         <TablePagination className="border-t-0" onPageChange={goToPage} page={page} showTotal total={total} totalPages={totalPages} />
       </div>
       <Dialog onOpenChange={value => { if (!withdrawing) setOpen(value); }} open={open}>
-        <DialogContent className="flex h-[85vh] max-h-[85vh] w-[85vw] max-w-[85vw] flex-col" closeButtonDisabled={withdrawing || detailLoading} closeButtonVisible={!detail} onAnimationEnd={event => { if (isTemplateDialogCloseAnimation(event)) clearDetail(); }}>
+        <DialogContent className="flex h-[85vh] max-h-[85vh] w-[85vw] max-w-[85vw] flex-col gap-2" closeButtonDisabled={withdrawing || detailLoading} closeButtonVisible={!detail} onAnimationEnd={event => { if (isTemplateDialogCloseAnimation(event)) clearDetail(); }}>
           <DialogHeader className={detail ? "shrink-0 flex-row items-center justify-between gap-4 space-y-0" : "shrink-0"}>
             <DialogTitle className={detail ? "w-0 min-w-0 flex-1 truncate" : undefined}>{detail?.name ?? detailItem?.name ?? "模板详情"}</DialogTitle>
             {detail ? <TemplateDetailActions
@@ -568,7 +568,7 @@ function TemplateDraftBox({ onPublished, repository }: { onPublished: () => Prom
     <>
       <Button onClick={openDraftBox} type="button" variant="secondary">草稿箱</Button>
       <Dialog onOpenChange={value => { if (!deleting) setOpen(value); }} open={open}>
-        <DialogContent className={cn("workflow-page flex h-auto max-h-[85vh] w-[85vw] max-w-[85vw] flex-col", detail ? "h-[85vh]" : undefined)} closeButtonDisabled={deleting} closeButtonVisible={!detail} onAnimationEnd={event => { if (isTemplateDialogCloseAnimation(event)) { setDetail(null); setDetailItem(null); setDetailError(false); setDetailLoading(false); } }}>
+        <DialogContent className={cn("workflow-page flex h-auto max-h-[85vh] w-[85vw] max-w-[85vw] flex-col", detail ? "h-[85vh] gap-2" : undefined)} closeButtonDisabled={deleting} closeButtonVisible={!detail} onAnimationEnd={event => { if (isTemplateDialogCloseAnimation(event)) { setDetail(null); setDetailItem(null); setDetailError(false); setDetailLoading(false); } }}>
           <DialogHeader className={detail ? "shrink-0 flex-row items-center justify-between gap-4 space-y-0" : "shrink-0"}>
             <DialogTitle className={detail ? "min-w-0 flex-1 truncate" : undefined}>{detail ? detail.name : "模板草稿"}</DialogTitle>
           {detail ? <TemplateDetailActions
@@ -751,17 +751,6 @@ function TemplateCard({ item, onPreview }: { item: WorkflowTemplateListItem; onP
   );
 }
 
-function TemplateTags({ max, tags }: { max?: number; tags?: readonly string[] }) {
-  const visibleTags = normalizeWorkflowTemplateTagIds(tags);
-  if (visibleTags.length === 0) return null;
-  const shown = max === undefined ? visibleTags : visibleTags.slice(0, max);
-  const remaining = visibleTags.length - shown.length;
-  return <div aria-label="模板标签" className="mt-2 flex min-w-0 flex-wrap gap-1.5">
-    {shown.map(tagId => <span className="max-w-32 truncate rounded border border-border/70 px-1.5 py-0.5 text-xs text-muted-foreground" key={tagId} title={getWorkflowTemplateTagLabel(tagId)}>{getWorkflowTemplateTagLabel(tagId)}</span>)}
-    {remaining > 0 ? <span className="rounded border border-border/70 px-1.5 py-0.5 text-xs text-muted-foreground">+{remaining}</span> : null}
-  </div>;
-}
-
 function TemplateNodeKinds({
   nodeKinds,
   tone,
@@ -851,7 +840,6 @@ function TemplateDetailView({ canvasClassName = "h-[420px]", detail }: { canvasC
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-4">
       {detail.description ? <p className="text-sm text-muted-foreground">{detail.description}</p> : null}
-      <TemplateTags max={Number.POSITIVE_INFINITY} tags={detail.tags} />
       <Suspense fallback={<div className={cn("flex items-center justify-center rounded-lg border", canvasClassName)} role="status"><Spinner /></div>}>
         <WorkflowGraphPreview className={canvasClassName} draft={detail.draft as WorkflowDraft} />
       </Suspense>

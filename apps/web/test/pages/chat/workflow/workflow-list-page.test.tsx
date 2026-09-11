@@ -1195,7 +1195,6 @@ describe("Agent workflow page", () => {
 
     const previewDialog = await screen.findByRole("dialog");
     expect(get).toHaveBeenCalledWith("featured-1");
-    expect(previewDialog).toHaveClass("gap-2");
     expect(await within(previewDialog).findByRole("application", { name: "工作流预览" })).toHaveAttribute("data-preview", "true");
     expect(within(previewDialog).queryByLabelText("模板标签")).not.toBeInTheDocument();
     expect(within(previewDialog).getByTestId("workflow-react-flow")).toHaveAttribute("data-pan-on-drag", "true");

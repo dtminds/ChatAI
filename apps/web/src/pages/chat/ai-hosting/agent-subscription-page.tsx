@@ -18,6 +18,8 @@ import { AiHostingLayout, AiHostingPageHeader } from "./ai-hosting-layout";
 const usageTabs = [
   { label: "全部项目", value: "all" },
   { label: "Agent", value: "agent" },
+  { label: "工作流", value: "workflow" },
+  { label: "记忆", value: "memory" },
   { label: "会话洞察", value: "insights" },
   { label: "其他", value: "other" },
 ] as const;
@@ -39,7 +41,7 @@ export function AgentSubscriptionPage() {
                   <span className="inline-flex h-6 items-center rounded-full bg-emerald-50 px-2.5 text-xs font-medium text-emerald-600">
                     生效中
                   </span>
-                  <span>内测期内无限额，内测结束后套餐限额将进行更新</span>
+                  <span>内测期内无限额，内测结束后将按实际使用进行计费</span>
                 </div>
               </div>
 
@@ -51,7 +53,7 @@ export function AgentSubscriptionPage() {
                   </Link>
                 </Button>
                 <Button className="h-10 rounded-[8px] px-4" disabled type="button">
-                  管理套餐
+                  充值
                 </Button>
               </div>
             </div>

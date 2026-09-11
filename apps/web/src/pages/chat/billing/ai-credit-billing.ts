@@ -25,7 +25,7 @@ export const insightAiCreditBillingItems = [
     credits: "4",
     id: "conversation-insights",
     name: "会话洞察",
-    note: "完成一个逻辑会话的摘要、质检和洞察",
+    note: "完成一个咨询会话的摘要、质检和洞察",
     unit: "每次",
   },
 ] as const;

@@ -5,14 +5,14 @@ export const AI_BILLING_GUIDE_PATH = "/chat/ai-hosting/subscription/billing";
 
 export const agentAiCreditBillingItems = [
   {
-    credits: "1",
+    credits: "2",
     id: "ai-reply",
     name: "生成回复",
     note: "Agent 在全托管或半托管模式下输出回复或操作建议",
     unit: "每条",
   },
   {
-    credits: "1.5",
+    credits: "3",
     id: "user-memory",
     name: "用户记忆",
     note: "Agent 执行某个用户的记忆提炼任务",

@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { createMemoryRouter, RouterProvider } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -102,6 +102,10 @@ describe("AI billing UI", () => {
 
     expect(await screen.findByRole("heading", { level: 1, name: "计费说明" })).toBeInTheDocument();
     expect(router.state.location.pathname).toBe(AI_BILLING_GUIDE_PATH);
+    expect(within(screen.getByRole("row", { name: /生成回复/ })).getByText("2 积分"))
+      .toBeInTheDocument();
+    expect(within(screen.getByRole("row", { name: /用户记忆/ })).getByText("3 积分"))
+      .toBeInTheDocument();
 
     await userEvent.click(screen.getByRole("link", { name: "返回 AI Pro" }));
     expect(await screen.findByRole("heading", { level: 1, name: "AI Pro" })).toBeInTheDocument();

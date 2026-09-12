@@ -191,6 +191,7 @@ html[data-appearance-theme="green"] {
 html.dark[data-appearance-theme="green"] {
   --background: oklch(0.2 0.009 156);
   --card: oklch(0.26 0.014 156);
+  --popover: var(--card);
   --primary: oklch(0.696 0.17 162.48);
   --secondary: oklch(0.31 0.012 156);
   --secondary-foreground: oklch(0.92 0.006 158);
@@ -364,7 +365,7 @@ html.dark[data-appearance-theme="caffeine"] {
   --foreground: oklch(0.9491 0 0);
   --card: oklch(0.26 0.01 74);
   --card-foreground: oklch(0.9491 0 0);
-  --popover: oklch(0.2134 0 0);
+  --popover: var(--card);
   --popover-foreground: oklch(0.9491 0 0);
   --primary: oklch(0.9247 0.0524 66.1732);
   --primary-foreground: oklch(0.2029 0.024 200.1962);
@@ -454,7 +455,7 @@ html.dark[data-appearance-theme="orange"] {
   --foreground: oklch(0.985 0 0);
   --card: oklch(0.245 0.013 48);
   --card-foreground: oklch(0.985 0 0);
-  --popover: oklch(0.21 0.006 285.885);
+  --popover: var(--card);
   --popover-foreground: oklch(0.985 0 0);
   --primary: oklch(0.646 0.222 41.116);
   --primary-foreground: oklch(0.98 0.016 73.684);
@@ -553,7 +554,7 @@ html.dark[data-appearance-theme="rose"] {
   --foreground: oklch(0.985 0 0);
   --card: oklch(0.245 0.017 16);
   --card-foreground: oklch(0.985 0 0);
-  --popover: oklch(0.21 0.006 285.885);
+  --popover: var(--card);
   --popover-foreground: oklch(0.985 0 0);
   --primary: oklch(0.645 0.246 16.439);
   --primary-foreground: oklch(0.969 0.015 12.422);
@@ -652,7 +653,7 @@ html.dark[data-appearance-theme="slack"] {
   --foreground: oklch(0.93 0 0);
   --card: oklch(0.277 0.014 255.6);
   --card-foreground: oklch(0.93 0 0);
-  --popover: oklch(0.26 0.01 255.58);
+  --popover: var(--card);
   --popover-foreground: oklch(0.93 0 0);
   --primary: oklch(0.58 0.14 327.21);
   --primary-foreground: oklch(1 0 0);
@@ -751,7 +752,7 @@ html.dark[data-appearance-theme="supabase"] {
   --foreground: oklch(0.9288 0.0126 255.5078);
   --card: oklch(0.24 0.015 158);
   --card-foreground: oklch(0.9288 0.0126 255.5078);
-  --popover: oklch(0.2603 0 0);
+  --popover: var(--card);
   --popover-foreground: oklch(0.7348 0 0);
   --primary: oklch(0.4365 0.1044 156.7556);
   --primary-foreground: oklch(0.9213 0.0135 167.1556);

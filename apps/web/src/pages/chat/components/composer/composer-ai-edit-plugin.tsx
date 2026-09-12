@@ -8,6 +8,7 @@ import type {
 } from "@chatai/contracts";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
+import { RequestNormalizedError } from "@/lib/request";
 import { toast } from "sonner";
 import { getWorkbenchService } from "@/pages/chat/api/workbench-service";
 import {
@@ -126,15 +127,6 @@ export function ComposerAiEditPlugin({
     };
   }, [editor, readSelection, selection]);
 
-  useEffect(() => {
-    if (!canEdit) {
-      setSelection(null);
-      setEditState("menu");
-      setActiveAction(null);
-      setResult("");
-    }
-  }, [canEdit]);
-
   const close = useCallback(() => {
     requestIdRef.current += 1;
     setSelection(null);
@@ -143,6 +135,12 @@ export function ComposerAiEditPlugin({
     setCustomInstruction("");
     setResult("");
   }, []);
+
+  useEffect(() => {
+    if (!canEdit) {
+      close();
+    }
+  }, [canEdit, close]);
 
   const previousConversationIdRef = useRef(conversationId);
 
@@ -179,10 +177,15 @@ export function ComposerAiEditPlugin({
 
         setResult(response.content);
         setEditState("preview");
-      } catch {
+      } catch (error) {
         if (requestId === requestIdRef.current) {
           setEditState("menu");
-          toast.error("操作失败，请稍后重试");
+          toast.error(
+            error instanceof RequestNormalizedError
+              && error.code === "COMPOSER_AI_EDIT_RESPONSE_TOO_LONG"
+              ? "内容超过字数限制，请缩短后重试"
+              : "操作失败，请稍后重试",
+          );
         }
       }
     },

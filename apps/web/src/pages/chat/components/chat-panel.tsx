@@ -550,12 +550,13 @@ export function ChatPanel({
                 />
               ) : null}
 
-              <div className="relative flex min-h-0 flex-1">
+              <div className="relative flex min-h-0 flex-1 flex-col">
                 <ChatMessagePanel
                   activeHistoryStatus={activeHistoryStatus}
                   canCollectMaterialActions={canCollectMaterialActions}
                   canUseMessageActions={canSendMessage}
                   canUseMessageForward={canUseMessageForward}
+                  hasAgentHostingOverlay={!!agentHostingStatus}
                   hasMoreHistory={hasMoreHistory}
                   historyLoadLabel={historyLoadLabel}
                   isConversationLoading={isConversationLoading}
@@ -593,14 +594,17 @@ export function ChatPanel({
                   retryingMessageIds={retryingMessageIds}
                 />
 
-                <div className="pointer-events-none absolute inset-x-0 bottom-0 z-10 flex flex-col">
+                <div
+                  className="relative z-10 -mt-12 shrink-0"
+                  data-testid="chat-composer-region"
+                >
                   <div
                     aria-hidden="true"
-                    className="absolute inset-y-0 left-0 right-[var(--scrollbar-size)] bg-linear-to-b from-transparent via-surface/85 to-surface"
+                    className="pointer-events-none absolute -top-12 bottom-0 left-0 right-[var(--scrollbar-size)] bg-linear-to-b from-transparent via-surface/85 to-surface"
                   />
                   {scopeTransitionError ? (
                     <div
-                      className="pointer-events-auto relative z-20 flex min-h-8 items-center justify-between gap-3 border-t border-destructive/10 bg-destructive/55 px-5 py-1.5 text-xs font-medium leading-5 text-destructive-foreground/90 shadow-[0_-4px_16px_var(--shadow-soft)] backdrop-blur-md"
+                      className="relative z-20 flex min-h-8 items-center justify-between gap-3 border-t border-destructive/10 bg-destructive/55 px-5 py-1.5 text-xs font-medium leading-5 text-destructive-foreground/90 shadow-[0_-4px_16px_var(--shadow-soft)] backdrop-blur-md"
                       data-testid="scope-transition-error"
                       role="status"
                     >
@@ -623,24 +627,12 @@ export function ChatPanel({
                     </div>
                   ) : null}
 
-                  <div className="pointer-events-auto relative z-10 flex flex-col overflow-visible">
+                  <div className="relative z-10 flex flex-col overflow-visible">
                     {hasActiveFileUpload ? (
-                      <div className="absolute inset-x-4 top-3 z-20 -translate-y-full">
+                      <div className="relative z-20 mx-4 -mb-3">
                         <FileUploadQueueBar
                           items={fileUploadQueue}
                           onCancelFileUpload={onCancelFileUpload}
-                        />
-                      </div>
-                    ) : null}
-                    {agentHostingStatus ? (
-                      <div
-                        className="absolute bottom-12 left-1/2 z-30 w-4/5 max-w-[520px] -translate-x-1/2"
-                        data-testid="chat-agent-hosting-status-bar-anchor"
-                      >
-                        <ChatAgentHostingStatusBar
-                          onCancel={onCancelAgentHosting}
-                          onEnable={onEnableAgentHosting}
-                          status={agentHostingStatus}
                         />
                       </div>
                     ) : null}
@@ -650,6 +642,18 @@ export function ChatPanel({
                         multiSelectMode && "z-40",
                       )}
                     >
+                      {agentHostingStatus ? (
+                        <div
+                          className="absolute left-1/2 top-1 z-30 w-4/5 max-w-[520px] -translate-x-1/2 -translate-y-full"
+                          data-testid="chat-agent-hosting-status-bar-anchor"
+                        >
+                          <ChatAgentHostingStatusBar
+                            onCancel={onCancelAgentHosting}
+                            onEnable={onEnableAgentHosting}
+                            status={agentHostingStatus}
+                          />
+                        </div>
+                      ) : null}
                       <div
                         className={cn(
                           "flex flex-col",
@@ -675,7 +679,6 @@ export function ChatPanel({
                             activeConversation.thirdUserId
                           }
                           groupMembers={groupMembers}
-                          hidePlaceholder={!!agentHostingStatus}
                           isGroupConversation={
                             activeConversation.mode === "group"
                           }
@@ -745,7 +748,11 @@ export function ChatPanel({
                           onSegmentsChange={onComposerSegmentsChange}
                           onSendDraft={onSendDraft}
                           onTopCollectedExpression={onTopCollectedExpression}
-                          placeholder={composerPlaceholder}
+                          placeholder={
+                            agentHostingStatus
+                              ? "托管中，不支持发送消息"
+                              : composerPlaceholder
+                          }
                           quotedMessage={quotedMessage}
                           composerRef={composerRef}
                         />

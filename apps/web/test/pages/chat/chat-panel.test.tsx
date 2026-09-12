@@ -865,7 +865,10 @@ describe("ChatPanel", () => {
     expect(screen.queryByTestId("customer-side-panel-shell")).not.toBeInTheDocument();
   });
 
-  it("renders scope transition errors outside the message list", () => {
+  it("keeps composer feedback outside the message scroller", async () => {
+    const user = userEvent.setup();
+    const onCancelFileUpload = vi.fn();
+
     render(
       <ChatPanel
         activeConversation={createConversation()}
@@ -873,7 +876,14 @@ describe("ChatPanel", () => {
         canSendMessage
         composerPlaceholder="输入消息"
         customerPanelWidth={375}
-        fileUploadQueue={[]}
+        fileUploadQueue={[
+          {
+            fileName: "报价单.pdf",
+            id: "file-upload-1",
+            progress: 12,
+            status: "uploading",
+          },
+        ]}
         groupMembers={[]}
         hasMoreHistory={false}
         historyPanel={{ activeHistoryFilters: { scope: "all" }, activeHistoryLoading: false }}
@@ -890,7 +900,7 @@ describe("ChatPanel", () => {
         composerRef={createRef()}
         messageViewportRef={createRef()}
         workbenchBodyRef={createRef()}
-        onCancelFileUpload={vi.fn()}
+        onCancelFileUpload={onCancelFileUpload}
         onClearQuotedMessage={vi.fn()}
         onComposerSegmentsChange={vi.fn()}
         onCustomerPanelResizeStart={vi.fn()}
@@ -916,12 +926,20 @@ describe("ChatPanel", () => {
     );
 
     const errorBanner = screen.getByTestId("scope-transition-error");
+    const composerRegion = screen.getByTestId("chat-composer-region");
+    const messageRegion = screen.getByTestId("message-scroll-area").closest("section");
 
     expect(errorBanner).toHaveTextContent("切换会话失败");
-    expect(screen.getByTestId("message-content")).not.toContainElement(errorBanner);
+    expect(composerRegion).toContainElement(errorBanner);
+    expect(composerRegion).toContainElement(screen.getByText("报价单.pdf"));
+    expect(messageRegion?.parentElement).toBe(composerRegion.parentElement);
+    expect(messageRegion).not.toContainElement(composerRegion);
+
+    await user.click(screen.getByRole("button", { name: "取消上传 报价单.pdf" }));
+    expect(onCancelFileUpload).toHaveBeenCalledWith("file-upload-1");
   });
 
-  it("hides composer placeholder without blocking non-send composer actions in full agent mode", async () => {
+  it("shows the hosting placeholder and keeps non-send actions available in full agent mode", async () => {
     const user = userEvent.setup();
     const onCancelAgentHosting = vi.fn();
     const onOpenHistory = vi.fn();
@@ -982,15 +1000,16 @@ describe("ChatPanel", () => {
 
     expect(screen.getByText("AI 托管中")).toBeInTheDocument();
     expect(screen.getByTestId("chat-agent-hosting-status-bar")).toBeInTheDocument();
-    expect(screen.getByTestId("chat-agent-hosting-status-bar-anchor")).toBeInTheDocument();
+    expect(screen.getByTestId("chat-composer-region")).toContainElement(
+      screen.getByTestId("chat-agent-hosting-status-bar-anchor"),
+    );
     expect(screen.getByTestId("chat-agent-hosting-status-bar-content")).toBeInTheDocument();
     expect(screen.queryByTestId("chat-agent-hosting-composer-shell")).not.toBeInTheDocument();
     expect(screen.queryByTestId("chat-agent-hosting-composer-mask")).not.toBeInTheDocument();
     expect(screen.getByTestId("chat-composer-editor")).toBeInTheDocument();
     expect(screen.getByText(/Agent 正在查看消息/)).toBeInTheDocument();
-    expect(screen.getByLabelText("请输入消息……")).toBeInTheDocument();
-    expect(screen.queryByText("请输入消息……")).not.toBeInTheDocument();
-    expect(screen.getByTestId("message-content").closest(".pb-12")).not.toBeInTheDocument();
+    expect(screen.getByLabelText("托管中，不支持发送消息")).toBeInTheDocument();
+    expect(screen.getByText("托管中，不支持发送消息")).toBeInTheDocument();
     expect(
       screen.queryByRole("combobox", { name: "选择 Enter 键行为" }),
     ).not.toBeInTheDocument();

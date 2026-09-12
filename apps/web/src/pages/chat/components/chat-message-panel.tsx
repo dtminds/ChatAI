@@ -30,6 +30,7 @@ type ChatMessagePanelProps = {
   canUseMessageForward?: boolean;
   hasMoreHistory: boolean;
   historyLoadLabel?: string;
+  hasAgentHostingOverlay?: boolean;
   isConversationLoading: boolean;
   conversationId: string;
   conversationMode: ChatMode;
@@ -74,6 +75,7 @@ export function ChatMessagePanel({
   canUseMessageForward = false,
   hasMoreHistory,
   historyLoadLabel,
+  hasAgentHostingOverlay = false,
   isConversationLoading,
   conversationId,
   conversationMode,
@@ -200,7 +202,12 @@ export function ChatMessagePanel({
           ref={messageViewportRef}
           style={{ overflowAnchor: "none" }}
         >
-          <div className="mb-[190px] min-w-0 px-5 py-5">
+          <div
+            className={cn(
+              "min-w-0 px-5 pt-5",
+              hasAgentHostingOverlay ? "pb-22" : "pb-17",
+            )}
+          >
             <div
               aria-hidden={isConversationLoading ? "true" : undefined}
               className={

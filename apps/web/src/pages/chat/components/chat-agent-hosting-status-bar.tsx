@@ -45,12 +45,12 @@ export function ChatAgentHostingStatusBar({
       theme="auto"
     >
       <div
-        className="relative overflow-hidden rounded-full border border-border shadow-[0_4px_20px_var(--shadow-soft)]"
+        className="relative overflow-hidden rounded-full border border-divider shadow-[0_4px_20px_var(--shadow-soft)]"
         data-testid="chat-agent-hosting-status-bar"
       >
         <div
           aria-hidden="true"
-          className="absolute inset-0 rounded-full bg-background/85 backdrop-blur-xs"
+          className="absolute inset-0 rounded-full bg-card/85 backdrop-blur-xs"
           data-testid="chat-agent-hosting-status-bar-surface"
         />
         <div

@@ -138,7 +138,6 @@ type ChatComposerProps = {
   isGroupConversation: boolean;
   isEmojiPickerOpen: boolean;
   isCollectedExpressionLoadingMore?: boolean;
-  hidePlaceholder?: boolean;
   isMobileLayout?: boolean;
   sendingCollectedExpressionId?: string | null;
   isSending: boolean;
@@ -217,7 +216,6 @@ export function ChatComposer({
   isGroupConversation,
   isEmojiPickerOpen,
   isCollectedExpressionLoadingMore,
-  hidePlaceholder = false,
   isMobileLayout = false,
   sendingCollectedExpressionId,
   isSending,
@@ -1480,11 +1478,9 @@ export function ChatComposer({
                 />
               }
               placeholder={
-                hidePlaceholder ? null : (
-                  <div className="pointer-events-none absolute left-0 top-1 text-[14px] text-muted-foreground">
-                    {placeholder}
-                  </div>
-                )
+                <div className="pointer-events-none absolute left-0 top-1 text-[14px] text-muted-foreground/60">
+                  {placeholder}
+                </div>
               }
               ErrorBoundary={LexicalErrorBoundary}
             />

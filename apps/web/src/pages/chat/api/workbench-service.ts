@@ -53,6 +53,8 @@ import {
   type WorkbenchSmartReplyGeneralAnswerResponse,
   type WorkbenchSmartReplyMakeShorterRequest,
   type WorkbenchSmartReplyMakeShorterResponse,
+  type ComposerAiEditRequest,
+  type ComposerAiEditResponse,
   type WorkbenchSmartReplySendAnswerRequest,
   type WorkbenchSmartReplySendAnswerResponse,
   type WorkbenchSmartReplyPollRequest,
@@ -273,6 +275,9 @@ export type WorkbenchService = {
   requestSmartReplyMakeShorter: (
     request: WorkbenchSmartReplyMakeShorterRequest,
   ) => Promise<WorkbenchSmartReplyMakeShorterResponse>;
+  rewriteComposerText: (
+    request: ComposerAiEditRequest,
+  ) => Promise<ComposerAiEditResponse>;
   sendSmartReplyAnswer: (
     request: WorkbenchSmartReplySendAnswerRequest,
   ) => Promise<WorkbenchSmartReplySendAnswerResponse>;
@@ -561,6 +566,9 @@ export function createMockWorkbenchService(): WorkbenchService {
       }
 
       return clone(conversation);
+    },
+    async rewriteComposerText(request) {
+      return { content: request.content };
     },
     async getMe() {
       return clone(state.subUser);
@@ -2645,6 +2653,12 @@ export function createHttpWorkbenchService(): WorkbenchService {
         WorkbenchSmartReplyMakeShorterResponse,
         WorkbenchSmartReplyMakeShorterRequest
       >("/server/smart-reply/make-shorter", request);
+    },
+    rewriteComposerText(request) {
+      return http.post<ComposerAiEditResponse, ComposerAiEditRequest>(
+        "/server/composer/ai-edit",
+        request,
+      );
     },
     sendSmartReplyAnswer(request) {
       return http.post<

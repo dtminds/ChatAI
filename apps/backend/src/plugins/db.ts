@@ -4,6 +4,7 @@ import { createDatabase } from "../db/mysql.js";
 import type { Database } from "../db/schema.js";
 import { WorkbenchRepository } from "../modules/chat/workbench-repository.js";
 import { MysqlWorkbenchService, type WorkbenchService } from "../modules/chat/workbench.service.js";
+import { ComposerAiEditService } from "../modules/chat/composer-ai-edit.service.js";
 import { createWorkbenchJavaClient } from "../modules/chat/workbench-java-client.js";
 import type { AppLogger } from "../shared/logger.js";
 import type { AuthenticatedWorkbenchScope } from "../modules/workbench-platform-scope.js";
@@ -16,6 +17,7 @@ declare module "fastify" {
       scope?: AuthenticatedWorkbenchScope,
     ): WorkbenchService;
     workbenchService: WorkbenchService;
+    composerAiEditService: ComposerAiEditService;
   }
 }
 
@@ -45,6 +47,13 @@ export const dbPlugin = fp(async (app) => {
   app.decorate("db", db);
   app.decorate("createWorkbenchService", createService);
   app.decorate("workbenchService", createService(app.log));
+  app.decorate(
+    "composerAiEditService",
+    new ComposerAiEditService({
+      apiKey: process.env.VOLCENGINE_ARK_API_KEY,
+      repository,
+    }),
+  );
   app.addHook("onClose", async () => {
     await db.destroy();
   });

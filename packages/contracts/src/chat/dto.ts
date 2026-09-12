@@ -551,6 +551,35 @@ export type WorkbenchSmartReplyMakeShorterResponse = {
   content: string;
 };
 
+export const ComposerAiEditActionSchema = Type.Union([
+  Type.Literal("polish"),
+  Type.Literal("shorten"),
+  Type.Literal("polite"),
+  Type.Literal("professional"),
+  Type.Literal("custom"),
+]);
+
+export const ComposerAiEditRequestSchema = Type.Object(
+  {
+    action: ComposerAiEditActionSchema,
+    content: Type.String({ maxLength: 1000, minLength: 1 }),
+    conversationId: Type.String({ minLength: 1 }),
+    instruction: Type.Optional(Type.String({ maxLength: 200, minLength: 1 })),
+  },
+  { additionalProperties: false },
+);
+
+export const ComposerAiEditResponseSchema = Type.Object(
+  {
+    content: Type.String({ maxLength: 1000, minLength: 1 }),
+  },
+  { additionalProperties: false },
+);
+
+export type ComposerAiEditAction = Static<typeof ComposerAiEditActionSchema>;
+export type ComposerAiEditRequest = Static<typeof ComposerAiEditRequestSchema>;
+export type ComposerAiEditResponse = Static<typeof ComposerAiEditResponseSchema>;
+
 export type WorkbenchSmartReplySendAnswerRequest = {
   conversationId: string;
   optNos: string[];

@@ -10,6 +10,7 @@ import type {
   WorkbenchSmartReplyAutoGeneralAnswerRequest,
   WorkbenchSmartReplyGeneralAnswerRequest,
   WorkbenchSmartReplyMakeShorterRequest,
+  ComposerAiEditRequest,
   WorkbenchSmartReplyPollRequest,
   WorkbenchSmartReplySendAnswerRequest,
   WorkbenchKnowledgePageRequest,
@@ -189,6 +190,19 @@ const SmartReplyAutoGeneralAnswerBodySchema = Type.Object({
 const SmartReplyMakeShorterBodySchema = Type.Object({
   conversationId: Type.String(),
   content: Type.String({ minLength: 1 }),
+});
+
+const ComposerAiEditBodySchema = Type.Object({
+  action: Type.Union([
+    Type.Literal("polish"),
+    Type.Literal("shorten"),
+    Type.Literal("polite"),
+    Type.Literal("professional"),
+    Type.Literal("custom"),
+  ]),
+  content: Type.String({ maxLength: 1000, minLength: 1 }),
+  conversationId: Type.String({ minLength: 1 }),
+  instruction: Type.Optional(Type.String({ maxLength: 200, minLength: 1 })),
 });
 
 const SmartReplySendAnswerBodySchema = Type.Object({
@@ -721,6 +735,7 @@ type QuickReplySortBody = Static<typeof QuickReplySortBodySchema>;
 type QuickReplyParams = Static<typeof QuickReplyParamsSchema>;
 type QuickReplyScopeQuery = Static<typeof QuickReplyScopeQuerySchema>;
 type MaterialCollectionGroupQuery = Static<typeof MaterialCollectionGroupQuerySchema>;
+type ComposerAiEditBody = Static<typeof ComposerAiEditBodySchema>;
 
 
 export async function registerChatRoutes(app: FastifyInstance) {
@@ -2028,6 +2043,24 @@ export async function registerChatRoutes(app: FastifyInstance) {
       return getWorkbenchService(app, request).sendSmartHeartbeat(
         getSubUserId(request),
         request.body satisfies WorkbenchSmartHeartbeatRequest,
+      );
+    },
+  );
+
+  app.post<{ Body: ComposerAiEditBody }>(
+    "/api/server/composer/ai-edit",
+    {
+      preHandler: app.authenticate,
+      schema: {
+        body: ComposerAiEditBodySchema,
+      },
+    },
+    async (request) => {
+      assertChatWriteAccess(request);
+      return app.composerAiEditService.rewrite(
+        getSubUserId(request),
+        getAuthenticatedWorkbenchScope(request.user),
+        request.body satisfies ComposerAiEditRequest,
       );
     },
   );

@@ -20,6 +20,7 @@
     "@chatai/contracts": "workspace:*",
     "@chatai/database": "workspace:*",
     "@chatai/insights": "workspace:*",
+    "@chatai/llm": "workspace:*",
     "@chatai/tickets": "workspace:*",
     "@chatai/user-memory": "workspace:*",
     "@chatai/workflow-engine": "workspace:*",

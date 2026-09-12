@@ -3,6 +3,7 @@ import {
   $createLineBreakNode,
   $createTextNode,
   $getSelection,
+  $getNodeByKey,
   $getRoot,
   $insertNodes,
   $isElementNode,
@@ -10,6 +11,8 @@ import {
   $isRangeSelection,
   $isRootNode,
   $isTextNode,
+  $setSelection,
+  $createRangeSelection,
   type ElementNode,
   type LexicalNode,
   type PointType,
@@ -35,6 +38,86 @@ import {
 const WECHAT_EMOJI_TOKEN_PATTERN = /\[([^[\]]+)\]/g;
 const COMPOSER_TEXT_ANCHOR = "\u200B";
 const COMPOSER_BLOCK_SEPARATOR_LENGTH = 2;
+
+export type ComposerTextSelectionSnapshot = {
+  anchorKey: string;
+  anchorOffset: number;
+  anchorType: "element" | "text";
+  focusKey: string;
+  focusOffset: number;
+  focusType: "element" | "text";
+  text: string;
+};
+
+export function $getComposerTextSelectionSnapshot(): ComposerTextSelectionSnapshot | null {
+  const selection = $getSelection();
+
+  if (!$isRangeSelection(selection) || selection.isCollapsed()) {
+    return null;
+  }
+
+  const nodes = selection.getNodes();
+  const containsUnsupportedNode = nodes.some((node) => {
+    return (
+      (!$isTextNode(node) || $isComposerMentionNode(node)) &&
+      !$isLineBreakNode(node)
+    );
+  });
+
+  if (containsUnsupportedNode) {
+    return null;
+  }
+
+  const text = selection.getTextContent();
+
+  if (!text) {
+    return null;
+  }
+
+  return {
+    anchorKey: selection.anchor.key,
+    anchorOffset: selection.anchor.offset,
+    anchorType: selection.anchor.type,
+    focusKey: selection.focus.key,
+    focusOffset: selection.focus.offset,
+    focusType: selection.focus.type,
+    text,
+  };
+}
+
+export function $replaceComposerTextSelection(
+  snapshot: ComposerTextSelectionSnapshot,
+  replacement: string,
+  maxLength: number,
+) {
+  if (!$getNodeByKey(snapshot.anchorKey) || !$getNodeByKey(snapshot.focusKey)) {
+    return false;
+  }
+
+  const selection = $createRangeSelection();
+  selection.anchor.set(snapshot.anchorKey, snapshot.anchorOffset, snapshot.anchorType);
+  selection.focus.set(snapshot.focusKey, snapshot.focusOffset, snapshot.focusType);
+  $setSelection(selection);
+
+  const currentSelection = $getSelection();
+
+  if (
+    !$isRangeSelection(currentSelection) ||
+    currentSelection.getTextContent() !== snapshot.text
+  ) {
+    return false;
+  }
+
+  const nextLength =
+    $getComposerTextCharacterCount() - snapshot.text.length + replacement.length;
+
+  if (nextLength > maxLength) {
+    return false;
+  }
+
+  currentSelection.insertText(replacement);
+  return true;
+}
 
 export function $insertComposerText(text: string) {
   const nodes = parseWechatEmojiText(text).map((segment) => {

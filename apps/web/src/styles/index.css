@@ -276,7 +276,7 @@ html.dark[data-appearance-theme="claude"] {
   --foreground: oklch(0.81 0.01 93.01);
   --card: oklch(0.295 0.006 106.64);
   --card-foreground: oklch(0.98 0.01 95.1);
-  --popover: oklch(0.31 0 106.6);
+  --popover: oklch(0.31 0.006 106.64);
   --popover-foreground: oklch(0.92 0 106.48);
   --primary: oklch(0.67 0.13 38.76);
   --primary-foreground: oklch(1 0 0);
@@ -284,7 +284,7 @@ html.dark[data-appearance-theme="claude"] {
   --secondary-foreground: oklch(0.92 0 106.48);
   --muted: oklch(0.295 0.006 106.64);
   --muted-foreground: oklch(0.77 0.02 99.07);
-  --accent: oklch(0.36 0.012 98.6);
+  --accent: oklch(0.36 0.008 106.64);
   --accent-foreground: oklch(0.97 0.01 98.88);
   --destructive: oklch(0.64 0.21 25.33);
   --border: oklch(0.36 0.01 106.89);

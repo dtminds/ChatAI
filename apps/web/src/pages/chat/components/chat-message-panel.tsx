@@ -1,7 +1,6 @@
 import {
   startTransition,
   useMemo,
-  type ReactNode,
   type RefObject,
 } from "react";
 import { toast } from "sonner";
@@ -26,13 +25,12 @@ import { useShallow } from "zustand/react/shallow";
 
 type ChatMessagePanelProps = {
   activeHistoryStatus: "idle" | "loading" | "error";
-  bottomOverlay?: ReactNode;
   canCollectMaterialActions?: boolean;
   canUseMessageActions?: boolean;
   canUseMessageForward?: boolean;
-  hasBottomOverlay?: boolean;
   hasMoreHistory: boolean;
   historyLoadLabel?: string;
+  hasAgentHostingOverlay?: boolean;
   isConversationLoading: boolean;
   conversationId: string;
   conversationMode: ChatMode;
@@ -72,13 +70,12 @@ type ChatMessagePanelProps = {
 
 export function ChatMessagePanel({
   activeHistoryStatus,
-  bottomOverlay,
   canCollectMaterialActions = true,
   canUseMessageActions = true,
   canUseMessageForward = false,
-  hasBottomOverlay = false,
   hasMoreHistory,
   historyLoadLabel,
+  hasAgentHostingOverlay = false,
   isConversationLoading,
   conversationId,
   conversationMode,
@@ -205,7 +202,12 @@ export function ChatMessagePanel({
           ref={messageViewportRef}
           style={{ overflowAnchor: "none" }}
         >
-          <div className={cn("min-w-0 px-5 py-5", hasBottomOverlay && "pb-12")}>
+          <div
+            className={cn(
+              "min-w-0 px-5 pt-5",
+              hasAgentHostingOverlay ? "pb-22" : "pb-17",
+            )}
+          >
             <div
               aria-hidden={isConversationLoading ? "true" : undefined}
               className={
@@ -292,11 +294,6 @@ export function ChatMessagePanel({
             />
             <span>正在加载会话</span>
           </div>
-        </div>
-      ) : null}
-      {bottomOverlay ? (
-        <div className="pointer-events-auto absolute bottom-0 left-0 right-0 z-10 bg-surface">
-          {bottomOverlay}
         </div>
       ) : null}
     </section>

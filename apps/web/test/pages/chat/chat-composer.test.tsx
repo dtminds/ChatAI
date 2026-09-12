@@ -18,6 +18,7 @@ function renderComposer(options: {
   currentSeatThirdUserId?: string;
   isGroupConversation?: boolean;
   isSending?: boolean;
+  shouldShowConversationAIHostingControl?: boolean;
   quotedMessage?: QuotedMessagePreviewContent | null;
   onOpenMaterialLibrary?: (bizType: ComposerMaterialLibraryBizType) => void;
   onSendDraft?: (segments: ComposerSegment[]) => void;
@@ -29,7 +30,9 @@ function renderComposer(options: {
       canConfigureSeatSemiAuto={false}
       canToggleConversationAIHosting={false}
       canSendMessage
-      shouldShowConversationAIHostingControl={false}
+      shouldShowConversationAIHostingControl={
+        options.shouldShowConversationAIHostingControl ?? false
+      }
       hasActiveFileUpload={false}
       groupMembers={options.groupMembers ?? []}
       currentSeatThirdUserId={options.currentSeatThirdUserId}
@@ -37,7 +40,6 @@ function renderComposer(options: {
       isGroupConversation={options.isGroupConversation ?? false}
       isEmojiPickerOpen={false}
       isSending={options.isSending ?? false}
-      isHistoryPanelOpen={false}
       isMobileLayout={options.isMobileLayout}
       historyKey="composer-test"
       onClearQuotedMessage={vi.fn()}
@@ -48,7 +50,6 @@ function renderComposer(options: {
       onChangeSeatAgentMode={vi.fn()}
       onChangeFullAuto={vi.fn()}
       onOpenMaterialLibrary={options.onOpenMaterialLibrary ?? vi.fn()}
-      onOpenHistory={vi.fn()}
       onSegmentsChange={vi.fn()}
       onSendDraft={options.onSendDraft ?? vi.fn()}
       placeholder="请输入消息……"
@@ -146,7 +147,6 @@ describe("ChatComposer", () => {
         isGroupConversation={false}
         isEmojiPickerOpen={false}
         isSending={false}
-        isHistoryPanelOpen={false}
         historyKey="disabled-drop-test"
         onClearQuotedMessage={vi.fn()}
         onDraftChange={vi.fn()}
@@ -156,7 +156,6 @@ describe("ChatComposer", () => {
         onChangeSeatAgentMode={vi.fn()}
         onChangeFullAuto={vi.fn()}
         onOpenMaterialLibrary={vi.fn()}
-        onOpenHistory={vi.fn()}
         onSegmentsChange={vi.fn()}
         onSendDraft={vi.fn()}
         placeholder="当前账号无发送权限，暂时无法发送消息"
@@ -187,7 +186,6 @@ describe("ChatComposer", () => {
         isGroupConversation={false}
         isEmojiPickerOpen={false}
         isSending={false}
-        isHistoryPanelOpen={false}
         historyKey="disabled-send-test"
         onClearQuotedMessage={vi.fn()}
         onDraftChange={vi.fn()}
@@ -197,7 +195,6 @@ describe("ChatComposer", () => {
         onChangeSeatAgentMode={vi.fn()}
         onChangeFullAuto={vi.fn()}
         onOpenMaterialLibrary={vi.fn()}
-        onOpenHistory={vi.fn()}
         onSegmentsChange={vi.fn()}
         onSendDraft={vi.fn()}
         placeholder="暂时无法发送消息"
@@ -215,16 +212,17 @@ describe("ChatComposer", () => {
   });
 
   it.each([
-    ["收录的图片", MATERIAL_COLLECTION_BIZ_TYPE.IMAGE],
-    ["收录的文件", MATERIAL_COLLECTION_BIZ_TYPE.FILE],
-    ["收录的小程序", MATERIAL_COLLECTION_BIZ_TYPE.MINI_PROGRAM],
-    ["收录的H5", MATERIAL_COLLECTION_BIZ_TYPE.H5],
-    ["收录的视频", MATERIAL_COLLECTION_BIZ_TYPE.VIDEO],
+    ["图片", MATERIAL_COLLECTION_BIZ_TYPE.IMAGE],
+    ["文件", MATERIAL_COLLECTION_BIZ_TYPE.FILE],
+    ["小程序", MATERIAL_COLLECTION_BIZ_TYPE.MINI_PROGRAM],
+    ["H5", MATERIAL_COLLECTION_BIZ_TYPE.H5],
+    ["视频", MATERIAL_COLLECTION_BIZ_TYPE.VIDEO],
   ])("opens the %s material library through its callback", async (label, bizType) => {
     const onOpenMaterialLibrary = vi.fn();
     renderComposer({ onOpenMaterialLibrary });
 
-    await userEvent.click(screen.getByRole("button", { name: label }));
+    await userEvent.click(screen.getByRole("button", { name: "从收录发送" }));
+    await userEvent.click(await screen.findByRole("menuitem", { name: label }));
     expect(onOpenMaterialLibrary).toHaveBeenCalledWith(bizType);
   });
 
@@ -240,10 +238,50 @@ describe("ChatComposer", () => {
     );
   });
 
-  it("does not render the video channel material library entry by default", () => {
+  it.each([
+    ["desktop", false],
+    ["mobile", true],
+  ])("orders %s composer actions and opens the matching upload picker", async (_, isMobileLayout) => {
+    renderComposer({
+      isMobileLayout,
+      shouldShowConversationAIHostingControl: true,
+    });
+
+    const emojiButton = screen.getByRole("button", { name: "微信表情" });
+    const imageButton = screen.getByRole("button", { name: "上传图片" });
+    const fileButton = screen.getByRole("button", { name: "上传文件" });
+    const collectedButton = screen.getByRole("button", { name: "从收录发送" });
+    const aiButton = screen.getByRole("button", { name: "AI 对话" });
+    const imageInput = screen.getByLabelText("选择图片");
+    const fileInput = screen.getByLabelText("选择文件");
+    const imageInputClick = vi.spyOn(imageInput, "click");
+    const fileInputClick = vi.spyOn(fileInput, "click");
+
+    expect(emojiButton.compareDocumentPosition(imageButton)).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING,
+    );
+    expect(imageButton.compareDocumentPosition(fileButton)).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING,
+    );
+    expect(fileButton.compareDocumentPosition(collectedButton)).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING,
+    );
+    expect(collectedButton.compareDocumentPosition(aiButton)).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING,
+    );
+
+    await userEvent.click(imageButton);
+    await userEvent.click(fileButton);
+
+    expect(imageInputClick).toHaveBeenCalledOnce();
+    expect(fileInputClick).toHaveBeenCalledOnce();
+  });
+
+  it("does not render the video channel material library entry by default", async () => {
     renderComposer();
 
-    expect(screen.queryByRole("button", { name: "收录的视频号" })).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "从收录发送" }));
+    expect(screen.queryByRole("menuitem", { name: "视频号" })).not.toBeInTheDocument();
   });
 
   it("shows the quoted message preview and clears it through the callback", async () => {
@@ -261,7 +299,6 @@ describe("ChatComposer", () => {
         isGroupConversation={false}
         isEmojiPickerOpen={false}
         isSending={false}
-        isHistoryPanelOpen={false}
         historyKey="quote-composer-test"
         onClearQuotedMessage={onClearQuotedMessage}
         onDraftChange={vi.fn()}
@@ -271,7 +308,6 @@ describe("ChatComposer", () => {
         onChangeSeatAgentMode={vi.fn()}
         onChangeFullAuto={vi.fn()}
         onOpenMaterialLibrary={vi.fn()}
-        onOpenHistory={vi.fn()}
         onSegmentsChange={vi.fn()}
         onSendDraft={vi.fn()}
         placeholder="请输入消息……"
@@ -353,12 +389,10 @@ describe("ChatComposer", () => {
     await userEvent.click(composer);
     fireEvent.paste(composer, { clipboardData: { files: images } });
 
-    expect(await screen.findAllByRole("img")).toHaveLength(5);
-    await userEvent.click(screen.getByRole("button", { name: "打开图片菜单" }));
-    expect(await screen.findByRole("menuitem", { name: "本地图片" })).toHaveAttribute(
-      "aria-disabled",
-      "true",
-    );
+    await waitFor(() => {
+      expect(screen.getAllByRole("img")).toHaveLength(5);
+      expect(screen.getByRole("button", { name: "上传图片" })).toBeDisabled();
+    });
   });
 
   it("ignores pasted images with unsupported mime types", async () => {
@@ -459,45 +493,6 @@ describe("ChatComposer", () => {
     expect(await screen.findByRole("img", { name: "[打脸]" })).toBeInTheDocument();
   });
 
-  it("exposes the history entry from the mobile composer toolbar", async () => {
-    const onOpenHistory = vi.fn();
-    render(
-      <ChatComposer
-        canConfigureSeatAIHosting={false}
-        canConfigureSeatSemiAuto={false}
-        canToggleConversationAIHosting={false}
-        canSendMessage
-        shouldShowConversationAIHostingControl={false}
-        hasActiveFileUpload={false}
-        groupMembers={[]}
-        inputEnterBehavior="send"
-        isGroupConversation={false}
-        isEmojiPickerOpen={false}
-        isSending={false}
-        isHistoryPanelOpen={false}
-        isMobileLayout
-        historyKey="mobile-composer-test"
-        onClearQuotedMessage={vi.fn()}
-        onDraftChange={vi.fn()}
-        onEmojiPickerOpenChange={vi.fn()}
-        onEnterBehaviorChange={vi.fn()}
-        onFileSelect={vi.fn()}
-        onChangeSeatAgentMode={vi.fn()}
-        onChangeFullAuto={vi.fn()}
-        onOpenMaterialLibrary={vi.fn()}
-        onOpenHistory={onOpenHistory}
-        onSegmentsChange={vi.fn()}
-        onSendDraft={vi.fn()}
-        placeholder="请输入消息……"
-        quotedMessage={null}
-        composerRef={createRef<LexicalEditor>()}
-      />,
-    );
-
-    await userEvent.click(screen.getByRole("button", { name: "历史记录" }));
-    expect(onOpenHistory).toHaveBeenCalledTimes(1);
-  });
-
   it("filters the current seat from mention candidates", async () => {
     renderComposer({
       groupMembers: [
@@ -589,7 +584,7 @@ describe("ChatComposer", () => {
     await userEvent.click(composer);
     await userEvent.paste("已有内容");
 
-    const toolbarButton = screen.getByRole("button", { name: "历史记录" });
+    const toolbarButton = screen.getByRole("button", { name: "微信表情" });
     fireEvent.dragEnter(toolbarButton, { dataTransfer });
     expect(screen.getByTestId("chat-composer-image-drop-overlay")).toBeInTheDocument();
     fireEvent.drop(toolbarButton, { dataTransfer });

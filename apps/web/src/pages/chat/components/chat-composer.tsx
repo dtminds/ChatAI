@@ -11,18 +11,15 @@ import {
 import {
   AiChat02Icon,
   AiSecurity02Icon,
-  ArrowDown01Icon,
   ArrowUp02Icon,
   Cancel01Icon,
-  ChatDelayIcon,
+  ChatFavouriteIcon,
   Folder01Icon,
   FolderFavouriteIcon,
   Image01Icon,
   Link01Icon,
   PlaySquareIcon,
-  ShapeCollectionIcon,
   SmileIcon,
-  Upload05Icon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import {
@@ -138,11 +135,9 @@ type ChatComposerProps = {
   isGroupConversation: boolean;
   isEmojiPickerOpen: boolean;
   isCollectedExpressionLoadingMore?: boolean;
-  hidePlaceholder?: boolean;
   isMobileLayout?: boolean;
   sendingCollectedExpressionId?: string | null;
   isSending: boolean;
-  isHistoryPanelOpen: boolean;
   seatAIHostingAuth?: boolean;
   seatSemiAutoAuth?: boolean;
   /** 当前会话的 AI 托管开关配置状态 */
@@ -161,7 +156,6 @@ type ChatComposerProps = {
   onLoadMoreCollectedExpressions?: () => void;
   onOpenCollectedExpressions?: () => void;
   onOpenMaterialLibrary: (bizType: ComposerMaterialLibraryBizType) => void;
-  onOpenHistory: () => void;
   onSelectCollectedExpression?: (item: WorkbenchMaterialCollectionItemDto) => void;
   onSegmentsChange: (segments: ComposerSegment[]) => void;
   onSendDraft: (segments: ComposerSegment[]) => void;
@@ -217,11 +211,9 @@ export function ChatComposer({
   isGroupConversation,
   isEmojiPickerOpen,
   isCollectedExpressionLoadingMore,
-  hidePlaceholder = false,
   isMobileLayout = false,
   sendingCollectedExpressionId,
   isSending,
-  isHistoryPanelOpen,
   seatAIHostingAuth = false,
   seatSemiAutoAuth = false,
   conversationAIHostingConfigured = false,
@@ -239,7 +231,6 @@ export function ChatComposer({
   onLoadMoreCollectedExpressions,
   onOpenCollectedExpressions,
   onOpenMaterialLibrary,
-  onOpenHistory,
   onSelectCollectedExpression,
   onSegmentsChange,
   onSendDraft,
@@ -271,7 +262,7 @@ export function ChatComposer({
       },
       theme: {
         paragraph: "m-0",
-        root: "chat-composer-editor min-h-28 outline-none",
+        root: "chat-composer-editor min-h-18 outline-none",
       },
     }),
     [],
@@ -707,7 +698,7 @@ export function ChatComposer({
   return (
     <TooltipProvider delayDuration={300}>
       <div
-        className="relative space-y-1.5 bg-surface px-4 pb-3 pt-3"
+        className="relative mx-4 mb-4 mt-3 flex flex-col gap-1.5 rounded-[18px] border border-divider bg-card px-4 pb-2 pt-3 shadow-[0_2px_8px_var(--shadow-soft)]"
         data-testid="chat-composer"
         onDragEnter={handleComposerDragEnter}
         onDragLeave={handleComposerDragLeave}
@@ -716,7 +707,7 @@ export function ChatComposer({
       >
         {imageDragState ? (
           <div
-            className="pointer-events-none absolute inset-0 z-40 flex items-center justify-center bg-surface-muted/80 text-sm font-medium text-muted-foreground backdrop-blur-sm"
+            className="pointer-events-none absolute inset-0 z-40 flex items-center justify-center rounded-[18px] bg-surface-muted/80 text-sm font-medium text-muted-foreground backdrop-blur-sm"
             data-testid="chat-composer-image-drop-overlay"
             role="status"
           >
@@ -724,7 +715,7 @@ export function ChatComposer({
               <HugeiconsIcon
                 aria-hidden="true"
                 icon={Image01Icon}
-                size={18}
+                size={16}
                 strokeWidth={2}
               />
               {imageDragState === "supported"
@@ -736,10 +727,10 @@ export function ChatComposer({
 
         {isMobileLayout ? (
           <div
-            className="flex items-center justify-between gap-3 text-sm text-muted-foreground"
+            className="order-last flex items-center justify-between gap-3 text-sm text-muted-foreground"
             data-testid="chat-composer-mobile-toolbar"
           >
-            <div className="ml-[-6px] flex items-center gap-1.5">
+            <div className="ml-[-6px] flex items-center gap-0.5">
               <div className="relative" ref={emojiPickerRef}>
                 <Button
                   aria-label="微信表情"
@@ -753,7 +744,7 @@ export function ChatComposer({
                   type="button"
                   variant="ghost"
                 >
-                  <HugeiconsIcon icon={SmileIcon} size={18} strokeWidth={2} />
+                  <HugeiconsIcon icon={SmileIcon} size={16} strokeWidth={2} />
                 </Button>
 
                 {isEmojiPickerOpen ? (
@@ -778,53 +769,29 @@ export function ChatComposer({
                 ) : null}
               </div>
 
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button
-                    aria-label="本地上传"
-                    className={mobileToolbarButtonClass}
-                    disabled={!canAddComposerImage && !canSelectFile}
-                    size="icon"
-                    type="button"
-                    variant="ghost"
-                  >
-                    <HugeiconsIcon
-                      icon={Upload05Icon}
-                      size={18}
-                      strokeWidth={2}
-                    />
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent
-                  align="start"
-                  aria-label="本地上传"
-                  className="min-w-40"
-                  side="top"
-                >
-                  <DropdownMenuItem
-                    disabled={!canAddComposerImage}
-                    onSelect={() => imageInputRef.current?.click()}
-                  >
-                    <HugeiconsIcon
-                      icon={Image01Icon}
-                      size={16}
-                      strokeWidth={1.8}
-                    />
-                    本地图片
-                  </DropdownMenuItem>
-                  <DropdownMenuItem
-                    disabled={!canSelectFile}
-                    onSelect={() => fileInputRef.current?.click()}
-                  >
-                    <HugeiconsIcon
-                      icon={Folder01Icon}
-                      size={16}
-                      strokeWidth={1.8}
-                    />
-                    本地文件
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
+              <Button
+                aria-label="上传图片"
+                className={mobileToolbarButtonClass}
+                disabled={!canAddComposerImage}
+                onClick={() => imageInputRef.current?.click()}
+                size="icon"
+                type="button"
+                variant="ghost"
+              >
+                <HugeiconsIcon icon={Image01Icon} size={16} strokeWidth={2} />
+              </Button>
+
+              <Button
+                aria-label="上传文件"
+                className={mobileToolbarButtonClass}
+                disabled={!canSelectFile}
+                onClick={() => fileInputRef.current?.click()}
+                size="icon"
+                type="button"
+                variant="ghost"
+              >
+                <HugeiconsIcon icon={Folder01Icon} size={16} strokeWidth={2} />
+              </Button>
 
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
@@ -837,8 +804,8 @@ export function ChatComposer({
                     variant="ghost"
                   >
                     <HugeiconsIcon
-                      icon={ShapeCollectionIcon}
-                      size={18}
+                      icon={ChatFavouriteIcon}
+                      size={16}
                       strokeWidth={2}
                     />
                   </Button>
@@ -873,7 +840,7 @@ export function ChatComposer({
                       )
                     }
                   >
-                    <MiniProgramMark className="size-4" />
+                    <MiniProgramMark className="size-3.5!" />
                     小程序
                   </DropdownMenuItem>
                   <DropdownMenuItem
@@ -947,7 +914,7 @@ export function ChatComposer({
                     >
                       <HugeiconsIcon
                         icon={AiChat02Icon}
-                        size={18}
+                        size={16}
                         strokeWidth={2}
                       />
                     </Button>
@@ -976,7 +943,7 @@ export function ChatComposer({
                     >
                       <HugeiconsIcon
                         icon={AiChat02Icon}
-                        size={18}
+                        size={16}
                         strokeWidth={2}
                       />
                     </Button>
@@ -990,26 +957,6 @@ export function ChatComposer({
                   </PopoverContent>
                 </Popover>
               ) : null}
-
-              <Button
-                aria-label="历史记录"
-                aria-pressed={isHistoryPanelOpen}
-                className={cn(
-                  mobileToolbarButtonClass,
-                  isHistoryPanelOpen &&
-                    "bg-accent text-accent-foreground hover:bg-accent hover:text-accent-foreground",
-                )}
-                onClick={onOpenHistory}
-                size="icon"
-                type="button"
-                variant="ghost"
-              >
-                <HugeiconsIcon
-                  icon={ChatDelayIcon}
-                  size={18}
-                  strokeWidth={2}
-                />
-              </Button>
 
               <input
                 accept={COMPOSER_IMAGE_FILE_ACCEPT}
@@ -1059,8 +1006,8 @@ export function ChatComposer({
             </Button>
           </div>
         ) : (
-          <div className="flex items-center justify-between gap-3 text-sm text-muted-foreground">
-            <div className="ml-[-6px] flex items-center gap-1.5">
+          <div className="order-last flex items-center justify-between gap-3 text-sm text-muted-foreground">
+            <div className="ml-[-6px] flex items-center gap-0.5">
               <div className="relative" ref={emojiPickerRef}>
                 <ComposerActionTooltip
                   disabled={isSending || !canSendMessage}
@@ -1078,7 +1025,7 @@ export function ChatComposer({
                     type="button"
                     variant="ghost"
                   >
-                    <HugeiconsIcon icon={SmileIcon} size={18} strokeWidth={2} />
+                    <HugeiconsIcon icon={SmileIcon} size={16} strokeWidth={2} />
                   </Button>
                 </ComposerActionTooltip>
 
@@ -1104,21 +1051,22 @@ export function ChatComposer({
                 ) : null}
               </div>
 
-              <ComposerMaterialSplitButton
-                canOpenCollected={isSending ? false : canSendMessage}
-                canSelectLocal={canAddComposerImage}
-                collectedIcon={FolderFavouriteIcon}
-                collectedLabel="收录的图片"
-                localLabel="本地图片"
-                menuLabel="打开图片菜单"
-                onOpenCollected={() => {
-                  onOpenMaterialLibrary(MATERIAL_COLLECTION_BIZ_TYPE.IMAGE);
-                }}
-                onSelectLocal={() => imageInputRef.current?.click()}
-                primaryIcon={Image01Icon}
-                primaryLabel="收录的图片"
-                tooltipLabel="图片"
-              />
+              <ComposerActionTooltip
+                disabled={!canAddComposerImage}
+                label="上传图片"
+              >
+                <Button
+                  aria-label="上传图片"
+                  className={composerActionButtonClass}
+                  disabled={!canAddComposerImage}
+                  onClick={() => imageInputRef.current?.click()}
+                  size="icon"
+                  type="button"
+                  variant="ghost"
+                >
+                  <HugeiconsIcon icon={Image01Icon} size={16} strokeWidth={2} />
+                </Button>
+              </ComposerActionTooltip>
               <input
                 accept={COMPOSER_IMAGE_FILE_ACCEPT}
                 aria-label="选择图片"
@@ -1134,104 +1082,21 @@ export function ChatComposer({
               />
 
               <ComposerActionTooltip
-                disabled={isSending || !canSendMessage}
-                label="视频"
+                disabled={!canSelectFile}
+                label="上传文件"
               >
                 <Button
-                  aria-label="收录的视频"
+                  aria-label="上传文件"
                   className={composerActionButtonClass}
-                  disabled={isSending || !canSendMessage}
-                  onClick={() =>
-                    onOpenMaterialLibrary(MATERIAL_COLLECTION_BIZ_TYPE.VIDEO)
-                  }
+                  disabled={!canSelectFile}
+                  onClick={() => fileInputRef.current?.click()}
                   size="icon"
                   type="button"
                   variant="ghost"
                 >
-                  <HugeiconsIcon
-                    icon={PlaySquareIcon}
-                    size={18}
-                    strokeWidth={2}
-                  />
+                  <HugeiconsIcon icon={Folder01Icon} size={16} strokeWidth={2} />
                 </Button>
               </ComposerActionTooltip>
-
-              <ComposerActionTooltip
-                disabled={isSending || !canSendMessage}
-                label="小程序"
-              >
-                <Button
-                  aria-label="收录的小程序"
-                  className={composerActionButtonClass}
-                  disabled={isSending || !canSendMessage}
-                  onClick={() =>
-                    onOpenMaterialLibrary(
-                      MATERIAL_COLLECTION_BIZ_TYPE.MINI_PROGRAM,
-                    )
-                  }
-                  size="icon"
-                  type="button"
-                  variant="ghost"
-                >
-                  <MiniProgramMark className="size-4.5" />
-                </Button>
-              </ComposerActionTooltip>
-
-              {DISABLE_SPH_COLLECTION ? null : (
-                <ComposerActionTooltip
-                  disabled={isSending || !canSendMessage}
-                  label="视频号"
-                >
-                  <Button
-                    aria-label="收录的视频号"
-                    className={composerActionButtonClass}
-                    disabled={isSending || !canSendMessage}
-                    onClick={() =>
-                      onOpenMaterialLibrary(MATERIAL_COLLECTION_BIZ_TYPE.SPHFEED)
-                    }
-                    size="icon"
-                    type="button"
-                    variant="ghost"
-                  >
-                    <SphFeedMark className="size-5.75" />
-                  </Button>
-                </ComposerActionTooltip>
-              )}
-
-              <ComposerActionTooltip
-                disabled={isSending || !canSendMessage}
-                label="H5链接"
-              >
-                <Button
-                  aria-label="收录的H5"
-                  className={composerActionButtonClass}
-                  disabled={isSending || !canSendMessage}
-                  onClick={() =>
-                    onOpenMaterialLibrary(MATERIAL_COLLECTION_BIZ_TYPE.H5)
-                  }
-                  size="icon"
-                  type="button"
-                  variant="ghost"
-                >
-                  <HugeiconsIcon icon={Link01Icon} size={18} strokeWidth={2} />
-                </Button>
-              </ComposerActionTooltip>
-
-              <ComposerMaterialSplitButton
-                canOpenCollected={canOpenCollectedFiles}
-                canSelectLocal={canSelectFile}
-                collectedIcon={FolderFavouriteIcon}
-                collectedLabel="收录的文件"
-                localLabel="本地文件"
-                menuLabel="打开文件菜单"
-                onOpenCollected={() =>
-                  onOpenMaterialLibrary(MATERIAL_COLLECTION_BIZ_TYPE.FILE)
-                }
-                onSelectLocal={() => fileInputRef.current?.click()}
-                primaryIcon={Folder01Icon}
-                primaryLabel="收录的文件"
-                tooltipLabel="文件"
-              />
               <input
                 accept={COMPOSER_FILE_ACCEPT}
                 aria-label="选择文件"
@@ -1244,6 +1109,108 @@ export function ChatComposer({
                 ref={fileInputRef}
                 type="file"
               />
+
+              <DropdownMenu>
+                <ComposerActionTooltip
+                  disabled={isSending || !canSendMessage}
+                  label="从收录发送"
+                >
+                  <DropdownMenuTrigger asChild>
+                    <Button
+                      aria-label="从收录发送"
+                      className={composerActionButtonClass}
+                      disabled={isSending || !canSendMessage}
+                      size="icon"
+                      type="button"
+                      variant="ghost"
+                    >
+                      <HugeiconsIcon
+                        icon={ChatFavouriteIcon}
+                        size={16}
+                        strokeWidth={2}
+                      />
+                    </Button>
+                  </DropdownMenuTrigger>
+                </ComposerActionTooltip>
+                <DropdownMenuContent
+                  align="start"
+                  aria-label="从收录发送"
+                  className="min-w-40"
+                  side="top"
+                >
+                  <DropdownMenuLabel className="px-2.5 py-1 text-xs font-medium text-muted-foreground">
+                    从收录发送
+                  </DropdownMenuLabel>
+                  <DropdownMenuItem
+                    disabled={isSending || !canSendMessage}
+                    onSelect={() =>
+                      onOpenMaterialLibrary(MATERIAL_COLLECTION_BIZ_TYPE.IMAGE)
+                    }
+                  >
+                    <HugeiconsIcon icon={Image01Icon} size={16} strokeWidth={1.8} />
+                    图片
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    disabled={isSending || !canSendMessage}
+                    onSelect={() =>
+                      onOpenMaterialLibrary(
+                        MATERIAL_COLLECTION_BIZ_TYPE.MINI_PROGRAM,
+                      )
+                    }
+                  >
+                    <MiniProgramMark className="size-3.5!" />
+                    小程序
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    disabled={isSending || !canSendMessage}
+                    onSelect={() =>
+                      onOpenMaterialLibrary(MATERIAL_COLLECTION_BIZ_TYPE.H5)
+                    }
+                  >
+                    <HugeiconsIcon icon={Link01Icon} size={16} strokeWidth={1.8} />
+                    H5
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    disabled={isSending || !canSendMessage}
+                    onSelect={() =>
+                      onOpenMaterialLibrary(MATERIAL_COLLECTION_BIZ_TYPE.VIDEO)
+                    }
+                  >
+                    <HugeiconsIcon
+                      icon={PlaySquareIcon}
+                      size={16}
+                      strokeWidth={1.8}
+                    />
+                    视频
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    disabled={!canOpenCollectedFiles}
+                    onSelect={() =>
+                      onOpenMaterialLibrary(MATERIAL_COLLECTION_BIZ_TYPE.FILE)
+                    }
+                  >
+                    <HugeiconsIcon
+                      icon={FolderFavouriteIcon}
+                      size={16}
+                      strokeWidth={1.8}
+                    />
+                    文件
+                  </DropdownMenuItem>
+                  {DISABLE_SPH_COLLECTION ? null : (
+                    <DropdownMenuItem
+                      disabled={isSending || !canSendMessage}
+                      onSelect={() =>
+                        onOpenMaterialLibrary(
+                          MATERIAL_COLLECTION_BIZ_TYPE.SPHFEED,
+                        )
+                      }
+                    >
+                      <SphFeedMark className="size-4" />
+                      视频号
+                    </DropdownMenuItem>
+                  )}
+                </DropdownMenuContent>
+              </DropdownMenu>
 
               {showAgentDialogButton ? (
                 <Popover
@@ -1265,7 +1232,7 @@ export function ChatComposer({
                       >
                         <HugeiconsIcon
                           icon={AiChat02Icon}
-                          size={18}
+                          size={16}
                           strokeWidth={2}
                         />
                       </Button>
@@ -1295,7 +1262,7 @@ export function ChatComposer({
                       >
                         <HugeiconsIcon
                           icon={AiChat02Icon}
-                          size={18}
+                          size={16}
                           strokeWidth={2}
                         />
                       </Button>
@@ -1307,27 +1274,6 @@ export function ChatComposer({
                 </Popover>
               ) : null}
 
-              <ComposerActionTooltip label="聊天记录">
-                <Button
-                  aria-label="历史记录"
-                  aria-pressed={isHistoryPanelOpen}
-                  className={cn(
-                    composerActionButtonClass,
-                    isHistoryPanelOpen &&
-                      "bg-accent text-accent-foreground hover:bg-accent hover:text-accent-foreground",
-                  )}
-                  onClick={onOpenHistory}
-                  size="icon"
-                  type="button"
-                  variant="ghost"
-                >
-                  <HugeiconsIcon
-                    icon={ChatDelayIcon}
-                    size={18}
-                    strokeWidth={2}
-                  />
-                </Button>
-              </ComposerActionTooltip>
             </div>
 
             <div className="flex items-center gap-1">
@@ -1475,16 +1421,14 @@ export function ChatComposer({
                 <ContentEditable
                   aria-label={placeholder}
                   aria-multiline="true"
-                  className="chat-composer-textarea min-h-28 max-h-80 overflow-y-auto rounded-none border-0 bg-transparent py-1 pl-0 pr-0.5 text-[14px] leading-6 shadow-none outline-none focus-visible:ring-0"
+                  className="chat-composer-textarea min-h-18 max-h-80 overflow-y-auto rounded-none border-0 bg-transparent py-1 pl-0 pr-0.5 text-[14px] leading-6 shadow-none outline-none focus-visible:ring-0"
                   data-testid="chat-composer-editor"
                 />
               }
               placeholder={
-                hidePlaceholder ? null : (
-                  <div className="pointer-events-none absolute left-0 top-1 text-[14px] text-muted-foreground">
-                    {placeholder}
-                  </div>
-                )
+                <div className="pointer-events-none absolute left-0 top-1 text-[14px] text-muted-foreground/60">
+                  {placeholder}
+                </div>
               }
               ErrorBoundary={LexicalErrorBoundary}
             />
@@ -1635,101 +1579,6 @@ function AgentDialogContent({
         ) : null}
       </section>
     </div>
-  );
-}
-
-function ComposerMaterialSplitButton({
-  canOpenCollected,
-  canSelectLocal,
-  collectedIcon,
-  collectedLabel,
-  localLabel,
-  menuLabel,
-  onOpenCollected,
-  onSelectLocal,
-  primaryIcon,
-  primaryLabel,
-  tooltipLabel,
-}: {
-  canOpenCollected: boolean;
-  canSelectLocal: boolean;
-  collectedIcon: typeof FolderFavouriteIcon;
-  collectedLabel: string;
-  localLabel: string;
-  menuLabel: string;
-  onOpenCollected: () => void;
-  onSelectLocal: () => void;
-  primaryIcon: typeof Folder01Icon;
-  primaryLabel: string;
-  tooltipLabel: string;
-}) {
-  const isControlDisabled = !canOpenCollected && !canSelectLocal;
-  const segmentHoverClass =
-    "transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/25";
-
-  return (
-    <ComposerActionTooltip disabled={isControlDisabled} label={tooltipLabel}>
-      <div
-        className={cn(
-          "inline-flex h-8 shrink-0 items-center overflow-hidden rounded-[8px] text-muted-foreground transition-colors",
-          !isControlDisabled && [
-            "[&:has(button:hover:not(:disabled))]:bg-accent/50",
-            "[&:has(button:hover:not(:disabled))]:text-accent-foreground",
-            "[&:has([data-state=open])]:bg-accent/50",
-            "[&:has([data-state=open])]:text-accent-foreground",
-          ],
-          isControlDisabled && "pointer-events-none opacity-45",
-        )}
-      >
-        <button
-          aria-label={primaryLabel}
-          className={cn(
-            "flex h-8 shrink-0 items-center justify-center rounded-l-[8px] pl-1.5 pr-0.5 disabled:cursor-not-allowed disabled:hover:bg-transparent disabled:hover:text-inherit",
-            segmentHoverClass,
-          )}
-          disabled={!canOpenCollected}
-          onClick={onOpenCollected}
-          type="button"
-        >
-          <HugeiconsIcon icon={primaryIcon} size={18} strokeWidth={2} />
-        </button>
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <button
-              aria-label={menuLabel}
-              className={cn(
-                "flex h-8 w-4 shrink-0 items-center justify-center rounded-r-[8px] pr-0.5 data-[state=open]:bg-accent data-[state=open]:text-accent-foreground",
-                segmentHoverClass,
-              )}
-              disabled={isControlDisabled}
-              type="button"
-            >
-              <HugeiconsIcon
-                icon={ArrowDown01Icon}
-                size={12}
-                strokeWidth={1.8}
-              />
-            </button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="start" className="min-w-[8.5rem]">
-            <DropdownMenuItem
-              disabled={!canSelectLocal}
-              onSelect={onSelectLocal}
-            >
-              <HugeiconsIcon icon={ArrowUp02Icon} size={16} strokeWidth={1.8} />
-              {localLabel}
-            </DropdownMenuItem>
-            <DropdownMenuItem
-              disabled={!canOpenCollected}
-              onSelect={onOpenCollected}
-            >
-              <HugeiconsIcon icon={collectedIcon} size={16} strokeWidth={1.8} />
-              {collectedLabel}
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
-      </div>
-    </ComposerActionTooltip>
   );
 }
 

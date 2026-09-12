@@ -348,6 +348,7 @@ ALTCHA_HMAC_SECRET=<random-secret>
 JAVA_INTERNAL_API_BASE_URL=<java-internal-api-base-url>
 JAVA_INTERNAL_API_TOKEN=<java-internal-api-token>
 REDIS_URL=redis://:<redis-password>@<redis-host>:<redis-port>/<redis-database>
+VOLCENGINE_ARK_API_KEY=<volcengine-ark-api-key>
 ```
 
 注意事项：

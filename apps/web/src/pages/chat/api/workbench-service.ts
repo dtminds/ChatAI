@@ -146,6 +146,7 @@ import {
   normalizeQuickReplyAttachments,
   validateQuickReplyPayload,
 } from "@chatai/contracts";
+
 import type {
   ChatMode,
   FileMessageContent,
@@ -153,6 +154,7 @@ import type {
   VideoMessageContent,
 } from "@/pages/chat/chat-types";
 
+const COMPOSER_AI_EDIT_TIMEOUT_MS = 35_000;
 const VIDEO_MATERIAL_COLLECT_TIMEOUT_MS = 130000;
 
 export type WorkbenchConversationListOptions = {
@@ -2658,6 +2660,7 @@ export function createHttpWorkbenchService(): WorkbenchService {
       return http.post<ComposerAiEditResponse, ComposerAiEditRequest>(
         "/server/composer/ai-edit",
         request,
+        { timeout: COMPOSER_AI_EDIT_TIMEOUT_MS },
       );
     },
     sendSmartReplyAnswer(request) {

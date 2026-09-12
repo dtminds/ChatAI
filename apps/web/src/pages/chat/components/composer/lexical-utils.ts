@@ -49,6 +49,12 @@ export type ComposerTextSelectionSnapshot = {
   text: string;
 };
 
+export type ComposerTextSelectionReplacementResult =
+  | "applied"
+  | "node_missing"
+  | "text_changed"
+  | "length_exceeded";
+
 export function $getComposerTextSelectionSnapshot(): ComposerTextSelectionSnapshot | null {
   const selection = $getSelection();
 
@@ -89,9 +95,9 @@ export function $replaceComposerTextSelection(
   snapshot: ComposerTextSelectionSnapshot,
   replacement: string,
   maxLength: number,
-) {
+): ComposerTextSelectionReplacementResult {
   if (!$getNodeByKey(snapshot.anchorKey) || !$getNodeByKey(snapshot.focusKey)) {
-    return false;
+    return "node_missing";
   }
 
   const selection = $createRangeSelection();
@@ -105,18 +111,18 @@ export function $replaceComposerTextSelection(
     !$isRangeSelection(currentSelection) ||
     currentSelection.getTextContent() !== snapshot.text
   ) {
-    return false;
+    return "text_changed";
   }
 
   const nextLength =
     $getComposerTextCharacterCount() - snapshot.text.length + replacement.length;
 
   if (nextLength > maxLength) {
-    return false;
+    return "length_exceeded";
   }
 
   currentSelection.insertText(replacement);
-  return true;
+  return "applied";
 }
 
 export function $insertComposerText(text: string) {

@@ -742,7 +742,7 @@ describe("composer lexical utils", () => {
     editor.update(
       () => {
         expect(capturedSnapshot).not.toBeNull();
-        expect($replaceComposerTextSelection(capturedSnapshot!, "改写内容", 1000)).toBe(true);
+        expect($replaceComposerTextSelection(capturedSnapshot!, "改写内容", 1000)).toBe("applied");
         plainText = $getComposerPlainText();
       },
       { discrete: true },
@@ -845,7 +845,7 @@ describe("composer lexical utils", () => {
     editor.update(
       () => {
         const capturedSnapshot = snapshot as ComposerTextSelectionSnapshot | null;
-        expect($replaceComposerTextSelection(capturedSnapshot!, "不应写回", 1000)).toBe(false);
+        expect($replaceComposerTextSelection(capturedSnapshot!, "不应写回", 1000)).toBe("text_changed");
         plainText = $getComposerPlainText();
       },
       { discrete: true },
@@ -880,7 +880,7 @@ describe("composer lexical utils", () => {
       { discrete: true },
     );
 
-    let replaced = true;
+    let replaced = "applied";
     editor.update(
       () => {
         replaced = $replaceComposerTextSelection(
@@ -892,6 +892,46 @@ describe("composer lexical utils", () => {
       { discrete: true },
     );
 
-    expect(replaced).toBe(false);
+    expect(replaced).toBe("node_missing");
+  });
+
+  it("reports when a replacement would exceed the composer limit", () => {
+    const editor = createEditor({
+      namespace: "composer-ai-edit-length-limit-test",
+      nodes: [ComposerEmojiNode, ComposerImageNode, ComposerLiteAttachmentNode, ComposerMentionNode],
+      onError(error) {
+        throw error;
+      },
+    });
+    let snapshot: ComposerTextSelectionSnapshot | null = null;
+    let result = "applied";
+
+    editor.update(
+      () => {
+        $insertComposerText("前".repeat(999) + "旧");
+        const textNode = $getRoot().getFirstDescendant();
+
+        if (!$isTextNode(textNode)) {
+          throw new Error("Expected composer text node");
+        }
+
+        textNode.select(999, 1000);
+        snapshot = $getComposerTextSelectionSnapshot();
+      },
+      { discrete: true },
+    );
+
+    editor.update(
+      () => {
+        result = $replaceComposerTextSelection(
+          snapshot as ComposerTextSelectionSnapshot,
+          "改写后的内容",
+          1000,
+        );
+      },
+      { discrete: true },
+    );
+
+    expect(result).toBe("length_exceeded");
   });
 });

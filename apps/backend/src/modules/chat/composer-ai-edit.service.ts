@@ -58,7 +58,7 @@ export class ComposerAiEditService {
     if (!this.apiKey) {
       throw new ServiceUnavailableError(
         "COMPOSER_AI_EDIT_UNAVAILABLE",
-        "AI 编辑暂未配置",
+        "AI 助写暂未配置",
       );
     }
 
@@ -103,7 +103,7 @@ export class ComposerAiEditService {
       if (!response.ok) {
         throw new BadGatewayError(
           "COMPOSER_AI_EDIT_UPSTREAM_FAILED",
-          "AI 编辑暂时不可用",
+          "AI 助写暂时不可用",
           { status: response.status },
         );
       }
@@ -113,10 +113,17 @@ export class ComposerAiEditService {
       };
       const content = payload.choices?.[0]?.message?.content?.trim();
 
-      if (!content || content.length > MAX_COMPOSER_TEXT_LENGTH) {
+      if (!content) {
         throw new BadGatewayError(
           "COMPOSER_AI_EDIT_RESPONSE_EMPTY",
-          "AI 编辑暂时不可用",
+          "AI 助写暂时不可用",
+        );
+      }
+
+      if (content.length > MAX_COMPOSER_TEXT_LENGTH) {
+        throw new BadGatewayError(
+          "COMPOSER_AI_EDIT_RESPONSE_TOO_LONG",
+          "AI 助写结果超过字数限制",
         );
       }
 
@@ -130,7 +137,7 @@ export class ComposerAiEditService {
         controller.signal.aborted
           ? "COMPOSER_AI_EDIT_TIMEOUT"
           : "COMPOSER_AI_EDIT_REQUEST_FAILED",
-        "AI 编辑暂时不可用",
+        "AI 助写暂时不可用",
       );
     } finally {
       clearTimeout(timeout);

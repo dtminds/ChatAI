@@ -106,4 +106,33 @@ describe("ComposerAiEditService", () => {
       ),
     ).rejects.toBeInstanceOf(BadGatewayError);
   });
+
+  it("uses a distinct error code when the model response exceeds the composer limit", async () => {
+    const service = new ComposerAiEditService({
+      apiKey: "test-key",
+      fetch: vi.fn().mockResolvedValue(
+        new Response(
+          JSON.stringify({
+            choices: [{ message: { content: "字".repeat(1001) } }],
+          }),
+          { status: 200 },
+        ),
+      ),
+      repository: createRepository(),
+    });
+
+    await expect(
+      service.rewrite(
+        "sub-1",
+        { platform: 5, uid: 9 },
+        {
+          action: "polish",
+          content: "你好",
+          conversationId: "conversation-1",
+        },
+      ),
+    ).rejects.toMatchObject({
+      code: "COMPOSER_AI_EDIT_RESPONSE_TOO_LONG",
+    });
+  });
 });

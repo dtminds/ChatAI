@@ -7,11 +7,13 @@ import type {
   ComposerAiEditResponse,
 } from "@chatai/contracts";
 import { Button } from "@/components/ui/button";
+import { Spinner } from "@/components/ui/spinner";
 import { toast } from "sonner";
 import { getWorkbenchService } from "@/pages/chat/api/workbench-service";
 import {
   $getComposerTextSelectionSnapshot,
   $replaceComposerTextSelection,
+  type ComposerTextSelectionReplacementResult,
   type ComposerTextSelectionSnapshot,
 } from "@/pages/chat/components/composer/lexical-utils";
 import { COMPOSER_TEXT_MAX_LENGTH } from "@/pages/chat/chat-constants";
@@ -142,6 +144,17 @@ export function ComposerAiEditPlugin({
     setResult("");
   }, []);
 
+  const previousConversationIdRef = useRef(conversationId);
+
+  useEffect(() => {
+    if (previousConversationIdRef.current === conversationId) {
+      return;
+    }
+
+    previousConversationIdRef.current = conversationId;
+    close();
+  }, [close, conversationId]);
+
   const requestRewrite = useCallback(
     async (action: ComposerAiEditAction, instruction?: string) => {
       if (!selection || !conversationId) {
@@ -169,7 +182,7 @@ export function ComposerAiEditPlugin({
       } catch {
         if (requestId === requestIdRef.current) {
           setEditState("menu");
-          toast.error("AI 编辑失败，请稍后重试");
+          toast.error("操作失败，请稍后重试");
         }
       }
     },
@@ -181,17 +194,27 @@ export function ComposerAiEditPlugin({
       return;
     }
 
-    let applied = false;
+    const replacementState: {
+      result: ComposerTextSelectionReplacementResult | null;
+    } = { result: null };
     editor.update(() => {
-      applied = $replaceComposerTextSelection(
+      replacementState.result = $replaceComposerTextSelection(
         selection,
         result,
         COMPOSER_TEXT_MAX_LENGTH,
       );
     });
 
-    if (!applied) {
-      toast.error("原文已变化，请重新选择");
+    const replacementResult = replacementState.result ?? "node_missing";
+
+    if (replacementResult !== "applied") {
+      toast.error(
+        replacementResult === "length_exceeded"
+          ? "内容超过字数限制，请缩短后重试"
+          : replacementResult === "node_missing"
+            ? "选区已失效，请重新选择"
+            : "原文已变化，请重新选择",
+      );
       close();
       return;
     }
@@ -218,21 +241,21 @@ export function ComposerAiEditPlugin({
         <div className="space-y-2 p-1">
           <div className="flex items-center gap-1.5 px-1 text-xs font-medium text-muted-foreground">
             <HugeiconsIcon aria-hidden="true" icon={AiChat02Icon} size={14} />
-            AI 建议
+            AI 助写建议
           </div>
           <div className="max-h-36 overflow-y-auto whitespace-pre-wrap rounded-[6px] bg-surface-muted px-2.5 py-2 leading-5">
             {result}
           </div>
           <div className="flex justify-end gap-1">
-            <Button aria-label="放弃 AI 建议" onClick={close} onMouseDown={(event) => event.preventDefault()} size="sm" type="button" variant="ghost">
+            <Button aria-label="放弃 AI 助写建议" onClick={close} onMouseDown={(event) => event.preventDefault()} size="sm" type="button" variant="ghost">
               <HugeiconsIcon aria-hidden="true" icon={Cancel01Icon} size={14} />
               放弃
             </Button>
-            <Button aria-label="重新生成 AI 建议" onClick={() => void requestRewrite(activeAction ?? "polish", customInstruction)} onMouseDown={(event) => event.preventDefault()} size="sm" type="button" variant="ghost">
+            <Button aria-label="重新生成 AI 助写建议" onClick={() => void requestRewrite(activeAction ?? "polish", customInstruction)} onMouseDown={(event) => event.preventDefault()} size="sm" type="button" variant="ghost">
               <HugeiconsIcon aria-hidden="true" icon={RefreshIcon} size={14} />
               重新生成
             </Button>
-            <Button aria-label="采用 AI 建议" onClick={applyResult} onMouseDown={(event) => event.preventDefault()} size="sm" type="button">
+            <Button aria-label="采用 AI 助写建议" onClick={applyResult} onMouseDown={(event) => event.preventDefault()} size="sm" type="button">
               <HugeiconsIcon aria-hidden="true" icon={CheckmarkCircle02Icon} size={14} />
               采用
             </Button>
@@ -240,12 +263,12 @@ export function ComposerAiEditPlugin({
         </div>
       ) : editState === "loading" ? (
         <div className="flex items-center gap-2 px-2.5 py-2 text-muted-foreground" role="status">
-          <HugeiconsIcon aria-hidden="true" className="animate-pulse" icon={AiChat02Icon} size={14} />
+          <Spinner aria-hidden="true" size={14} />
           正在生成
         </div>
       ) : (
         <div className="flex flex-wrap items-center gap-1">
-          <span className="px-1.5 text-xs text-muted-foreground">AI 编辑</span>
+          <span className="px-1.5 text-xs text-muted-foreground">AI 助写</span>
           {ACTIONS.map(({ action, label }) => (
             <button
               className="rounded-[6px] px-2 py-1.5 text-left outline-none hover:bg-surface-hover focus-visible:ring-1 focus-visible:ring-ring"
@@ -258,7 +281,7 @@ export function ComposerAiEditPlugin({
             </button>
           ))}
           <input
-            aria-label="自定义 AI 编辑要求"
+            aria-label="自定义 AI 助写要求"
             className="min-w-28 flex-1 rounded-[6px] border border-input bg-background px-2 py-1.5 text-[13px] outline-none focus-visible:ring-1 focus-visible:ring-ring"
             maxLength={200}
             onChange={(event) => setCustomInstruction(event.target.value)}

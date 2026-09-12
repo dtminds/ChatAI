@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   $createLineBreakNode,
   $createParagraphNode,
+  $createRangeSelection,
   $createTextNode,
   $getSelection,
   $getRoot,
@@ -9,21 +10,28 @@ import {
   $isElementNode,
   $isRangeSelection,
   $isTextNode,
+  $setSelection,
   createEditor,
 } from "lexical";
 import {
   $exportComposerSegments,
+  $getComposerTextSelectionSnapshot,
   $getComposerPlainText,
   $getComposerTextCharacterCount,
   $insertComposerImage,
   $insertComposerMention,
   $insertComposerText,
   $insertComposerTextWithinMaxLength,
+  $replaceComposerTextSelection,
   $removeComposerTextRange,
   $restoreComposerFromSegments,
   $trimComposerTextToMaxLength,
 } from "@/pages/chat/components/composer/lexical-utils";
 import {
+  $createComposerEmojiNode,
+  $createComposerImageNode,
+  $createComposerLiteAttachmentNode,
+  $createComposerMentionNode,
   ComposerEmojiNode,
   ComposerImageNode,
   ComposerLiteAttachmentNode,
@@ -33,6 +41,7 @@ import {
   normalizeComposerSegments,
   type ComposerSegment,
 } from "@/pages/chat/lib/composer-segments";
+import type { ComposerTextSelectionSnapshot } from "@/pages/chat/components/composer/lexical-utils";
 
 function $getTextFromSegments(segments: ComposerSegment[]) {
   return segments
@@ -699,5 +708,300 @@ describe("composer lexical utils", () => {
         type: "text",
       },
     ]);
+  });
+
+  it("captures and replaces a plain-text selection", () => {
+    const editor = createEditor({
+      namespace: "composer-ai-edit-selection-test",
+      nodes: [ComposerEmojiNode, ComposerImageNode, ComposerLiteAttachmentNode, ComposerMentionNode],
+      onError(error) {
+        throw error;
+      },
+    });
+    let snapshot: ComposerTextSelectionSnapshot | null = null;
+    let plainText = "";
+
+    editor.update(
+      () => {
+        $insertComposerText("原始内容");
+        const textNode = $getRoot().getFirstDescendant();
+
+        if (!$isTextNode(textNode)) {
+          throw new Error("Expected composer text node");
+        }
+
+        textNode.select(0, textNode.getTextContentSize());
+        snapshot = $getComposerTextSelectionSnapshot();
+      },
+      { discrete: true },
+    );
+
+    const capturedSnapshot = snapshot as ComposerTextSelectionSnapshot | null;
+    expect(capturedSnapshot?.text).toBe("原始内容");
+    expect(capturedSnapshot?.contextBefore).toBe("");
+    expect(capturedSnapshot?.contextAfter).toBe("");
+    expect(capturedSnapshot?.rewriteMode).toBe("full");
+
+    editor.update(
+      () => {
+        expect(capturedSnapshot).not.toBeNull();
+        expect($replaceComposerTextSelection(capturedSnapshot!, "改写内容", 1000)).toBe("applied");
+        plainText = $getComposerPlainText();
+      },
+      { discrete: true },
+    );
+
+    expect(plainText).toBe("改写内容");
+  });
+
+  it("captures the nearest 50 characters around the exact selected occurrence", () => {
+    const editor = createEditor({
+      namespace: "composer-ai-edit-context-test",
+      nodes: [ComposerEmojiNode, ComposerImageNode, ComposerLiteAttachmentNode, ComposerMentionNode],
+      onError(error) {
+        throw error;
+      },
+    });
+    const target = "帮忙催催下";
+    const contextBefore = `${"前".repeat(30)}${target}${"中".repeat(20)}`;
+    const contextAfter = "后".repeat(60);
+    const fullText = `${contextBefore}${target}${contextAfter}`;
+    let snapshot: ComposerTextSelectionSnapshot | null = null;
+
+    editor.update(
+      () => {
+        const textNode = $createTextNode(fullText);
+        const paragraph = $createParagraphNode().append(textNode);
+        $getRoot().clear().append(paragraph);
+        textNode.select(contextBefore.length, contextBefore.length + target.length);
+        snapshot = $getComposerTextSelectionSnapshot();
+      },
+      { discrete: true },
+    );
+
+    const capturedSnapshot = snapshot as ComposerTextSelectionSnapshot | null;
+    expect(capturedSnapshot?.text).toBe(target);
+    expect(capturedSnapshot?.contextBefore).toBe(contextBefore.slice(-50));
+    expect(capturedSnapshot?.contextBefore).toContain(target);
+    expect(capturedSnapshot?.contextAfter).toBe(contextAfter.slice(0, 50));
+    expect(capturedSnapshot?.rewriteMode).toBe("targeted");
+  });
+
+  it("treats a complete paragraph as a full rewrite when other paragraphs exist", () => {
+    const editor = createEditor({
+      namespace: "composer-ai-edit-complete-paragraph-test",
+      nodes: [ComposerEmojiNode, ComposerImageNode, ComposerLiteAttachmentNode, ComposerMentionNode],
+      onError(error) {
+        throw error;
+      },
+    });
+    let snapshot: ComposerTextSelectionSnapshot | null = null;
+
+    editor.update(
+      () => {
+        const previousParagraph = $createParagraphNode().append($createTextNode("前一段内容"));
+        const selectedTextNode = $createTextNode("需要完整改写的这一段");
+        const selectedParagraph = $createParagraphNode().append(selectedTextNode);
+        const nextParagraph = $createParagraphNode().append($createTextNode("后一段内容"));
+        $getRoot().clear().append(
+          previousParagraph,
+          selectedParagraph,
+          nextParagraph,
+        );
+        selectedTextNode.select(0, selectedTextNode.getTextContentSize());
+        snapshot = $getComposerTextSelectionSnapshot();
+      },
+      { discrete: true },
+    );
+
+    const capturedSnapshot = snapshot as ComposerTextSelectionSnapshot | null;
+    expect(capturedSnapshot?.text).toBe("需要完整改写的这一段");
+    expect(capturedSnapshot?.rewriteMode).toBe("full");
+    expect(capturedSnapshot?.contextBefore).toBe("");
+    expect(capturedSnapshot?.contextAfter).toBe("");
+  });
+
+  it.each(["mention", "emoji", "image", "attachment"] as const)(
+    "rejects a selection containing a %s node",
+    (kind) => {
+      const editor = createEditor({
+        namespace: `composer-ai-edit-${kind}-selection-test`,
+        nodes: [ComposerEmojiNode, ComposerImageNode, ComposerLiteAttachmentNode, ComposerMentionNode],
+        onError(error) {
+          throw error;
+        },
+      });
+      let snapshot: ComposerTextSelectionSnapshot | null = null;
+
+      editor.update(
+        () => {
+          const paragraph = $createParagraphNode();
+          const first = $createTextNode("前");
+          const last = $createTextNode("后");
+          const unsupported = {
+            attachment: $createComposerLiteAttachmentNode({
+              extension: "pdf",
+              fileName: "报价单.pdf",
+              type: "file",
+              url: "https://example.com/quote.pdf",
+            }),
+            emoji: $createComposerEmojiNode("[打脸]", "打脸", "emoji.png"),
+            image: $createComposerImageNode({
+              alt: "截图",
+              src: "https://example.com/image.png",
+            }),
+            mention: $createComposerMentionNode({
+              displayName: "张三",
+              memberId: "member-1",
+            }),
+          }[kind];
+
+          $getRoot().clear();
+          paragraph.append(first, unsupported, last);
+          $getRoot().append(paragraph);
+
+          const selection = $createRangeSelection();
+          selection.anchor.set(first.getKey(), 0, "text");
+          selection.focus.set(last.getKey(), last.getTextContentSize(), "text");
+          $setSelection(selection);
+          snapshot = $getComposerTextSelectionSnapshot();
+        },
+        { discrete: true },
+      );
+
+      expect(snapshot).toBeNull();
+    },
+  );
+
+  it("does not replace a selection after the original text changes", () => {
+    const editor = createEditor({
+      namespace: "composer-ai-edit-stale-selection-test",
+      nodes: [ComposerEmojiNode, ComposerImageNode, ComposerLiteAttachmentNode, ComposerMentionNode],
+      onError(error) {
+        throw error;
+      },
+    });
+    let snapshot: ComposerTextSelectionSnapshot | null = null;
+    let plainText = "";
+
+    editor.update(
+      () => {
+        $insertComposerText("原始内容");
+        const textNode = $getRoot().getFirstDescendant();
+
+        if (!$isTextNode(textNode)) {
+          throw new Error("Expected composer text node");
+        }
+
+        textNode.select(0, textNode.getTextContentSize());
+        snapshot = $getComposerTextSelectionSnapshot();
+      },
+      { discrete: true },
+    );
+
+    editor.update(
+      () => {
+        const textNode = $getRoot().getFirstDescendant();
+
+        if (!$isTextNode(textNode)) {
+          throw new Error("Expected composer text node");
+        }
+
+        textNode.setTextContent("已修改内容");
+      },
+      { discrete: true },
+    );
+
+    editor.update(
+      () => {
+        const capturedSnapshot = snapshot as ComposerTextSelectionSnapshot | null;
+        expect($replaceComposerTextSelection(capturedSnapshot!, "不应写回", 1000)).toBe("text_changed");
+        plainText = $getComposerPlainText();
+      },
+      { discrete: true },
+    );
+
+    expect(plainText).toBe("已修改内容");
+  });
+
+  it("does not throw when the original selection nodes were removed", () => {
+    const editor = createEditor({
+      namespace: "composer-ai-edit-removed-selection-test",
+      nodes: [ComposerEmojiNode, ComposerImageNode, ComposerLiteAttachmentNode, ComposerMentionNode],
+      onError(error) {
+        throw error;
+      },
+    });
+    let snapshot: ComposerTextSelectionSnapshot | null = null;
+
+    editor.update(
+      () => {
+        $insertComposerText("原始内容");
+        const textNode = $getRoot().getFirstDescendant();
+
+        if (!$isTextNode(textNode)) {
+          throw new Error("Expected composer text node");
+        }
+
+        textNode.select(0, textNode.getTextContentSize());
+        snapshot = $getComposerTextSelectionSnapshot();
+        textNode.remove();
+      },
+      { discrete: true },
+    );
+
+    let replaced = "applied";
+    editor.update(
+      () => {
+        replaced = $replaceComposerTextSelection(
+          snapshot as ComposerTextSelectionSnapshot,
+          "不应写回",
+          1000,
+        );
+      },
+      { discrete: true },
+    );
+
+    expect(replaced).toBe("node_missing");
+  });
+
+  it("reports when a replacement would exceed the composer limit", () => {
+    const editor = createEditor({
+      namespace: "composer-ai-edit-length-limit-test",
+      nodes: [ComposerEmojiNode, ComposerImageNode, ComposerLiteAttachmentNode, ComposerMentionNode],
+      onError(error) {
+        throw error;
+      },
+    });
+    let snapshot: ComposerTextSelectionSnapshot | null = null;
+    let result = "applied";
+
+    editor.update(
+      () => {
+        $insertComposerText("前".repeat(999) + "旧");
+        const textNode = $getRoot().getFirstDescendant();
+
+        if (!$isTextNode(textNode)) {
+          throw new Error("Expected composer text node");
+        }
+
+        textNode.select(999, 1000);
+        snapshot = $getComposerTextSelectionSnapshot();
+      },
+      { discrete: true },
+    );
+
+    editor.update(
+      () => {
+        result = $replaceComposerTextSelection(
+          snapshot as ComposerTextSelectionSnapshot,
+          "改写后的内容",
+          1000,
+        );
+      },
+      { discrete: true },
+    );
+
+    expect(result).toBe("length_exceeded");
   });
 });

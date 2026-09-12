@@ -3,6 +3,7 @@ import {
   $createLineBreakNode,
   $createTextNode,
   $getSelection,
+  $getNodeByKey,
   $getRoot,
   $insertNodes,
   $isElementNode,
@@ -10,12 +11,19 @@ import {
   $isRangeSelection,
   $isRootNode,
   $isTextNode,
+  $setSelection,
+  $createRangeSelection,
   type ElementNode,
   type LexicalNode,
   type PointType,
+  type RangeSelection,
   type TextNode,
 } from "lexical";
 import type { ComposerSegment, ComposerTextSegment } from "@/pages/chat/lib/composer-segments";
+import {
+  COMPOSER_AI_EDIT_CONTEXT_MAX_LENGTH,
+  type ComposerAiEditRewriteMode,
+} from "@chatai/contracts";
 import {
   $createComposerEmojiNode,
   $createComposerImageNode,
@@ -35,6 +43,121 @@ import {
 const WECHAT_EMOJI_TOKEN_PATTERN = /\[([^[\]]+)\]/g;
 const COMPOSER_TEXT_ANCHOR = "\u200B";
 const COMPOSER_BLOCK_SEPARATOR_LENGTH = 2;
+
+export type ComposerTextSelectionSnapshot = {
+  anchorKey: string;
+  anchorOffset: number;
+  anchorType: "element" | "text";
+  focusKey: string;
+  focusOffset: number;
+  focusType: "element" | "text";
+  contextAfter: string;
+  contextBefore: string;
+  rewriteMode: ComposerAiEditRewriteMode;
+  text: string;
+};
+
+export type ComposerTextSelectionReplacementResult =
+  | "applied"
+  | "node_missing"
+  | "text_changed"
+  | "length_exceeded";
+
+export function $getComposerTextSelectionSnapshot(): ComposerTextSelectionSnapshot | null {
+  const selection = $getSelection();
+
+  if (!$isRangeSelection(selection) || selection.isCollapsed()) {
+    return null;
+  }
+
+  const nodes = selection.getNodes();
+  const containsUnsupportedNode = nodes.some((node) => {
+    return (
+      (!$isTextNode(node) || $isComposerMentionNode(node)) &&
+      !$isLineBreakNode(node)
+    );
+  });
+
+  if (containsUnsupportedNode) {
+    return null;
+  }
+
+  const text = selection.getTextContent();
+
+  if (!text) {
+    return null;
+  }
+
+  const root = $getRoot();
+  const anchorTextOffset = getPlainTextOffsetForPoint(root, selection.anchor);
+  const focusTextOffset = getPlainTextOffsetForPoint(root, selection.focus);
+
+  if (anchorTextOffset === null || focusTextOffset === null) {
+    return null;
+  }
+
+  const plainText = $getComposerPlainText();
+  const selectionStart = Math.min(anchorTextOffset, focusTextOffset);
+  const selectionEnd = Math.max(anchorTextOffset, focusTextOffset);
+  const rewriteMode = isCompleteBlockSelection(selection) ? "full" : "targeted";
+
+  return {
+    anchorKey: selection.anchor.key,
+    anchorOffset: selection.anchor.offset,
+    anchorType: selection.anchor.type,
+    focusKey: selection.focus.key,
+    focusOffset: selection.focus.offset,
+    focusType: selection.focus.type,
+    contextAfter: rewriteMode === "full"
+      ? ""
+      : plainText.slice(
+          selectionEnd,
+          selectionEnd + COMPOSER_AI_EDIT_CONTEXT_MAX_LENGTH,
+        ),
+    contextBefore: rewriteMode === "full"
+      ? ""
+      : plainText.slice(
+          Math.max(0, selectionStart - COMPOSER_AI_EDIT_CONTEXT_MAX_LENGTH),
+          selectionStart,
+        ),
+    rewriteMode,
+    text,
+  };
+}
+
+export function $replaceComposerTextSelection(
+  snapshot: ComposerTextSelectionSnapshot,
+  replacement: string,
+  maxLength: number,
+): ComposerTextSelectionReplacementResult {
+  if (!$getNodeByKey(snapshot.anchorKey) || !$getNodeByKey(snapshot.focusKey)) {
+    return "node_missing";
+  }
+
+  const selection = $createRangeSelection();
+  selection.anchor.set(snapshot.anchorKey, snapshot.anchorOffset, snapshot.anchorType);
+  selection.focus.set(snapshot.focusKey, snapshot.focusOffset, snapshot.focusType);
+  $setSelection(selection);
+
+  const currentSelection = $getSelection();
+
+  if (
+    !$isRangeSelection(currentSelection) ||
+    currentSelection.getTextContent() !== snapshot.text
+  ) {
+    return "text_changed";
+  }
+
+  const nextLength =
+    $getComposerTextCharacterCount() - snapshot.text.length + replacement.length;
+
+  if (nextLength > maxLength) {
+    return "length_exceeded";
+  }
+
+  currentSelection.insertText(replacement);
+  return "applied";
+}
 
 export function $insertComposerText(text: string) {
   const nodes = parseWechatEmojiText(text).map((segment) => {
@@ -881,6 +1004,22 @@ function getPlainTextLengthForNode(node: LexicalNode): number {
     (textLength, part) => textLength + part.length,
     0,
   );
+}
+
+function isCompleteBlockSelection(selection: RangeSelection) {
+  const startPoint = selection.isBackward() ? selection.focus : selection.anchor;
+  const endPoint = selection.isBackward() ? selection.anchor : selection.focus;
+  const startBlock = startPoint.getNode().getTopLevelElement();
+  const endBlock = endPoint.getNode().getTopLevelElement();
+
+  if (!$isElementNode(startBlock) || !$isElementNode(endBlock)) {
+    return false;
+  }
+
+  const startOffset = getPlainTextOffsetForPoint(startBlock, startPoint);
+  const endOffset = getPlainTextOffsetForPoint(endBlock, endPoint);
+
+  return startOffset === 0 && endOffset === getPlainTextLengthForNode(endBlock);
 }
 
 function toRawTextOffset(text: string, normalizedOffset: number) {

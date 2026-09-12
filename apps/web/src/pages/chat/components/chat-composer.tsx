@@ -87,6 +87,7 @@ import {
   ComposerMaxLengthPlugin,
   ComposerRuntimePlugin,
 } from "@/pages/chat/components/composer/lexical-plugins";
+import { ComposerAiEditPlugin } from "@/pages/chat/components/composer/composer-ai-edit-plugin";
 import {
   HistoryPlugin,
   HistoryResetPlugin,
@@ -129,6 +130,7 @@ type ChatComposerProps = {
   hasActiveFileUpload: boolean;
   groupMembers: GroupMember[];
   currentSeatThirdUserId?: string;
+  conversationId?: string;
   fullAutoActionPending?: boolean;
   seatAgentModeActionPending?: boolean;
   inputEnterBehavior: InputEnterBehavior;
@@ -205,6 +207,7 @@ export function ChatComposer({
   hasActiveFileUpload,
   groupMembers,
   currentSeatThirdUserId,
+  conversationId,
   fullAutoActionPending = false,
   seatAgentModeActionPending = false,
   inputEnterBehavior,
@@ -1449,6 +1452,10 @@ export function ChatComposer({
               registerEditor={registerEditor}
             />
             <ComposerMaxLengthPlugin maxLength={COMPOSER_TEXT_MAX_LENGTH} />
+            <ComposerAiEditPlugin
+              canEdit={canEditComposer}
+              conversationId={conversationId}
+            />
           </LexicalComposer>
         </div>
       </div>

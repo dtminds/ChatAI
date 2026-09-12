@@ -191,7 +191,7 @@ INSIGHTS_WORKER_MODEL_ENABLED=false
 INSIGHTS_WORKER_TRACE_UID_ALLOWLIST=
 ```
 
-启用 Agent User Memory 或 Insights 模型分析时还需配置 `VOLCENGINE_ARK_API_KEY`。各业务场景使用的固定 endpoint 由 `packages/llm/src/model-policy.ts` 统一提供，不通过环境变量配置；底层默认和轻量模型不对业务 package 暴露。
+启用 Composer AI 助写、Agent User Memory 或 Insights 模型分析时还需配置 `VOLCENGINE_ARK_API_KEY`。Composer AI 助写依赖 Redis 执行租户每日额度限制，未启用 Redis 时该功能不可用。各业务场景使用的固定 endpoint 由 `packages/llm/src/model-policy.ts` 统一提供，不通过环境变量配置；底层默认和轻量模型不对业务 package 暴露。
 
 ## Marketing Workflow Worker 容器要求
 
@@ -348,6 +348,7 @@ ALTCHA_HMAC_SECRET=<random-secret>
 JAVA_INTERNAL_API_BASE_URL=<java-internal-api-base-url>
 JAVA_INTERNAL_API_TOKEN=<java-internal-api-token>
 REDIS_URL=redis://:<redis-password>@<redis-host>:<redis-port>/<redis-database>
+VOLCENGINE_ARK_API_KEY=<volcengine-ark-api-key>
 ```
 
 注意事项：
@@ -372,11 +373,11 @@ openssl rsa -pubout -in jwt-private.pem -out jwt-public.pem
 - `JAVA_INTERNAL_API_STREAM_IDLE_TIMEOUT_MS` 用于 Java 流式 AI 接口的读流空闲超时，默认可按 60000ms 配置。
 - `JAVA_INTERNAL_API_BASE_URL` 只应配置在 Backend 和 Workflow Worker 所在环境，不要放进 Web 的 `VITE_*` 构建变量。
 - 开发环境默认值写在根目录 `.env.development`，测试和生产环境分别通过部署配置覆盖。
-- `REDIS_ENABLED=false` 时 backend 使用 `NoopCache`，不连接 Redis；`REDIS_ENABLED=true` 时必须配置 `REDIS_URL`，并且启动阶段会校验 Redis 连接、认证和 `PING`，失败则拒绝启动。
+- `REDIS_ENABLED=false` 时 backend 使用 `NoopCache`，不连接 Redis，Composer AI 助写会因无法执行租户额度限制而不可用；`REDIS_ENABLED=true` 时必须配置 `REDIS_URL`，并且启动阶段会校验 Redis 连接、认证和 `PING`，失败则拒绝启动。
 - `REDIS_URL` 示例：无密码 `redis://<host>:6379/0`；密码认证 `redis://:<password>@<host>:6379/0`；ACL 用户名和密码 `redis://<user>:<password>@<host>:6379/0`；若 Redis 端口要求 TLS，使用 `rediss://...`。
 - `REDIS_URL` 末尾的路径是 Redis 逻辑库编号，例如 `/4` 等价于连接后执行 `SELECT 4`。测试和生产环境应使用运维分配的 database 编号，不要默认写入 `/0`。
 - `REDIS_KEY_PREFIX` 用于多环境 key 隔离，建议测试环境配置 `chatai:test:`，生产环境配置 `chatai:prod:`；多个开发者共享同一个 Redis 时可使用 `chatai:<name>:dev:`。前缀结尾保留冒号，避免 key 混淆。
-- `REDIS_CONNECT_TIMEOUT_MS` 是启动/建连超时，`REDIS_COMMAND_TIMEOUT_MS` 是单条命令超时。首发建议使用 `3000/500`；同 VPC 且观察稳定后可收紧到 `2000/200`。不要把 command timeout 配到秒级以上，Redis 运行期命令失败会按 cache miss 回源 DB。
+- `REDIS_CONNECT_TIMEOUT_MS` 是启动/建连超时，`REDIS_COMMAND_TIMEOUT_MS` 是单条命令超时。首发建议使用 `3000/500`；同 VPC 且观察稳定后可收紧到 `2000/200`。不要把 command timeout 配到秒级以上；缓存路径在 Redis 运行期命令失败时按 cache miss 回源 DB，Composer AI 助写的额度检查则失败关闭，不会继续调用模型。
 
 ## Backend 日志和 CLS 接入
 

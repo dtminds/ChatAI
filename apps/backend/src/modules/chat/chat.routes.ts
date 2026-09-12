@@ -10,6 +10,7 @@ import type {
   WorkbenchSmartReplyAutoGeneralAnswerRequest,
   WorkbenchSmartReplyGeneralAnswerRequest,
   WorkbenchSmartReplyMakeShorterRequest,
+  ComposerAiEditRequest,
   WorkbenchSmartReplyPollRequest,
   WorkbenchSmartReplySendAnswerRequest,
   WorkbenchKnowledgePageRequest,
@@ -43,6 +44,7 @@ import type {
   WorkbenchSeatAgentModeSwitchRequest,
 } from "@chatai/contracts";
 import {
+  ComposerAiEditRequestSchema,
   QUICK_REPLY_CATEGORY_CONTENT_ITEM_LIMIT,
   QUICK_REPLY_CHILD_CATEGORY_LIMIT,
   WorkbenchPullGroupMembersRequestSchema,
@@ -721,8 +723,6 @@ type QuickReplySortBody = Static<typeof QuickReplySortBodySchema>;
 type QuickReplyParams = Static<typeof QuickReplyParamsSchema>;
 type QuickReplyScopeQuery = Static<typeof QuickReplyScopeQuerySchema>;
 type MaterialCollectionGroupQuery = Static<typeof MaterialCollectionGroupQuerySchema>;
-
-
 export async function registerChatRoutes(app: FastifyInstance) {
   app.get("/api/server/me", { preHandler: app.authenticate }, async (request) =>
     getWorkbenchService(app, request).getMe(getSubUserId(request)),
@@ -2028,6 +2028,24 @@ export async function registerChatRoutes(app: FastifyInstance) {
       return getWorkbenchService(app, request).sendSmartHeartbeat(
         getSubUserId(request),
         request.body satisfies WorkbenchSmartHeartbeatRequest,
+      );
+    },
+  );
+
+  app.post<{ Body: ComposerAiEditRequest }>(
+    "/api/server/composer/ai-edit",
+    {
+      preHandler: app.authenticate,
+      schema: {
+        body: ComposerAiEditRequestSchema,
+      },
+    },
+    async (request) => {
+      assertChatWriteAccess(request);
+      return app.composerAiEditService.rewrite(
+        getSubUserId(request),
+        getAuthenticatedWorkbenchScope(request.user),
+        request.body satisfies ComposerAiEditRequest,
       );
     },
   );

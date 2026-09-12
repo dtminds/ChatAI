@@ -4,11 +4,17 @@ import { buildCacheKeys } from "../cache/keys.js";
 import { NoopCache } from "../cache/noop-cache.js";
 import { RedisCache } from "../cache/redis-cache.js";
 import type { CachePort } from "../cache/cache-port.js";
+import {
+  type DailyUsageLimiter,
+  UnavailableDailyUsageLimiter,
+} from "../usage-limit/daily-usage-limiter.js";
+import { RedisDailyUsageLimiter } from "../usage-limit/redis-daily-usage-limiter.js";
 
 declare module "fastify" {
   interface FastifyInstance {
     cache: CachePort;
     cacheKeys: ReturnType<typeof buildCacheKeys>;
+    dailyUsageLimiter: DailyUsageLimiter;
   }
 }
 
@@ -18,6 +24,7 @@ export const redisPlugin = fp(async (app) => {
 
   if (process.env.REDIS_ENABLED !== "true") {
     app.decorate("cache", new NoopCache());
+    app.decorate("dailyUsageLimiter", new UnavailableDailyUsageLimiter());
     return;
   }
 
@@ -41,6 +48,7 @@ export const redisPlugin = fp(async (app) => {
     maxRetriesPerRequest: 1,
   });
   const cache = new RedisCache(client, app.log);
+  const dailyUsageLimiter = new RedisDailyUsageLimiter(client);
 
   client.on("error", (error: Error) => {
     app.log.warn({ error: error.message }, "Redis cache client error");
@@ -56,6 +64,7 @@ export const redisPlugin = fp(async (app) => {
   }
 
   app.decorate("cache", cache);
+  app.decorate("dailyUsageLimiter", dailyUsageLimiter);
   app.addHook("onClose", async () => {
     try {
       await client.quit();

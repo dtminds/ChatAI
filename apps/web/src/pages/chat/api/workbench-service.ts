@@ -279,6 +279,7 @@ export type WorkbenchService = {
   ) => Promise<WorkbenchSmartReplyMakeShorterResponse>;
   rewriteComposerText: (
     request: ComposerAiEditRequest,
+    options?: { signal?: AbortSignal },
   ) => Promise<ComposerAiEditResponse>;
   sendSmartReplyAnswer: (
     request: WorkbenchSmartReplySendAnswerRequest,
@@ -2656,11 +2657,14 @@ export function createHttpWorkbenchService(): WorkbenchService {
         WorkbenchSmartReplyMakeShorterRequest
       >("/server/smart-reply/make-shorter", request);
     },
-    rewriteComposerText(request) {
+    rewriteComposerText(request, options) {
       return http.post<ComposerAiEditResponse, ComposerAiEditRequest>(
         "/server/composer/ai-edit",
         request,
-        { timeout: COMPOSER_AI_EDIT_TIMEOUT_MS },
+        {
+          signal: options?.signal,
+          timeout: COMPOSER_AI_EDIT_TIMEOUT_MS,
+        },
       );
     },
     sendSmartReplyAnswer(request) {

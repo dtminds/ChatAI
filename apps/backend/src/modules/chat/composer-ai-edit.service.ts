@@ -18,9 +18,11 @@ const MAX_COMPOSER_TEXT_LENGTH = 1000;
 const REQUEST_TIMEOUT_MS = 30_000;
 
 const actionInstructions: Record<ComposerAiEditAction, string> = {
-  custom: "严格按照客服给出的补充要求改写",
-  polish: "润色表达，使语句自然、清晰、顺畅，同时保持原意",
-  polite: "改写得更礼貌、亲切、有服务意识，避免生硬或过度承诺",
+  apologetic: "改写为真诚表达歉意的语气，承认给客户带来的不便，但不擅自承诺补偿、退款或处理结果",
+  friendly: "改写得更友好、亲切、自然，有服务意识但不过度热情",
+  lengthen: "在不改变原意、不新增事实或承诺的前提下，适度补充表达和必要上下文，使内容更完整",
+  playful: "改写得更轻松、俏皮、有亲和力，但不油腻、不冒犯，不影响信息准确性",
+  polish: "润色文案，使语句自然、清晰、顺畅，同时保持原意",
   professional: "改写得更专业、准确、可信，适合私域客服直接发送",
   shorten: "在保留关键信息和原意的前提下压缩表达，使内容更简洁",
 };
@@ -173,9 +175,5 @@ export class ComposerAiEditService {
 }
 
 function buildInstruction(input: ComposerAiEditRequest) {
-  if (input.action !== "custom") {
-    return actionInstructions[input.action];
-  }
-
-  return `${actionInstructions.custom}：${input.instruction ?? "优化表达"}`;
+  return actionInstructions[input.action];
 }

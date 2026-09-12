@@ -553,10 +553,12 @@ export type WorkbenchSmartReplyMakeShorterResponse = {
 
 export const ComposerAiEditActionSchema = Type.Union([
   Type.Literal("polish"),
+  Type.Literal("lengthen"),
   Type.Literal("shorten"),
-  Type.Literal("polite"),
   Type.Literal("professional"),
-  Type.Literal("custom"),
+  Type.Literal("friendly"),
+  Type.Literal("playful"),
+  Type.Literal("apologetic"),
 ]);
 
 export const ComposerAiEditRequestSchema = Type.Object(
@@ -564,7 +566,6 @@ export const ComposerAiEditRequestSchema = Type.Object(
     action: ComposerAiEditActionSchema,
     content: Type.String({ maxLength: 1000, minLength: 1 }),
     conversationId: Type.String({ minLength: 1 }),
-    instruction: Type.Optional(Type.String({ maxLength: 200, minLength: 1 })),
   },
   { additionalProperties: false },
 );

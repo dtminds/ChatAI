@@ -39,7 +39,7 @@ describe("ComposerAiEditService", () => {
         "sub-1",
         { platform: 5, uid: 9 },
         {
-          action: "polite",
+          action: "friendly",
           content: "你好，请稍等",
           conversationId: "conversation-1",
         },
@@ -53,12 +53,51 @@ describe("ComposerAiEditService", () => {
     };
 
     expect(body.model).toBe(VOLCENGINE_ARK_AI_EDIT_MODEL);
-    expect(body.messages[0]?.content).toContain("改写得更礼貌");
+    expect(body.messages[0]?.content).toContain("改写得更友好");
     expect(body.messages[1]).toEqual({
       content: "<original_text>\n你好，请稍等\n</original_text>",
       role: "user",
     });
   });
+
+  it.each([
+    ["lengthen", "适度补充表达和必要上下文"],
+    ["professional", "更专业、准确、可信"],
+    ["playful", "更轻松、俏皮、有亲和力"],
+    ["apologetic", "真诚表达歉意"],
+  ] as const)(
+    "uses the %s editing instruction",
+    async (action, expectedInstruction) => {
+      const fetch = vi.fn().mockResolvedValue(
+        new Response(
+          JSON.stringify({ choices: [{ message: { content: "改写结果" } }] }),
+          { status: 200 },
+        ),
+      );
+      const service = new ComposerAiEditService({
+        apiKey: "test-key",
+        fetch,
+        repository: createRepository(),
+      });
+
+      await service.rewrite(
+        "sub-1",
+        { platform: 5, uid: 9 },
+        {
+          action,
+          content: "原文",
+          conversationId: "conversation-1",
+        },
+      );
+
+      const [, init] = fetch.mock.calls[0] as [string, RequestInit];
+      const body = JSON.parse(String(init.body)) as {
+        messages: Array<{ content: string }>;
+      };
+
+      expect(body.messages[0]?.content).toContain(expectedInstruction);
+    },
+  );
 
   it("rejects a conversation that is not taken over by the current account", async () => {
     const repository = createRepository({

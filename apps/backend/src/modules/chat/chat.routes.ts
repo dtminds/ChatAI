@@ -44,6 +44,7 @@ import type {
   WorkbenchSeatAgentModeSwitchRequest,
 } from "@chatai/contracts";
 import {
+  ComposerAiEditRequestSchema,
   QUICK_REPLY_CATEGORY_CONTENT_ITEM_LIMIT,
   QUICK_REPLY_CHILD_CATEGORY_LIMIT,
   WorkbenchPullGroupMembersRequestSchema,
@@ -190,19 +191,6 @@ const SmartReplyAutoGeneralAnswerBodySchema = Type.Object({
 const SmartReplyMakeShorterBodySchema = Type.Object({
   conversationId: Type.String(),
   content: Type.String({ minLength: 1 }),
-});
-
-const ComposerAiEditBodySchema = Type.Object({
-  action: Type.Union([
-    Type.Literal("polish"),
-    Type.Literal("shorten"),
-    Type.Literal("polite"),
-    Type.Literal("professional"),
-    Type.Literal("custom"),
-  ]),
-  content: Type.String({ maxLength: 1000, minLength: 1 }),
-  conversationId: Type.String({ minLength: 1 }),
-  instruction: Type.Optional(Type.String({ maxLength: 200, minLength: 1 })),
 });
 
 const SmartReplySendAnswerBodySchema = Type.Object({
@@ -735,9 +723,6 @@ type QuickReplySortBody = Static<typeof QuickReplySortBodySchema>;
 type QuickReplyParams = Static<typeof QuickReplyParamsSchema>;
 type QuickReplyScopeQuery = Static<typeof QuickReplyScopeQuerySchema>;
 type MaterialCollectionGroupQuery = Static<typeof MaterialCollectionGroupQuerySchema>;
-type ComposerAiEditBody = Static<typeof ComposerAiEditBodySchema>;
-
-
 export async function registerChatRoutes(app: FastifyInstance) {
   app.get("/api/server/me", { preHandler: app.authenticate }, async (request) =>
     getWorkbenchService(app, request).getMe(getSubUserId(request)),
@@ -2047,12 +2032,12 @@ export async function registerChatRoutes(app: FastifyInstance) {
     },
   );
 
-  app.post<{ Body: ComposerAiEditBody }>(
+  app.post<{ Body: ComposerAiEditRequest }>(
     "/api/server/composer/ai-edit",
     {
       preHandler: app.authenticate,
       schema: {
-        body: ComposerAiEditBodySchema,
+        body: ComposerAiEditRequestSchema,
       },
     },
     async (request) => {

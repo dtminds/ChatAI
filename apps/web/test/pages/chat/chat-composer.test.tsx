@@ -389,8 +389,10 @@ describe("ChatComposer", () => {
     await userEvent.click(composer);
     fireEvent.paste(composer, { clipboardData: { files: images } });
 
-    expect(await screen.findAllByRole("img")).toHaveLength(5);
-    expect(screen.getByRole("button", { name: "上传图片" })).toBeDisabled();
+    await waitFor(() => {
+      expect(screen.getAllByRole("img")).toHaveLength(5);
+      expect(screen.getByRole("button", { name: "上传图片" })).toBeDisabled();
+    });
   });
 
   it("ignores pasted images with unsupported mime types", async () => {

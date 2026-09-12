@@ -4,6 +4,12 @@ import { ComposerAiEditService } from "../../../src/modules/chat/composer-ai-edi
 import { BadGatewayError, ForbiddenError } from "../../../src/shared/errors.js";
 import type { WorkbenchRepository } from "../../../src/modules/chat/workbench-repository.js";
 
+function createQuota() {
+  return {
+    reserve: vi.fn().mockResolvedValue(undefined),
+  };
+}
+
 function createRepository(overrides: Partial<WorkbenchRepository> = {}) {
   return {
     canAccessSeat: vi.fn().mockResolvedValue(true),
@@ -31,6 +37,7 @@ describe("ComposerAiEditService", () => {
     const service = new ComposerAiEditService({
       apiKey: "test-key",
       fetch,
+      quota: createQuota(),
       repository,
     });
 
@@ -90,6 +97,7 @@ describe("ComposerAiEditService", () => {
       const service = new ComposerAiEditService({
         apiKey: "test-key",
         fetch,
+        quota: createQuota(),
         repository: createRepository(),
       });
 
@@ -125,6 +133,7 @@ describe("ComposerAiEditService", () => {
     const service = new ComposerAiEditService({
       apiKey: "test-key",
       fetch,
+      quota: createQuota(),
       repository: createRepository(),
     });
 
@@ -163,9 +172,11 @@ describe("ComposerAiEditService", () => {
       }),
     });
     const fetch = vi.fn();
+    const quota = createQuota();
     const service = new ComposerAiEditService({
       apiKey: "test-key",
       fetch,
+      quota,
       repository,
     });
 
@@ -183,13 +194,16 @@ describe("ComposerAiEditService", () => {
         },
       ),
     ).rejects.toBeInstanceOf(ForbiddenError);
+    expect(quota.reserve).not.toHaveBeenCalled();
     expect(fetch).not.toHaveBeenCalled();
   });
 
   it("maps an unsuccessful upstream response to a gateway error", async () => {
+    const quota = createQuota();
     const service = new ComposerAiEditService({
       apiKey: "test-key",
       fetch: vi.fn().mockResolvedValue(new Response("error", { status: 500 })),
+      quota,
       repository: createRepository(),
     });
 
@@ -207,6 +221,7 @@ describe("ComposerAiEditService", () => {
         },
       ),
     ).rejects.toBeInstanceOf(BadGatewayError);
+    expect(quota.reserve).toHaveBeenCalledTimes(1);
   });
 
   it("uses a distinct error code when the model response exceeds the composer limit", async () => {
@@ -220,6 +235,7 @@ describe("ComposerAiEditService", () => {
           { status: 200 },
         ),
       ),
+      quota: createQuota(),
       repository: createRepository(),
     });
 
@@ -239,5 +255,72 @@ describe("ComposerAiEditService", () => {
     ).rejects.toMatchObject({
       code: "COMPOSER_AI_EDIT_RESPONSE_TOO_LONG",
     });
+  });
+
+  it("reserves tenant quota before calling the model", async () => {
+    const order: string[] = [];
+    const quota = {
+      reserve: vi.fn().mockImplementation(async () => {
+        order.push("quota");
+      }),
+    };
+    const fetch = vi.fn().mockImplementation(async () => {
+      order.push("fetch");
+      return new Response(
+        JSON.stringify({ choices: [{ message: { content: "改写结果" } }] }),
+        { status: 200 },
+      );
+    });
+    const service = new ComposerAiEditService({
+      apiKey: "test-key",
+      fetch,
+      quota,
+      repository: createRepository(),
+    });
+
+    await service.rewrite(
+      "sub-1",
+      { platform: 5, uid: 9 },
+      {
+        action: "polish",
+        content: "这是待改文案",
+        contextAfter: "",
+        contextBefore: "",
+        conversationId: "conversation-1",
+        rewriteMode: "full",
+      },
+    );
+
+    expect(quota.reserve).toHaveBeenCalledWith(9);
+    expect(order).toEqual(["quota", "fetch"]);
+  });
+
+  it("does not call the model when tenant quota cannot be reserved", async () => {
+    const quotaError = new Error("quota exceeded");
+    const fetch = vi.fn();
+    const service = new ComposerAiEditService({
+      apiKey: "test-key",
+      fetch,
+      quota: {
+        reserve: vi.fn().mockRejectedValue(quotaError),
+      },
+      repository: createRepository(),
+    });
+
+    await expect(
+      service.rewrite(
+        "sub-1",
+        { platform: 5, uid: 9 },
+        {
+          action: "polish",
+          content: "这是待改文案",
+          contextAfter: "",
+          contextBefore: "",
+          conversationId: "conversation-1",
+          rewriteMode: "full",
+        },
+      ),
+    ).rejects.toBe(quotaError);
+    expect(fetch).not.toHaveBeenCalled();
   });
 });

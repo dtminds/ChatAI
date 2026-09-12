@@ -303,13 +303,24 @@ describe("ComposerAiEditPlugin", () => {
     await screen.findByTestId("composer-ai-edit-surface");
   });
 
-  it("shows a length-specific error for an oversized AI response", async () => {
+  it.each([
+    [
+      "COMPOSER_AI_EDIT_RESPONSE_TOO_LONG",
+      "AI 助写结果超过字数限制",
+      "内容超过字数限制，请缩短后重试",
+    ],
+    [
+      "COMPOSER_AI_EDIT_QUOTA_EXCEEDED",
+      "今日 AI 助写次数已用完",
+      "今日 AI 助写次数已用完",
+    ],
+  ])("shows the specific error for %s", async (code, message, expectedMessage) => {
     rewriteComposerTextMock.mockReset();
     toastErrorMock.mockReset();
     rewriteComposerTextMock.mockRejectedValue(
       new RequestNormalizedError({
-        code: "COMPOSER_AI_EDIT_RESPONSE_TOO_LONG",
-        message: "AI 助写结果超过字数限制",
+        code,
+        message,
       }),
     );
     const user = userEvent.setup();
@@ -317,7 +328,7 @@ describe("ComposerAiEditPlugin", () => {
     render(
       <LexicalComposer
         initialConfig={{
-          namespace: "composer-ai-edit-too-long-test",
+          namespace: `composer-ai-edit-${code}-test`,
           nodes: [
             ComposerEmojiNode,
             ComposerImageNode,
@@ -355,7 +366,7 @@ describe("ComposerAiEditPlugin", () => {
     await user.click(screen.getByRole("menuitem", { name: "润色文案" }));
 
     await waitFor(() => {
-      expect(toastErrorMock).toHaveBeenCalledWith("内容超过字数限制，请缩短后重试");
+      expect(toastErrorMock).toHaveBeenCalledWith(expectedMessage);
     });
   });
 

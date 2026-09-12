@@ -299,12 +299,7 @@ export function ComposerAiEditPlugin({
       } catch (error) {
         if (requestId === requestIdRef.current && !abortController.signal.aborted) {
           setEditState("menu");
-          toast.error(
-            error instanceof RequestNormalizedError
-              && error.code === "COMPOSER_AI_EDIT_RESPONSE_TOO_LONG"
-              ? "内容超过字数限制，请缩短后重试"
-              : "操作失败，请稍后重试",
-          );
+          toast.error(getRewriteErrorMessage(error));
         }
       } finally {
         if (requestAbortControllerRef.current === abortController) {
@@ -590,4 +585,20 @@ export function ComposerAiEditPlugin({
       )}
     </div>
   );
+}
+
+function getRewriteErrorMessage(error: unknown) {
+  if (!(error instanceof RequestNormalizedError)) {
+    return "操作失败，请稍后重试";
+  }
+
+  if (error.code === "COMPOSER_AI_EDIT_RESPONSE_TOO_LONG") {
+    return "内容超过字数限制，请缩短后重试";
+  }
+
+  if (error.code === "COMPOSER_AI_EDIT_QUOTA_EXCEEDED") {
+    return "今日 AI 助写次数已用完";
+  }
+
+  return "操作失败，请稍后重试";
 }

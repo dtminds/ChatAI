@@ -5,6 +5,7 @@ import type {
 } from "@chatai/contracts";
 import { VOLCENGINE_ARK_AI_EDIT_MODEL } from "@chatai/llm";
 import type { WorkbenchRepository } from "./workbench-repository.js";
+import type { ComposerAiEditQuota } from "./composer-ai-edit-quota.service.js";
 import type { AuthenticatedWorkbenchScope } from "../workbench-platform-scope.js";
 import {
   BadGatewayError,
@@ -48,6 +49,7 @@ type ComposerAiEditServiceOptions = {
   apiKey?: string;
   fetch?: typeof fetch;
   model?: string;
+  quota: ComposerAiEditQuota;
   repository: WorkbenchRepository;
   timeoutMs?: number;
 };
@@ -56,6 +58,7 @@ export class ComposerAiEditService {
   private readonly apiKey?: string;
   private readonly fetch: typeof fetch;
   private readonly model: string;
+  private readonly quota: ComposerAiEditQuota;
   private readonly repository: WorkbenchRepository;
   private readonly timeoutMs: number;
 
@@ -63,6 +66,7 @@ export class ComposerAiEditService {
     this.apiKey = options.apiKey?.trim();
     this.fetch = options.fetch ?? globalThis.fetch;
     this.model = options.model ?? VOLCENGINE_ARK_AI_EDIT_MODEL;
+    this.quota = options.quota;
     this.repository = options.repository;
     this.timeoutMs = options.timeoutMs ?? REQUEST_TIMEOUT_MS;
   }
@@ -80,6 +84,8 @@ export class ComposerAiEditService {
         "AI 助写暂未配置",
       );
     }
+
+    await this.quota.reserve(scope.uid);
 
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), this.timeoutMs);

@@ -5,6 +5,7 @@ const redisClient = vi.hoisted(() => ({
   call: vi.fn(async () => "OK"),
   connect: vi.fn(async () => undefined),
   disconnect: vi.fn(),
+  eval: vi.fn(async () => 1),
   on: vi.fn(),
   ping: vi.fn(async () => "PONG"),
   quit: vi.fn(async () => undefined),
@@ -42,6 +43,39 @@ describe("redisPlugin", () => {
 
     expect(redisClient.quit).toHaveBeenCalledTimes(1);
     expect(redisClient.disconnect).not.toHaveBeenCalled();
+  });
+
+  it("exposes the Redis-backed daily usage limiter", async () => {
+    const { redisPlugin } = await import("../../src/plugins/redis.js");
+    const app = Fastify({ logger: false });
+
+    await app.register(redisPlugin);
+
+    await expect(app.dailyUsageLimiter.reserve({
+      key: "daily-key",
+      limit: 200,
+      ttlSeconds: 3600,
+    })).resolves.toBe(true);
+    expect(redisClient.eval).toHaveBeenCalledTimes(1);
+
+    await app.close();
+  });
+
+  it("fails daily usage reservations when Redis is disabled", async () => {
+    process.env.REDIS_ENABLED = "false";
+    const { redisPlugin } = await import("../../src/plugins/redis.js");
+    const app = Fastify({ logger: false });
+
+    await app.register(redisPlugin);
+
+    await expect(app.dailyUsageLimiter.reserve({
+      key: "daily-key",
+      limit: 200,
+      ttlSeconds: 3600,
+    })).rejects.toThrow("Daily usage limiter is unavailable");
+    expect(Redis).not.toHaveBeenCalled();
+
+    await app.close();
   });
 
   it("forces Redis disconnect when graceful quit fails", async () => {

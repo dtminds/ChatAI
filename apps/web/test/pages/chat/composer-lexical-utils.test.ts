@@ -738,6 +738,9 @@ describe("composer lexical utils", () => {
 
     const capturedSnapshot = snapshot as ComposerTextSelectionSnapshot | null;
     expect(capturedSnapshot?.text).toBe("原始内容");
+    expect(capturedSnapshot?.contextBefore).toBe("");
+    expect(capturedSnapshot?.contextAfter).toBe("");
+    expect(capturedSnapshot?.rewriteMode).toBe("full");
 
     editor.update(
       () => {
@@ -749,6 +752,73 @@ describe("composer lexical utils", () => {
     );
 
     expect(plainText).toBe("改写内容");
+  });
+
+  it("captures the nearest 50 characters around the exact selected occurrence", () => {
+    const editor = createEditor({
+      namespace: "composer-ai-edit-context-test",
+      nodes: [ComposerEmojiNode, ComposerImageNode, ComposerLiteAttachmentNode, ComposerMentionNode],
+      onError(error) {
+        throw error;
+      },
+    });
+    const target = "帮忙催催下";
+    const contextBefore = `${"前".repeat(30)}${target}${"中".repeat(20)}`;
+    const contextAfter = "后".repeat(60);
+    const fullText = `${contextBefore}${target}${contextAfter}`;
+    let snapshot: ComposerTextSelectionSnapshot | null = null;
+
+    editor.update(
+      () => {
+        const textNode = $createTextNode(fullText);
+        const paragraph = $createParagraphNode().append(textNode);
+        $getRoot().clear().append(paragraph);
+        textNode.select(contextBefore.length, contextBefore.length + target.length);
+        snapshot = $getComposerTextSelectionSnapshot();
+      },
+      { discrete: true },
+    );
+
+    const capturedSnapshot = snapshot as ComposerTextSelectionSnapshot | null;
+    expect(capturedSnapshot?.text).toBe(target);
+    expect(capturedSnapshot?.contextBefore).toBe(contextBefore.slice(-50));
+    expect(capturedSnapshot?.contextBefore).toContain(target);
+    expect(capturedSnapshot?.contextAfter).toBe(contextAfter.slice(0, 50));
+    expect(capturedSnapshot?.rewriteMode).toBe("targeted");
+  });
+
+  it("treats a complete paragraph as a full rewrite when other paragraphs exist", () => {
+    const editor = createEditor({
+      namespace: "composer-ai-edit-complete-paragraph-test",
+      nodes: [ComposerEmojiNode, ComposerImageNode, ComposerLiteAttachmentNode, ComposerMentionNode],
+      onError(error) {
+        throw error;
+      },
+    });
+    let snapshot: ComposerTextSelectionSnapshot | null = null;
+
+    editor.update(
+      () => {
+        const previousParagraph = $createParagraphNode().append($createTextNode("前一段内容"));
+        const selectedTextNode = $createTextNode("需要完整改写的这一段");
+        const selectedParagraph = $createParagraphNode().append(selectedTextNode);
+        const nextParagraph = $createParagraphNode().append($createTextNode("后一段内容"));
+        $getRoot().clear().append(
+          previousParagraph,
+          selectedParagraph,
+          nextParagraph,
+        );
+        selectedTextNode.select(0, selectedTextNode.getTextContentSize());
+        snapshot = $getComposerTextSelectionSnapshot();
+      },
+      { discrete: true },
+    );
+
+    const capturedSnapshot = snapshot as ComposerTextSelectionSnapshot | null;
+    expect(capturedSnapshot?.text).toBe("需要完整改写的这一段");
+    expect(capturedSnapshot?.rewriteMode).toBe("full");
+    expect(capturedSnapshot?.contextBefore).toBe("");
+    expect(capturedSnapshot?.contextAfter).toBe("");
   });
 
   it.each(["mention", "emoji", "image", "attachment"] as const)(

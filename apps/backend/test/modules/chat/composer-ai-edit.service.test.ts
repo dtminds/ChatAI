@@ -41,7 +41,10 @@ describe("ComposerAiEditService", () => {
         {
           action: "friendly",
           content: "你好，请稍等",
+          contextAfter: "，感谢您的理解",
+          contextBefore: "关于物流进度，",
           conversationId: "conversation-1",
+          rewriteMode: "targeted",
         },
       ),
     ).resolves.toEqual({ content: "您好呀" });
@@ -53,18 +56,28 @@ describe("ComposerAiEditService", () => {
     };
 
     expect(body.model).toBe(VOLCENGINE_ARK_AI_EDIT_MODEL);
+    expect(body.temperature).toBe(0.3);
     expect(body.messages[0]?.content).toContain("改写得更友好");
+    expect(body.messages[0]?.content).toContain("可直接替换选中文本");
     expect(body.messages[1]).toEqual({
-      content: "<original_text>\n你好，请稍等\n</original_text>",
+      content: [
+        "<before>关于物流进度，</before>",
+        "<replace>你好，请稍等</replace>",
+        "<after>，感谢您的理解</after>",
+        "before 和 after 是不可修改的上下文，你的输出会直接插入二者之间。",
+        "保持 replace 在原句中的语法角色：原来是词组、谓语、宾语或半句话，改写后仍保持同类结构；不要擅自增加主语、称呼、开场或收尾。",
+        "不要重复 before 或 after 中已有的内容，也不要补写上下文已有的标点。",
+        "回答前先在内部检查 before + 输出 + after 是否构成自然、通顺的中文，最终只输出替换文本。",
+      ].join("\n"),
       role: "user",
     });
   });
 
   it.each([
-    ["lengthen", "适度补充表达和必要上下文"],
-    ["professional", "更专业、准确、可信"],
+    ["lengthen", "适度补充必要的关怀、上下文说明或指引"],
+    ["professional", "更专业、严谨、条理清晰"],
     ["playful", "更轻松、俏皮、有亲和力"],
-    ["apologetic", "真诚表达歉意"],
+    ["apologetic", "真诚致歉的语气"],
   ] as const)(
     "uses the %s editing instruction",
     async (action, expectedInstruction) => {
@@ -85,8 +98,11 @@ describe("ComposerAiEditService", () => {
         { platform: 5, uid: 9 },
         {
           action,
-          content: "原文",
+          content: "这是原始文案",
+          contextAfter: "",
+          contextBefore: "",
           conversationId: "conversation-1",
+          rewriteMode: "full",
         },
       );
 
@@ -98,6 +114,47 @@ describe("ComposerAiEditService", () => {
       expect(body.messages[0]?.content).toContain(expectedInstruction);
     },
   );
+
+  it("uses full-text rewrite instructions when rewrite mode is full", async () => {
+    const fetch = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({ choices: [{ message: { content: "完整改写结果" } }] }),
+        { status: 200 },
+      ),
+    );
+    const service = new ComposerAiEditService({
+      apiKey: "test-key",
+      fetch,
+      repository: createRepository(),
+    });
+
+    await service.rewrite(
+      "sub-1",
+      { platform: 5, uid: 9 },
+      {
+        action: "polish",
+        content: "这是需要完整改写的草稿",
+        contextAfter: "",
+        contextBefore: "",
+        conversationId: "conversation-1",
+        rewriteMode: "full",
+      },
+    );
+
+    const [, init] = fetch.mock.calls[0] as [string, RequestInit];
+    const body = JSON.parse(String(init.body)) as {
+      messages: Array<{ content: string }>;
+    };
+
+    expect(body.messages[0]?.content).toContain("完整改写用户选中的全部草稿文本");
+    expect(body.messages[0]?.content).not.toContain("不是重写整句话");
+    expect(body.messages[1]?.content).toBe([
+      "<original_text>",
+      "这是需要完整改写的草稿",
+      "</original_text>",
+      "完整改写以上全部文本，最终只输出改写后的完整文本。",
+    ].join("\n"));
+  });
 
   it("rejects a conversation that is not taken over by the current account", async () => {
     const repository = createRepository({
@@ -118,8 +175,11 @@ describe("ComposerAiEditService", () => {
         { platform: 5, uid: 9 },
         {
           action: "polish",
-          content: "你好",
+          content: "这是待改文案",
+          contextAfter: "",
+          contextBefore: "",
           conversationId: "conversation-1",
+          rewriteMode: "full",
         },
       ),
     ).rejects.toBeInstanceOf(ForbiddenError);
@@ -140,7 +200,10 @@ describe("ComposerAiEditService", () => {
         {
           action: "shorten",
           content: "你好，请稍等",
+          contextAfter: "",
+          contextBefore: "",
           conversationId: "conversation-1",
+          rewriteMode: "full",
         },
       ),
     ).rejects.toBeInstanceOf(BadGatewayError);
@@ -166,8 +229,11 @@ describe("ComposerAiEditService", () => {
         { platform: 5, uid: 9 },
         {
           action: "polish",
-          content: "你好",
+          content: "这是待改文案",
+          contextAfter: "",
+          contextBefore: "",
           conversationId: "conversation-1",
+          rewriteMode: "full",
         },
       ),
     ).rejects.toMatchObject({

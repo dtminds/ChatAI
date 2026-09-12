@@ -18,13 +18,30 @@ const MAX_COMPOSER_TEXT_LENGTH = 1000;
 const REQUEST_TIMEOUT_MS = 30_000;
 
 const actionInstructions: Record<ComposerAiEditAction, string> = {
-  apologetic: "改写为真诚表达歉意的语气，承认给客户带来的不便，但不擅自承诺补偿、退款或处理结果",
-  friendly: "改写得更友好、亲切、自然，有服务意识但不过度热情",
-  lengthen: "在不改变原意、不新增事实或承诺的前提下，适度补充表达和必要上下文，使内容更完整",
-  playful: "改写得更轻松、俏皮、有亲和力，但不油腻、不冒犯，不影响信息准确性",
-  polish: "润色文案，使语句自然、清晰、顺畅，同时保持原意",
-  professional: "改写得更专业、准确、可信，适合私域客服直接发送",
-  shorten: "在保留关键信息和原意的前提下压缩表达，使内容更简洁",
+  apologetic:
+    "改写为真诚致歉的语气，换位共情客户的不便，并展现积极协助的态度；严禁擅自承诺退款、赔付、免单或具体处理结果",
+  friendly:
+    "改写得更友好、亲切、有耐心，有服务意识但不过度热情，不堆砌夸张标点或无意义拟声词",
+  lengthen:
+    "在不改变原意、不新增事实或承诺的前提下，适度补充必要的关怀、上下文说明或指引，使表达更完整，避免空洞套话",
+  playful:
+    "改写得更轻松、俏皮、有亲和力，可自然使用温和语气词（如‘哈’、‘啦’、‘哦’），但不油腻、不使用小众网络烂梗，确保信息准确",
+  polish:
+    "润色文案，纠正错别字和语病，使语句通顺自然，符合微信即时沟通的亲和力与对话感，避免生硬官腔",
+  professional:
+    "改写得更专业、严谨、条理清晰，适合私域客服使用；避免使用客户听不懂的内部术语或黑话",
+  shorten:
+    "在保留核心信息、业务结论和基本礼貌的前提下精炼文字，去除冗余修饰，避免语气生硬冷漠",
+};
+
+const actionTemperatures: Record<ComposerAiEditAction, number> = {
+  apologetic: 0.2,
+  friendly: 0.3,
+  lengthen: 0.3,
+  playful: 0.4,
+  polish: 0.2,
+  professional: 0.2,
+  shorten: 0.2,
 };
 
 type ComposerAiEditServiceOptions = {
@@ -64,7 +81,6 @@ export class ComposerAiEditService {
       );
     }
 
-    const instruction = buildInstruction(input);
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), this.timeoutMs);
 
@@ -76,22 +92,16 @@ export class ComposerAiEditService {
             max_tokens: 1000,
             messages: [
               {
-                content: [
-                  "你是私域客服的中文文案编辑助手。",
-                  "只输出改写后的文本，不解释过程，不使用 Markdown，不添加引号。",
-                  "保留原文事实、数字、专有名词和业务承诺，不编造信息。",
-                  "不要代替客服新增优惠、时效、退款或售后承诺。",
-                  instruction,
-                ].join("\n"),
+                content: buildSystemPrompt(input),
                 role: "system",
               },
               {
-                content: `<original_text>\n${input.content}\n</original_text>`,
+                content: buildRewriteContext(input),
                 role: "user",
               },
             ],
             model: this.model,
-            temperature: 0.3,
+            temperature: actionTemperatures[input.action] ?? 0.3,
           }),
           headers: {
             Authorization: `Bearer ${this.apiKey}`,
@@ -176,4 +186,43 @@ export class ComposerAiEditService {
 
 function buildInstruction(input: ComposerAiEditRequest) {
   return actionInstructions[input.action];
+}
+
+function buildSystemPrompt(input: ComposerAiEditRequest) {
+  const taskInstruction = isFullTextRewrite(input)
+    ? "你的任务是完整改写用户选中的全部草稿文本，可以调整整体句式、语序和表达，但必须保持原意。"
+    : "你的任务是生成一段可直接替换选中文本的内容，不是重写整句话。";
+
+  return [
+    "你是私域微信客服的文案改写助手。",
+    taskInstruction,
+    "只输出改写结果，不要输出解释、标签、引号、Markdown 或‘改写后：’等前缀。",
+    "保持原文事实、数字、专有名词、微信表情代码和变量占位符，不得新增优惠、时效、退款、赔付或售后承诺。",
+    `改写风格：${buildInstruction(input)}`,
+  ].join("\n");
+}
+
+function buildRewriteContext(input: ComposerAiEditRequest) {
+  if (isFullTextRewrite(input)) {
+    return [
+      "<original_text>",
+      input.content,
+      "</original_text>",
+      "完整改写以上全部文本，最终只输出改写后的完整文本。",
+    ].join("\n");
+  }
+
+  return [
+    `<before>${input.contextBefore}</before>`,
+    `<replace>${input.content}</replace>`,
+    `<after>${input.contextAfter}</after>`,
+    "before 和 after 是不可修改的上下文，你的输出会直接插入二者之间。",
+    "保持 replace 在原句中的语法角色：原来是词组、谓语、宾语或半句话，改写后仍保持同类结构；不要擅自增加主语、称呼、开场或收尾。",
+    "不要重复 before 或 after 中已有的内容，也不要补写上下文已有的标点。",
+    "回答前先在内部检查 before + 输出 + after 是否构成自然、通顺的中文，最终只输出替换文本。",
+  ].join("\n");
+}
+
+function isFullTextRewrite(input: ComposerAiEditRequest) {
+  return input.rewriteMode === "full";
 }

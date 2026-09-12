@@ -16,9 +16,14 @@ import {
   type ElementNode,
   type LexicalNode,
   type PointType,
+  type RangeSelection,
   type TextNode,
 } from "lexical";
 import type { ComposerSegment, ComposerTextSegment } from "@/pages/chat/lib/composer-segments";
+import {
+  COMPOSER_AI_EDIT_CONTEXT_MAX_LENGTH,
+  type ComposerAiEditRewriteMode,
+} from "@chatai/contracts";
 import {
   $createComposerEmojiNode,
   $createComposerImageNode,
@@ -46,6 +51,9 @@ export type ComposerTextSelectionSnapshot = {
   focusKey: string;
   focusOffset: number;
   focusType: "element" | "text";
+  contextAfter: string;
+  contextBefore: string;
+  rewriteMode: ComposerAiEditRewriteMode;
   text: string;
 };
 
@@ -80,6 +88,19 @@ export function $getComposerTextSelectionSnapshot(): ComposerTextSelectionSnapsh
     return null;
   }
 
+  const root = $getRoot();
+  const anchorTextOffset = getPlainTextOffsetForPoint(root, selection.anchor);
+  const focusTextOffset = getPlainTextOffsetForPoint(root, selection.focus);
+
+  if (anchorTextOffset === null || focusTextOffset === null) {
+    return null;
+  }
+
+  const plainText = $getComposerPlainText();
+  const selectionStart = Math.min(anchorTextOffset, focusTextOffset);
+  const selectionEnd = Math.max(anchorTextOffset, focusTextOffset);
+  const rewriteMode = isCompleteBlockSelection(selection) ? "full" : "targeted";
+
   return {
     anchorKey: selection.anchor.key,
     anchorOffset: selection.anchor.offset,
@@ -87,6 +108,19 @@ export function $getComposerTextSelectionSnapshot(): ComposerTextSelectionSnapsh
     focusKey: selection.focus.key,
     focusOffset: selection.focus.offset,
     focusType: selection.focus.type,
+    contextAfter: rewriteMode === "full"
+      ? ""
+      : plainText.slice(
+          selectionEnd,
+          selectionEnd + COMPOSER_AI_EDIT_CONTEXT_MAX_LENGTH,
+        ),
+    contextBefore: rewriteMode === "full"
+      ? ""
+      : plainText.slice(
+          Math.max(0, selectionStart - COMPOSER_AI_EDIT_CONTEXT_MAX_LENGTH),
+          selectionStart,
+        ),
+    rewriteMode,
     text,
   };
 }
@@ -970,6 +1004,22 @@ function getPlainTextLengthForNode(node: LexicalNode): number {
     (textLength, part) => textLength + part.length,
     0,
   );
+}
+
+function isCompleteBlockSelection(selection: RangeSelection) {
+  const startPoint = selection.isBackward() ? selection.focus : selection.anchor;
+  const endPoint = selection.isBackward() ? selection.anchor : selection.focus;
+  const startBlock = startPoint.getNode().getTopLevelElement();
+  const endBlock = endPoint.getNode().getTopLevelElement();
+
+  if (!$isElementNode(startBlock) || !$isElementNode(endBlock)) {
+    return false;
+  }
+
+  const startOffset = getPlainTextOffsetForPoint(startBlock, startPoint);
+  const endOffset = getPlainTextOffsetForPoint(endBlock, endPoint);
+
+  return startOffset === 0 && endOffset === getPlainTextLengthForNode(endBlock);
 }
 
 function toRawTextOffset(text: string, normalizedOffset: number) {

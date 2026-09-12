@@ -23,6 +23,8 @@ const { rewriteComposerTextMock, toastErrorMock } = vi.hoisted(() => ({
   toastErrorMock: vi.fn(),
 }));
 
+const DEFAULT_COMPOSER_TEXT = "您好，请稍等";
+
 vi.mock("@/pages/chat/api/workbench-service", () => ({
   getWorkbenchService: () => ({
     rewriteComposerText: rewriteComposerTextMock,
@@ -35,23 +37,26 @@ vi.mock("sonner", () => ({
   },
 }));
 
-function SeedComposerText() {
+function SeedComposerText({ text = DEFAULT_COMPOSER_TEXT }: { text?: string }) {
   const [editor] = useLexicalComposerContext();
 
   useEffect(() => {
     editor.update(() => {
       $getRoot().clear();
-      $insertComposerText("您好");
+      $insertComposerText(text);
     }, { discrete: true });
-  }, [editor]);
+  }, [editor, text]);
 
   return null;
 }
 
 describe("ComposerAiEditPlugin", () => {
   it("rewrites a selected text range and applies the accepted result", async () => {
+    const composerText = "关于物流问题，请稍等一下，我们正在核实";
+    const selectedText = "请稍等一下";
+    const replacement = "我马上帮您确认";
     rewriteComposerTextMock.mockReset();
-    rewriteComposerTextMock.mockResolvedValue({ content: "您好呀" });
+    rewriteComposerTextMock.mockResolvedValue({ content: replacement });
     const user = userEvent.setup();
 
     render(
@@ -73,20 +78,21 @@ describe("ComposerAiEditPlugin", () => {
           contentEditable={<ContentEditable aria-label="消息输入" />}
           ErrorBoundary={LexicalErrorBoundary}
         />
-        <SeedComposerText />
+        <SeedComposerText text={composerText} />
         <ComposerAiEditPlugin canEdit conversationId="conversation-1" />
       </LexicalComposer>,
     );
 
     const editor = await screen.findByRole("textbox", { name: "消息输入" });
-    await waitFor(() => expect(editor).toHaveTextContent("您好"));
+    await waitFor(() => expect(editor).toHaveTextContent(composerText));
 
     const textWalker = document.createTreeWalker(editor, NodeFilter.SHOW_TEXT);
     const textNode = textWalker.nextNode();
     expect(textNode).not.toBeNull();
     const range = document.createRange();
-    range.setStart(textNode!, 0);
-    range.setEnd(textNode!, textNode!.textContent?.length ?? 0);
+    const selectionStart = composerText.indexOf(selectedText);
+    range.setStart(textNode!, selectionStart);
+    range.setEnd(textNode!, selectionStart + selectedText.length);
     const selection = window.getSelection();
     selection?.removeAllRanges();
     selection?.addRange(range);
@@ -111,16 +117,23 @@ describe("ComposerAiEditPlugin", () => {
     await waitFor(() => {
       expect(rewriteComposerTextMock).toHaveBeenCalledWith({
         action: "playful",
-        content: "您好",
+        content: selectedText,
+        contextAfter: composerText.slice(selectionStart + selectedText.length),
+        contextBefore: composerText.slice(0, selectionStart),
         conversationId: "conversation-1",
+        rewriteMode: "targeted",
       }, { signal: expect.any(AbortSignal) });
     });
-    await screen.findByText("您好呀");
+    await screen.findByText(replacement);
     expect(screen.queryByText("AI 助写建议")).not.toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "采用 AI 助写建议" }));
 
-    await waitFor(() => expect(editor).toHaveTextContent("您好呀"));
+    await waitFor(() => {
+      expect(editor).toHaveTextContent(
+        `${composerText.slice(0, selectionStart)}${replacement}${composerText.slice(selectionStart + selectedText.length)}`,
+      );
+    });
   });
 
   it("closes the surface and ignores an in-flight result when the conversation changes", async () => {
@@ -158,7 +171,7 @@ describe("ComposerAiEditPlugin", () => {
     );
 
     const editor = await screen.findByRole("textbox", { name: "消息输入" });
-    await waitFor(() => expect(editor).toHaveTextContent("您好"));
+    await waitFor(() => expect(editor).toHaveTextContent(DEFAULT_COMPOSER_TEXT));
 
     const textWalker = document.createTreeWalker(editor, NodeFilter.SHOW_TEXT);
     const textNode = textWalker.nextNode();
@@ -231,7 +244,7 @@ describe("ComposerAiEditPlugin", () => {
     );
 
     const editor = await screen.findByRole("textbox", { name: "消息输入" });
-    await waitFor(() => expect(editor).toHaveTextContent("您好"));
+    await waitFor(() => expect(editor).toHaveTextContent(DEFAULT_COMPOSER_TEXT));
 
     const textWalker = document.createTreeWalker(editor, NodeFilter.SHOW_TEXT);
     const textNode = textWalker.nextNode();
@@ -326,7 +339,7 @@ describe("ComposerAiEditPlugin", () => {
     );
 
     const editor = await screen.findByRole("textbox", { name: "消息输入" });
-    await waitFor(() => expect(editor).toHaveTextContent("您好"));
+    await waitFor(() => expect(editor).toHaveTextContent(DEFAULT_COMPOSER_TEXT));
     const textWalker = document.createTreeWalker(editor, NodeFilter.SHOW_TEXT);
     const textNode = textWalker.nextNode();
     const range = document.createRange();
@@ -372,7 +385,7 @@ describe("ComposerAiEditPlugin", () => {
     );
 
     const editor = await screen.findByRole("textbox", { name: "消息输入" });
-    await waitFor(() => expect(editor).toHaveTextContent("您好"));
+    await waitFor(() => expect(editor).toHaveTextContent(DEFAULT_COMPOSER_TEXT));
 
     const textWalker = document.createTreeWalker(editor, NodeFilter.SHOW_TEXT);
     const textNode = textWalker.nextNode();
@@ -394,6 +407,110 @@ describe("ComposerAiEditPlugin", () => {
     fireEvent.mouseUp(document, { button: 0 });
 
     await screen.findByTestId("composer-ai-edit-surface");
+  });
+
+  it("hides the AI entry when the selected text exceeds 200 characters", async () => {
+    const content = "字".repeat(201);
+
+    render(
+      <LexicalComposer
+        initialConfig={{
+          namespace: "composer-ai-edit-selection-limit-test",
+          nodes: [
+            ComposerEmojiNode,
+            ComposerImageNode,
+            ComposerLiteAttachmentNode,
+            ComposerMentionNode,
+          ],
+          onError(error) {
+            throw error;
+          },
+        }}
+      >
+        <PlainTextPlugin
+          contentEditable={<ContentEditable aria-label="消息输入" />}
+          ErrorBoundary={LexicalErrorBoundary}
+        />
+        <SeedComposerText text={content} />
+        <ComposerAiEditPlugin canEdit conversationId="conversation-1" />
+      </LexicalComposer>,
+    );
+
+    const editor = await screen.findByRole("textbox", { name: "消息输入" });
+    await waitFor(() => expect(editor).toHaveTextContent(content));
+    const textWalker = document.createTreeWalker(editor, NodeFilter.SHOW_TEXT);
+    const textNode = textWalker.nextNode();
+    expect(textNode).not.toBeNull();
+    const range = document.createRange();
+    range.setStart(textNode!, 0);
+    range.setEnd(textNode!, 200);
+    const selection = window.getSelection();
+    selection?.removeAllRanges();
+    selection?.addRange(range);
+    fireEvent(document, new Event("selectionchange"));
+
+    await screen.findByTestId("composer-ai-edit-surface");
+
+    range.setEnd(textNode!, 201);
+    selection?.removeAllRanges();
+    selection?.addRange(range);
+    fireEvent(document, new Event("selectionchange"));
+
+    await waitFor(() => {
+      expect(screen.queryByTestId("composer-ai-edit-surface")).not.toBeInTheDocument();
+    });
+  });
+
+  it("hides the AI entry when the selected text is fewer than 5 characters", async () => {
+    const content = "一二三四五";
+
+    render(
+      <LexicalComposer
+        initialConfig={{
+          namespace: "composer-ai-edit-min-selection-limit-test",
+          nodes: [
+            ComposerEmojiNode,
+            ComposerImageNode,
+            ComposerLiteAttachmentNode,
+            ComposerMentionNode,
+          ],
+          onError(error) {
+            throw error;
+          },
+        }}
+      >
+        <PlainTextPlugin
+          contentEditable={<ContentEditable aria-label="消息输入" />}
+          ErrorBoundary={LexicalErrorBoundary}
+        />
+        <SeedComposerText text={content} />
+        <ComposerAiEditPlugin canEdit conversationId="conversation-1" />
+      </LexicalComposer>,
+    );
+
+    const editor = await screen.findByRole("textbox", { name: "消息输入" });
+    await waitFor(() => expect(editor).toHaveTextContent(content));
+    const textWalker = document.createTreeWalker(editor, NodeFilter.SHOW_TEXT);
+    const textNode = textWalker.nextNode();
+    expect(textNode).not.toBeNull();
+    const range = document.createRange();
+    range.setStart(textNode!, 0);
+    range.setEnd(textNode!, 5);
+    const selection = window.getSelection();
+    selection?.removeAllRanges();
+    selection?.addRange(range);
+    fireEvent(document, new Event("selectionchange"));
+
+    await screen.findByTestId("composer-ai-edit-surface");
+
+    range.setEnd(textNode!, 4);
+    selection?.removeAllRanges();
+    selection?.addRange(range);
+    fireEvent(document, new Event("selectionchange"));
+
+    await waitFor(() => {
+      expect(screen.queryByTestId("composer-ai-edit-surface")).not.toBeInTheDocument();
+    });
   });
 
   it("aborts an in-flight rewrite when the user stops generation", async () => {
@@ -436,7 +553,7 @@ describe("ComposerAiEditPlugin", () => {
     );
 
     const editor = await screen.findByRole("textbox", { name: "消息输入" });
-    await waitFor(() => expect(editor).toHaveTextContent("您好"));
+    await waitFor(() => expect(editor).toHaveTextContent(DEFAULT_COMPOSER_TEXT));
     const textWalker = document.createTreeWalker(editor, NodeFilter.SHOW_TEXT);
     const textNode = textWalker.nextNode();
     const range = document.createRange();
@@ -461,6 +578,85 @@ describe("ComposerAiEditPlugin", () => {
     resolveRewrite?.({ content: "迟到的结果" });
     await Promise.resolve();
     expect(screen.queryByText("迟到的结果")).not.toBeInTheDocument();
+    expect(toastErrorMock).not.toHaveBeenCalled();
+  });
+
+  it("aborts an in-flight rewrite without showing an error after unmount", async () => {
+    rewriteComposerTextMock.mockReset();
+    toastErrorMock.mockReset();
+    let requestSignal: AbortSignal | undefined;
+    let resolveCancellation: (() => void) | undefined;
+    const cancellationHandled = new Promise<void>((resolve) => {
+      resolveCancellation = resolve;
+    });
+    rewriteComposerTextMock.mockImplementation(
+      (_request, options?: { signal?: AbortSignal }) => {
+        requestSignal = options?.signal;
+
+        return new Promise<{ content: string }>((_resolve, reject) => {
+          requestSignal?.addEventListener(
+            "abort",
+            () => {
+              reject(
+                new RequestNormalizedError({
+                  code: "ERR_CANCELED",
+                  message: "canceled",
+                }),
+              );
+              queueMicrotask(() => resolveCancellation?.());
+            },
+            { once: true },
+          );
+        });
+      },
+    );
+    const user = userEvent.setup();
+
+    const { unmount } = render(
+      <LexicalComposer
+        initialConfig={{
+          namespace: "composer-ai-edit-unmount-cancel-test",
+          nodes: [
+            ComposerEmojiNode,
+            ComposerImageNode,
+            ComposerLiteAttachmentNode,
+            ComposerMentionNode,
+          ],
+          onError(error) {
+            throw error;
+          },
+        }}
+      >
+        <PlainTextPlugin
+          contentEditable={<ContentEditable aria-label="消息输入" />}
+          ErrorBoundary={LexicalErrorBoundary}
+        />
+        <SeedComposerText />
+        <ComposerAiEditPlugin canEdit conversationId="conversation-1" />
+      </LexicalComposer>,
+    );
+
+    const editor = await screen.findByRole("textbox", { name: "消息输入" });
+    await waitFor(() => expect(editor).toHaveTextContent(DEFAULT_COMPOSER_TEXT));
+    const textWalker = document.createTreeWalker(editor, NodeFilter.SHOW_TEXT);
+    const textNode = textWalker.nextNode();
+    const range = document.createRange();
+    range.setStart(textNode!, 0);
+    range.setEnd(textNode!, textNode!.textContent?.length ?? 0);
+    const selection = window.getSelection();
+    selection?.removeAllRanges();
+    selection?.addRange(range);
+    fireEvent(document, new Event("selectionchange"));
+
+    await screen.findByTestId("composer-ai-edit-surface");
+    await user.click(screen.getByRole("button", { name: "打开 AI 助写菜单" }));
+    await user.click(screen.getByRole("menuitem", { name: "润色文案" }));
+    await screen.findByText("正在生成");
+
+    unmount();
+    await cancellationHandled;
+
+    expect(requestSignal?.aborted).toBe(true);
     expect(toastErrorMock).not.toHaveBeenCalled();
   });
 });

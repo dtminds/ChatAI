@@ -17,9 +17,11 @@ import {
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { useLexicalComposerContext } from "@lexical/react/LexicalComposerContext";
-import type {
-  ComposerAiEditAction,
-  ComposerAiEditResponse,
+import {
+  COMPOSER_AI_EDIT_INPUT_MAX_LENGTH,
+  COMPOSER_AI_EDIT_INPUT_MIN_LENGTH,
+  type ComposerAiEditAction,
+  type ComposerAiEditResponse,
 } from "@chatai/contracts";
 import { Button } from "@/components/ui/button";
 import { DotMatrixLoader } from "@/components/ui/dot-matrix-loader";
@@ -84,21 +86,6 @@ const TONE_ACTIONS: Array<{
   { action: "apologetic", icon: Sad01Icon, label: "表达歉意" },
 ];
 
-function isSameSelection(
-  left: SelectionState,
-  right: ComposerTextSelectionSnapshot,
-) {
-  return (
-    left.anchorKey === right.anchorKey &&
-    left.anchorOffset === right.anchorOffset &&
-    left.anchorType === right.anchorType &&
-    left.focusKey === right.focusKey &&
-    left.focusOffset === right.focusOffset &&
-    left.focusType === right.focusType &&
-    left.text === right.text
-  );
-}
-
 export function ComposerAiEditPlugin({
   canEdit,
   conversationId,
@@ -113,7 +100,6 @@ export function ComposerAiEditPlugin({
   const [toneMenuOpen, setToneMenuOpen] = useState(false);
   const [activeAction, setActiveAction] = useState<ComposerAiEditAction | null>(null);
   const [result, setResult] = useState("");
-  const selectionRef = useRef<SelectionState | null>(null);
   const isMouseSelectingRef = useRef(false);
   const contentRef = useRef<HTMLDivElement | null>(null);
   const [surfaceHeight, setSurfaceHeight] = useState(28);
@@ -136,12 +122,16 @@ export function ComposerAiEditPlugin({
 
     const snapshot = nextSnapshot as ComposerTextSelectionSnapshot | null;
 
-    if (!snapshot || !canEdit) {
+    if (
+      !snapshot ||
+      !canEdit ||
+      snapshot.text.length < COMPOSER_AI_EDIT_INPUT_MIN_LENGTH ||
+      snapshot.text.length > COMPOSER_AI_EDIT_INPUT_MAX_LENGTH
+    ) {
       if (surfaceRef.current?.contains(document.activeElement)) {
         return;
       }
 
-      selectionRef.current = null;
       setSelection(null);
       setEditState("menu");
       return;
@@ -160,7 +150,6 @@ export function ComposerAiEditPlugin({
         return;
       }
 
-      selectionRef.current = null;
       setSelection(null);
       setEditState("menu");
       return;
@@ -172,16 +161,7 @@ export function ComposerAiEditPlugin({
       return;
     }
 
-    if (
-      selectionRef.current &&
-      !isSameSelection(selectionRef.current, snapshot)
-    ) {
-      setMenuOpen(false);
-      setToneMenuOpen(false);
-    }
-
     const nextSelection = { ...snapshot, rect };
-    selectionRef.current = nextSelection;
     setSelection(nextSelection);
     setEditState((current) => (current === "preview" || current === "loading" ? current : "menu"));
   }, [canEdit, editState, editor, menuOpen]);
@@ -206,7 +186,6 @@ export function ComposerAiEditPlugin({
       isMouseSelectingRef.current = true;
 
       if (editState === "menu") {
-        selectionRef.current = null;
         setSelection(null);
         setMenuOpen(false);
         setToneMenuOpen(false);
@@ -248,7 +227,6 @@ export function ComposerAiEditPlugin({
     requestIdRef.current += 1;
     requestAbortControllerRef.current?.abort();
     requestAbortControllerRef.current = null;
-    selectionRef.current = null;
     setSelection(null);
     setEditState("menu");
     setMenuOpen(false);
@@ -258,6 +236,7 @@ export function ComposerAiEditPlugin({
   }, []);
 
   useEffect(() => () => {
+    requestIdRef.current += 1;
     requestAbortControllerRef.current?.abort();
   }, []);
 
@@ -280,7 +259,12 @@ export function ComposerAiEditPlugin({
 
   const requestRewrite = useCallback(
     async (action: ComposerAiEditAction) => {
-      if (!selection || !conversationId) {
+      if (
+        !selection ||
+        !conversationId ||
+        selection.text.length < COMPOSER_AI_EDIT_INPUT_MIN_LENGTH ||
+        selection.text.length > COMPOSER_AI_EDIT_INPUT_MAX_LENGTH
+      ) {
         return;
       }
 
@@ -298,7 +282,10 @@ export function ComposerAiEditPlugin({
           {
             action,
             content: selection.text,
+            contextAfter: selection.contextAfter,
+            contextBefore: selection.contextBefore,
             conversationId,
+            rewriteMode: selection.rewriteMode,
           },
           { signal: abortController.signal },
         );
@@ -310,7 +297,7 @@ export function ComposerAiEditPlugin({
         setResult(response.content);
         setEditState("preview");
       } catch (error) {
-        if (requestId === requestIdRef.current) {
+        if (requestId === requestIdRef.current && !abortController.signal.aborted) {
           setEditState("menu");
           toast.error(
             error instanceof RequestNormalizedError

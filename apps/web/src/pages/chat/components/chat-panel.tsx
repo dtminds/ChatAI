@@ -501,6 +501,7 @@ export function ChatPanel({
         isConversationActionDisabled={isConversationActionDisabled}
         isMobileLayout={isMobileLayout}
         isSidebarOpen={isSidebarOpen}
+        isHistoryPanelOpen={resolvedAuxiliaryPanel === "history"}
         isTicketsPanelOpen={resolvedAuxiliaryPanel === "tickets"}
         isUserMemoryOpen={isUserMemoryOpen}
         onBack={isMobileLayout ? onBackToConversationList : undefined}
@@ -514,6 +515,7 @@ export function ChatPanel({
             ? () => onMarkConversationUnread(activeConversation.id)
             : undefined
         }
+        onOpenHistory={handleOpenHistory}
         onPinConversation={
           activeConversation && onPinConversation
             ? () => onPinConversation(activeConversation.id)
@@ -686,9 +688,6 @@ export function ChatPanel({
                           isEmojiPickerOpen={isEmojiPickerOpen}
                           isMobileLayout={isMobileLayout}
                           isSending={isSendingDraft}
-                          isHistoryPanelOpen={
-                            resolvedAuxiliaryPanel === "history"
-                          }
                           accountAvatarUrl={
                             activeAccount?.avatarUrl ?? accountAvatarUrl
                           }
@@ -741,7 +740,6 @@ export function ChatPanel({
                           onOpenMaterialLibrary={
                             onOpenMaterialLibrary ?? noop
                           }
-                          onOpenHistory={handleOpenHistory}
                           onSelectCollectedExpression={
                             onSelectCollectedExpression
                           }

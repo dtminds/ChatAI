@@ -14,13 +14,12 @@ import {
   ArrowDown01Icon,
   ArrowUp02Icon,
   Cancel01Icon,
-  ChatDelayIcon,
+  DashboardCircleAddIcon,
   Folder01Icon,
   FolderFavouriteIcon,
   Image01Icon,
   Link01Icon,
   PlaySquareIcon,
-  ShapeCollectionIcon,
   SmileIcon,
   Upload05Icon,
 } from "@hugeicons/core-free-icons";
@@ -141,7 +140,6 @@ type ChatComposerProps = {
   isMobileLayout?: boolean;
   sendingCollectedExpressionId?: string | null;
   isSending: boolean;
-  isHistoryPanelOpen: boolean;
   seatAIHostingAuth?: boolean;
   seatSemiAutoAuth?: boolean;
   /** 当前会话的 AI 托管开关配置状态 */
@@ -160,7 +158,6 @@ type ChatComposerProps = {
   onLoadMoreCollectedExpressions?: () => void;
   onOpenCollectedExpressions?: () => void;
   onOpenMaterialLibrary: (bizType: ComposerMaterialLibraryBizType) => void;
-  onOpenHistory: () => void;
   onSelectCollectedExpression?: (item: WorkbenchMaterialCollectionItemDto) => void;
   onSegmentsChange: (segments: ComposerSegment[]) => void;
   onSendDraft: (segments: ComposerSegment[]) => void;
@@ -219,7 +216,6 @@ export function ChatComposer({
   isMobileLayout = false,
   sendingCollectedExpressionId,
   isSending,
-  isHistoryPanelOpen,
   seatAIHostingAuth = false,
   seatSemiAutoAuth = false,
   conversationAIHostingConfigured = false,
@@ -237,7 +233,6 @@ export function ChatComposer({
   onLoadMoreCollectedExpressions,
   onOpenCollectedExpressions,
   onOpenMaterialLibrary,
-  onOpenHistory,
   onSelectCollectedExpression,
   onSegmentsChange,
   onSendDraft,
@@ -835,7 +830,7 @@ export function ChatComposer({
                     variant="ghost"
                   >
                     <HugeiconsIcon
-                      icon={ShapeCollectionIcon}
+                      icon={DashboardCircleAddIcon}
                       size={18}
                       strokeWidth={2}
                     />
@@ -989,26 +984,6 @@ export function ChatComposer({
                 </Popover>
               ) : null}
 
-              <Button
-                aria-label="历史记录"
-                aria-pressed={isHistoryPanelOpen}
-                className={cn(
-                  mobileToolbarButtonClass,
-                  isHistoryPanelOpen &&
-                    "bg-accent text-accent-foreground hover:bg-accent hover:text-accent-foreground",
-                )}
-                onClick={onOpenHistory}
-                size="icon"
-                type="button"
-                variant="ghost"
-              >
-                <HugeiconsIcon
-                  icon={ChatDelayIcon}
-                  size={18}
-                  strokeWidth={2}
-                />
-              </Button>
-
               <input
                 accept={COMPOSER_IMAGE_FILE_ACCEPT}
                 aria-label="选择图片"
@@ -1058,7 +1033,7 @@ export function ChatComposer({
           </div>
         ) : (
           <div className="order-last flex items-center justify-between gap-3 text-sm text-muted-foreground">
-            <div className="ml-[-6px] flex items-center gap-1.5">
+            <div className="ml-[-6px] flex items-center gap-1">
               <div className="relative" ref={emojiPickerRef}>
                 <ComposerActionTooltip
                   disabled={isSending || !canSendMessage}
@@ -1305,27 +1280,6 @@ export function ChatComposer({
                 </Popover>
               ) : null}
 
-              <ComposerActionTooltip label="聊天记录">
-                <Button
-                  aria-label="历史记录"
-                  aria-pressed={isHistoryPanelOpen}
-                  className={cn(
-                    composerActionButtonClass,
-                    isHistoryPanelOpen &&
-                      "bg-accent text-accent-foreground hover:bg-accent hover:text-accent-foreground",
-                  )}
-                  onClick={onOpenHistory}
-                  size="icon"
-                  type="button"
-                  variant="ghost"
-                >
-                  <HugeiconsIcon
-                    icon={ChatDelayIcon}
-                    size={18}
-                    strokeWidth={2}
-                  />
-                </Button>
-              </ComposerActionTooltip>
             </div>
 
             <div className="flex items-center gap-1">

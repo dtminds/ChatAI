@@ -2,6 +2,7 @@ import type { ComponentProps, ReactNode } from "react";
 import {
   ArrowLeft01Icon,
   BubbleChatNotificationIcon,
+  ChatDelayIcon,
   ChatDone01Icon,
   InformationCircleIcon,
   LayoutAlignRightIcon,
@@ -48,6 +49,7 @@ type ChatHeaderProps = {
   isConversationActionDisabled?: boolean;
   isMobileLayout?: boolean;
   isSidebarOpen?: boolean;
+  isHistoryPanelOpen?: boolean;
   isTicketsPanelOpen?: boolean;
   ticketReminderCount?: number;
   ticketReminderDisplayMode?: TicketReminderDisplayMode;
@@ -55,6 +57,7 @@ type ChatHeaderProps = {
   onBack?: () => void;
   onMarkConversationRead?: () => void | Promise<void>;
   onMarkConversationUnread?: () => void | Promise<void>;
+  onOpenHistory?: () => void;
   onPinConversation?: () => void | Promise<void>;
   onToggleSidebar?: () => void;
   onToggleTickets?: () => void;
@@ -68,6 +71,7 @@ export function ChatHeader({
   isConversationActionDisabled = false,
   isMobileLayout = false,
   isSidebarOpen = false,
+  isHistoryPanelOpen = false,
   isTicketsPanelOpen = false,
   ticketReminderCount,
   ticketReminderDisplayMode,
@@ -75,6 +79,7 @@ export function ChatHeader({
   onBack,
   onMarkConversationRead,
   onMarkConversationUnread,
+  onOpenHistory,
   onPinConversation,
   onToggleSidebar,
   onToggleTickets,
@@ -145,7 +150,15 @@ export function ChatHeader({
           </div>
         </div>
 
-        <div className="flex shrink-0 items-center gap-2">
+        <div className="flex shrink-0 items-center gap-1.5">
+          {activeConversation && onOpenHistory ? (
+            <HeaderIconButton
+              icon={ChatDelayIcon}
+              label="历史记录"
+              onClick={onOpenHistory}
+              pressed={isHistoryPanelOpen}
+            />
+          ) : null}
           {activeConversation?.mode === "single" && onToggleTickets ? (
             <HeaderIconButton
               icon={ListTodoIcon}

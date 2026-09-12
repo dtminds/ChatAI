@@ -37,7 +37,6 @@ function renderComposer(options: {
       isGroupConversation={options.isGroupConversation ?? false}
       isEmojiPickerOpen={false}
       isSending={options.isSending ?? false}
-      isHistoryPanelOpen={false}
       isMobileLayout={options.isMobileLayout}
       historyKey="composer-test"
       onClearQuotedMessage={vi.fn()}
@@ -48,7 +47,6 @@ function renderComposer(options: {
       onChangeSeatAgentMode={vi.fn()}
       onChangeFullAuto={vi.fn()}
       onOpenMaterialLibrary={options.onOpenMaterialLibrary ?? vi.fn()}
-      onOpenHistory={vi.fn()}
       onSegmentsChange={vi.fn()}
       onSendDraft={options.onSendDraft ?? vi.fn()}
       placeholder="请输入消息……"
@@ -146,7 +144,6 @@ describe("ChatComposer", () => {
         isGroupConversation={false}
         isEmojiPickerOpen={false}
         isSending={false}
-        isHistoryPanelOpen={false}
         historyKey="disabled-drop-test"
         onClearQuotedMessage={vi.fn()}
         onDraftChange={vi.fn()}
@@ -156,7 +153,6 @@ describe("ChatComposer", () => {
         onChangeSeatAgentMode={vi.fn()}
         onChangeFullAuto={vi.fn()}
         onOpenMaterialLibrary={vi.fn()}
-        onOpenHistory={vi.fn()}
         onSegmentsChange={vi.fn()}
         onSendDraft={vi.fn()}
         placeholder="当前账号无发送权限，暂时无法发送消息"
@@ -187,7 +183,6 @@ describe("ChatComposer", () => {
         isGroupConversation={false}
         isEmojiPickerOpen={false}
         isSending={false}
-        isHistoryPanelOpen={false}
         historyKey="disabled-send-test"
         onClearQuotedMessage={vi.fn()}
         onDraftChange={vi.fn()}
@@ -197,7 +192,6 @@ describe("ChatComposer", () => {
         onChangeSeatAgentMode={vi.fn()}
         onChangeFullAuto={vi.fn()}
         onOpenMaterialLibrary={vi.fn()}
-        onOpenHistory={vi.fn()}
         onSegmentsChange={vi.fn()}
         onSendDraft={vi.fn()}
         placeholder="暂时无法发送消息"
@@ -261,7 +255,6 @@ describe("ChatComposer", () => {
         isGroupConversation={false}
         isEmojiPickerOpen={false}
         isSending={false}
-        isHistoryPanelOpen={false}
         historyKey="quote-composer-test"
         onClearQuotedMessage={onClearQuotedMessage}
         onDraftChange={vi.fn()}
@@ -271,7 +264,6 @@ describe("ChatComposer", () => {
         onChangeSeatAgentMode={vi.fn()}
         onChangeFullAuto={vi.fn()}
         onOpenMaterialLibrary={vi.fn()}
-        onOpenHistory={vi.fn()}
         onSegmentsChange={vi.fn()}
         onSendDraft={vi.fn()}
         placeholder="请输入消息……"
@@ -459,45 +451,6 @@ describe("ChatComposer", () => {
     expect(await screen.findByRole("img", { name: "[打脸]" })).toBeInTheDocument();
   });
 
-  it("exposes the history entry from the mobile composer toolbar", async () => {
-    const onOpenHistory = vi.fn();
-    render(
-      <ChatComposer
-        canConfigureSeatAIHosting={false}
-        canConfigureSeatSemiAuto={false}
-        canToggleConversationAIHosting={false}
-        canSendMessage
-        shouldShowConversationAIHostingControl={false}
-        hasActiveFileUpload={false}
-        groupMembers={[]}
-        inputEnterBehavior="send"
-        isGroupConversation={false}
-        isEmojiPickerOpen={false}
-        isSending={false}
-        isHistoryPanelOpen={false}
-        isMobileLayout
-        historyKey="mobile-composer-test"
-        onClearQuotedMessage={vi.fn()}
-        onDraftChange={vi.fn()}
-        onEmojiPickerOpenChange={vi.fn()}
-        onEnterBehaviorChange={vi.fn()}
-        onFileSelect={vi.fn()}
-        onChangeSeatAgentMode={vi.fn()}
-        onChangeFullAuto={vi.fn()}
-        onOpenMaterialLibrary={vi.fn()}
-        onOpenHistory={onOpenHistory}
-        onSegmentsChange={vi.fn()}
-        onSendDraft={vi.fn()}
-        placeholder="请输入消息……"
-        quotedMessage={null}
-        composerRef={createRef<LexicalEditor>()}
-      />,
-    );
-
-    await userEvent.click(screen.getByRole("button", { name: "历史记录" }));
-    expect(onOpenHistory).toHaveBeenCalledTimes(1);
-  });
-
   it("filters the current seat from mention candidates", async () => {
     renderComposer({
       groupMembers: [
@@ -589,7 +542,7 @@ describe("ChatComposer", () => {
     await userEvent.click(composer);
     await userEvent.paste("已有内容");
 
-    const toolbarButton = screen.getByRole("button", { name: "历史记录" });
+    const toolbarButton = screen.getByRole("button", { name: "微信表情" });
     fireEvent.dragEnter(toolbarButton, { dataTransfer });
     expect(screen.getByTestId("chat-composer-image-drop-overlay")).toBeInTheDocument();
     fireEvent.drop(toolbarButton, { dataTransfer });

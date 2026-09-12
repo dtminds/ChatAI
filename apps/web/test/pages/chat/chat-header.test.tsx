@@ -31,32 +31,42 @@ const conversation: Conversation = {
 };
 
 describe("ChatHeader", () => {
-  it("shows the ticket panel action before conversation actions for single chats", async () => {
+  it("shows history before tickets and conversation actions", async () => {
     const user = userEvent.setup();
+    const onOpenHistory = vi.fn();
     const onToggleTickets = vi.fn();
 
     const { rerender } = render(
       <ChatHeader
         activeConversation={conversation}
+        onOpenHistory={onOpenHistory}
         onPinConversation={vi.fn()}
         onToggleTickets={onToggleTickets}
       />,
     );
 
+    const historyButton = screen.getByRole("button", { name: "历史记录" });
     const ticketButton = screen.getByRole("button", { name: "工单" });
     const moreButton = screen.getByRole("button", { name: "更多会话操作" });
+    expect(historyButton.compareDocumentPosition(ticketButton)).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING,
+    );
     expect(ticketButton.compareDocumentPosition(moreButton)).toBe(
       Node.DOCUMENT_POSITION_FOLLOWING,
     );
+    await user.click(historyButton);
     await user.click(ticketButton);
+    expect(onOpenHistory).toHaveBeenCalledOnce();
     expect(onToggleTickets).toHaveBeenCalledOnce();
 
     rerender(
       <ChatHeader
         activeConversation={{ ...conversation, mode: "group" }}
+        onOpenHistory={onOpenHistory}
         onToggleTickets={onToggleTickets}
       />,
     );
+    expect(screen.getByRole("button", { name: "历史记录" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "工单" })).not.toBeInTheDocument();
   });
 

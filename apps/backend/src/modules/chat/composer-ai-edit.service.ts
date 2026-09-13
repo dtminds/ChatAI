@@ -32,7 +32,7 @@ const actionInstructions: Record<ComposerAiEditAction, string> = {
   professional:
     "改写得更专业、严谨、条理清晰，适合私域客服使用；避免使用客户听不懂的内部术语或黑话",
   shorten:
-    "在保留核心信息、业务结论和基本礼貌的前提下精炼文字，去除冗余修饰，避免语气生硬冷漠",
+    "在保留核心信息的前提下精炼文字，改短一点",
 };
 
 const actionTemperatures: Record<ComposerAiEditAction, number> = {

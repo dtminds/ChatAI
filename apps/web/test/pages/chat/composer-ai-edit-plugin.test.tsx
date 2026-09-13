@@ -136,6 +136,56 @@ describe("ComposerAiEditPlugin", () => {
     });
   });
 
+  it("disables shortening for selections shorter than fifteen characters", async () => {
+    rewriteComposerTextMock.mockReset();
+    const user = userEvent.setup();
+
+    render(
+      <LexicalComposer
+        initialConfig={{
+          namespace: "composer-ai-edit-short-selection-test",
+          nodes: [
+            ComposerEmojiNode,
+            ComposerImageNode,
+            ComposerLiteAttachmentNode,
+            ComposerMentionNode,
+          ],
+          onError(error) {
+            throw error;
+          },
+        }}
+      >
+        <PlainTextPlugin
+          contentEditable={<ContentEditable aria-label="消息输入" />}
+          ErrorBoundary={LexicalErrorBoundary}
+        />
+        <SeedComposerText />
+        <ComposerAiEditPlugin canEdit conversationId="conversation-1" />
+      </LexicalComposer>,
+    );
+
+    const editor = await screen.findByRole("textbox", { name: "消息输入" });
+    await waitFor(() => expect(editor).toHaveTextContent(DEFAULT_COMPOSER_TEXT));
+    const textWalker = document.createTreeWalker(editor, NodeFilter.SHOW_TEXT);
+    const textNode = textWalker.nextNode();
+    const range = document.createRange();
+    range.setStart(textNode!, 0);
+    range.setEnd(textNode!, DEFAULT_COMPOSER_TEXT.length);
+    const selection = window.getSelection();
+    selection?.removeAllRanges();
+    selection?.addRange(range);
+    fireEvent(document, new Event("selectionchange"));
+
+    await screen.findByTestId("composer-ai-edit-surface");
+    await user.click(screen.getByRole("button", { name: "打开 AI 助写菜单" }));
+
+    const shortenItem = screen.getByRole("menuitem", { name: "更短一点" });
+    expect(shortenItem).toHaveAttribute("aria-disabled", "true");
+    await user.click(shortenItem);
+
+    expect(rewriteComposerTextMock).not.toHaveBeenCalled();
+  });
+
   it("closes the surface and ignores an in-flight result when the conversation changes", async () => {
     rewriteComposerTextMock.mockReset();
     let resolveRewrite: ((value: { content: string }) => void) | undefined;
@@ -368,6 +418,62 @@ describe("ComposerAiEditPlugin", () => {
     await waitFor(() => {
       expect(toastErrorMock).toHaveBeenCalledWith(expectedMessage);
     });
+  });
+
+  it("shows a dialog when the tenant quota service is unavailable", async () => {
+    rewriteComposerTextMock.mockReset();
+    toastErrorMock.mockReset();
+    rewriteComposerTextMock.mockRejectedValue(
+      new RequestNormalizedError({
+        code: "COMPOSER_AI_EDIT_QUOTA_UNAVAILABLE",
+        message: "AI 助写暂时不可用",
+      }),
+    );
+    const user = userEvent.setup();
+
+    render(
+      <LexicalComposer
+        initialConfig={{
+          namespace: "composer-ai-edit-quota-unavailable-test",
+          nodes: [
+            ComposerEmojiNode,
+            ComposerImageNode,
+            ComposerLiteAttachmentNode,
+            ComposerMentionNode,
+          ],
+          onError(error) {
+            throw error;
+          },
+        }}
+      >
+        <PlainTextPlugin
+          contentEditable={<ContentEditable aria-label="消息输入" />}
+          ErrorBoundary={LexicalErrorBoundary}
+        />
+        <SeedComposerText />
+        <ComposerAiEditPlugin canEdit conversationId="conversation-1" />
+      </LexicalComposer>,
+    );
+
+    const editor = await screen.findByRole("textbox", { name: "消息输入" });
+    await waitFor(() => expect(editor).toHaveTextContent(DEFAULT_COMPOSER_TEXT));
+    const textWalker = document.createTreeWalker(editor, NodeFilter.SHOW_TEXT);
+    const textNode = textWalker.nextNode();
+    const range = document.createRange();
+    range.setStart(textNode!, 0);
+    range.setEnd(textNode!, textNode!.textContent?.length ?? 0);
+    const selection = window.getSelection();
+    selection?.removeAllRanges();
+    selection?.addRange(range);
+    fireEvent(document, new Event("selectionchange"));
+
+    await screen.findByTestId("composer-ai-edit-surface");
+    await user.click(screen.getByRole("button", { name: "打开 AI 助写菜单" }));
+    await user.click(screen.getByRole("menuitem", { name: "润色文案" }));
+
+    expect(await screen.findByRole("dialog")).toHaveTextContent("AI 助写暂时不可用");
+    expect(screen.queryByTestId("composer-ai-edit-surface")).not.toBeInTheDocument();
+    expect(toastErrorMock).not.toHaveBeenCalled();
   });
 
   it("waits until mouse selection ends before showing the AI entry", async () => {

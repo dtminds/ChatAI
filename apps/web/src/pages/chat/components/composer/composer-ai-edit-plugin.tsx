@@ -24,6 +24,15 @@ import {
   type ComposerAiEditResponse,
 } from "@chatai/contracts";
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogClose,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { DotMatrixLoader } from "@/components/ui/dot-matrix-loader";
 import {
   DropdownMenu,
@@ -86,6 +95,8 @@ const TONE_ACTIONS: Array<{
   { action: "apologetic", icon: Sad01Icon, label: "表达歉意" },
 ];
 
+const SHORTEN_ACTION_MIN_LENGTH = 15;
+
 export function ComposerAiEditPlugin({
   canEdit,
   conversationId,
@@ -100,6 +111,7 @@ export function ComposerAiEditPlugin({
   const [toneMenuOpen, setToneMenuOpen] = useState(false);
   const [activeAction, setActiveAction] = useState<ComposerAiEditAction | null>(null);
   const [result, setResult] = useState("");
+  const [quotaUnavailableDialogOpen, setQuotaUnavailableDialogOpen] = useState(false);
   const isMouseSelectingRef = useRef(false);
   const contentRef = useRef<HTMLDivElement | null>(null);
   const [surfaceHeight, setSurfaceHeight] = useState(28);
@@ -298,8 +310,13 @@ export function ComposerAiEditPlugin({
         setEditState("preview");
       } catch (error) {
         if (requestId === requestIdRef.current && !abortController.signal.aborted) {
-          setEditState("menu");
-          toast.error(getRewriteErrorMessage(error));
+          if (isQuotaUnavailableError(error)) {
+            close();
+            setQuotaUnavailableDialogOpen(true);
+          } else {
+            setEditState("menu");
+            toast.error(getRewriteErrorMessage(error));
+          }
         }
       } finally {
         if (requestAbortControllerRef.current === abortController) {
@@ -307,7 +324,7 @@ export function ComposerAiEditPlugin({
         }
       }
     },
-    [conversationId, selection],
+    [close, conversationId, selection],
   );
 
   const cancelRewrite = useCallback(() => {
@@ -385,187 +402,183 @@ export function ComposerAiEditPlugin({
     return () => observer.disconnect();
   }, [isExpanded, result]);
 
-  if (!selection || !canEdit || !conversationId) {
-    return null;
-  }
-
-  const left = Math.max(
-    8,
-    Math.min(selection.rect.left, window.innerWidth - (isExpanded ? 360 : 40)),
-  );
+  const left = selection
+    ? Math.max(
+        8,
+        Math.min(selection.rect.left, window.innerWidth - (isExpanded ? 360 : 40)),
+      )
+    : 8;
 
   return (
-    <div
-      ref={surfaceRef}
-      className={cn(
-        "fixed z-50 overflow-visible text-[13px] text-popover-foreground transition-[width,height] duration-200 ease-out",
-        isExpanded
-          ? "w-[min(22rem,calc(100vw-1rem))] overflow-hidden rounded-[10px] border border-border bg-popover shadow-[0_12px_32px_var(--shadow-soft)]"
-          : "h-7 w-7",
-        "-translate-y-full",
-      )}
-      data-testid="composer-ai-edit-surface"
-      style={{ height: `${surfaceHeight}px`, left, top: selection.rect.top - 8 }}
-    >
-      {editState === "preview" ? (
-        <div ref={contentRef} className="space-y-2 px-2 pb-1 pt-2">
-          <div className="max-h-36 overflow-y-auto whitespace-pre-wrap rounded-[6px] bg-surface-muted px-2.5 py-2 leading-5">
-            {result}
-          </div>
-          <div className="flex items-center justify-between gap-2 px-0.5 pb-1">
-            <Button
-              aria-label="重新生成 AI 助写建议"
-              className="h-7 rounded-[7px] px-1.5 text-xs"
-              onClick={() => void requestRewrite(activeAction ?? "polish")}
-              onMouseDown={(event) => event.preventDefault()}
-              size="sm"
-              type="button"
-              variant="ghost"
-            >
-              <HugeiconsIcon aria-hidden="true" icon={AiAutoRotateIcon} size={13} />
-              重新生成
-            </Button>
-            <div className="flex items-center gap-1">
-              <Button
-                aria-label="放弃 AI 助写建议"
-                className="h-7 rounded-[7px] px-1.5 text-xs"
-                onClick={close}
-                onMouseDown={(event) => event.preventDefault()}
-                size="sm"
-                type="button"
-                variant="secondary"
-              >
-                <HugeiconsIcon aria-hidden="true" icon={Cancel01Icon} size={13} />
-                放弃
+    <>
+      <Dialog
+        onOpenChange={setQuotaUnavailableDialogOpen}
+        open={quotaUnavailableDialogOpen}
+      >
+        <DialogContent className="max-w-[22rem] gap-3 p-4">
+          <DialogHeader>
+            <DialogTitle className="text-sm leading-5">AI 助写暂时不可用</DialogTitle>
+            <DialogDescription className="text-[13px] leading-5">
+              服务暂时不可用，请稍后重试
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <DialogClose asChild>
+              <Button className="h-8 text-xs" size="sm" type="button">
+                知道了
               </Button>
-              <Button
-                aria-label="采用 AI 助写建议"
-                className="h-7 rounded-[7px] px-2 text-xs"
-                onClick={applyResult}
-                onMouseDown={(event) => event.preventDefault()}
-                size="sm"
-                type="button"
-              >
-                <HugeiconsIcon aria-hidden="true" icon={CheckmarkCircle02Icon} size={13} />
-                采用
-              </Button>
-            </div>
-          </div>
-        </div>
-      ) : editState === "loading" ? (
-        <div ref={contentRef} className="flex items-center justify-between gap-2 px-2.5 py-2 text-muted-foreground" role="status">
-          <div className="flex items-center gap-2">
-            <DotMatrixLoader
-              ariaLabel="正在生成"
-              className="text-muted-foreground"
-              dotSize={2}
-              size={16}
-            />
-            <ShinyText duration={1.15} shimmerWidth={48}>
-              正在生成
-            </ShinyText>
-          </div>
-          <TooltipProvider delayDuration={300}>
-            <Tooltip>
-              <TooltipTrigger asChild>
+            </DialogClose>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {selection && canEdit && conversationId ? (
+        <div
+          ref={surfaceRef}
+          className={cn(
+            "fixed z-50 overflow-visible text-[13px] text-popover-foreground transition-[width,height] duration-200 ease-out",
+            isExpanded
+              ? "w-[min(22rem,calc(100vw-1rem))] overflow-hidden rounded-[10px] border border-border bg-popover shadow-[0_12px_32px_var(--shadow-soft)]"
+              : "h-7 w-7",
+            "-translate-y-full",
+          )}
+          data-testid="composer-ai-edit-surface"
+          style={{ height: `${surfaceHeight}px`, left, top: selection.rect.top - 8 }}
+        >
+          {editState === "preview" ? (
+            <div ref={contentRef} className="space-y-2 px-2 pb-1 pt-2">
+              <div className="max-h-36 overflow-y-auto whitespace-pre-wrap rounded-[6px] bg-surface-muted px-2.5 py-2 leading-5">
+                {result}
+              </div>
+              <div className="flex items-center justify-between gap-2 px-0.5 pb-1">
                 <Button
-                  aria-label="终止生成"
-                  className="h-5 w-5 rounded-full bg-foreground p-0 text-background shadow-none hover:bg-foreground/80 hover:text-background"
-                  onClick={cancelRewrite}
+                  aria-label="重新生成 AI 助写建议"
+                  className="h-7 rounded-[7px] px-1.5 text-xs"
+                  onClick={() => void requestRewrite(activeAction ?? "polish")}
                   onMouseDown={(event) => event.preventDefault()}
-                  size="icon"
+                  size="sm"
                   type="button"
                   variant="ghost"
                 >
-                  <HugeiconsIcon
-                    aria-hidden="true"
-                    icon={XIcon}
-                    size={12}
-                    strokeWidth={1.8}
-                  />
+                  <HugeiconsIcon aria-hidden="true" icon={AiAutoRotateIcon} size={13} />
+                  重新生成
                 </Button>
-              </TooltipTrigger>
-              <TooltipContent side="top" sideOffset={6}>
-                终止生成
-              </TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
-        </div>
-      ) : (
-        <DropdownMenu
-          open={menuOpen}
-          onOpenChange={(open) => {
-            setMenuOpen(open);
-
-            if (!open) {
-              setToneMenuOpen(false);
-            }
-          }}
-        >
-          <TooltipProvider delayDuration={300}>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <DropdownMenuTrigger asChild>
-                  <button
-                    aria-label="打开 AI 助写菜单"
-                    className="flex h-7 w-7 items-center justify-center rounded-[8px] border border-border bg-popover p-0 text-foreground shadow-[0_4px_12px_var(--shadow-soft)] outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring/20"
+                <div className="flex items-center gap-1">
+                  <Button
+                    aria-label="放弃 AI 助写建议"
+                    className="h-7 rounded-[7px] px-1.5 text-xs"
+                    onClick={close}
                     onMouseDown={(event) => event.preventDefault()}
+                    size="sm"
+                    type="button"
+                    variant="secondary"
+                  >
+                    <HugeiconsIcon aria-hidden="true" icon={Cancel01Icon} size={13} />
+                    放弃
+                  </Button>
+                  <Button
+                    aria-label="采用 AI 助写建议"
+                    className="h-7 rounded-[7px] px-2 text-xs"
+                    onClick={applyResult}
+                    onMouseDown={(event) => event.preventDefault()}
+                    size="sm"
                     type="button"
                   >
-                    <HugeiconsIcon
-                      aria-hidden="true"
-                      icon={MagicWand01Icon}
-                      size={16}
-                      strokeWidth={1.8}
-                    />
-                  </button>
-                </DropdownMenuTrigger>
-              </TooltipTrigger>
-              <TooltipContent side="top" sideOffset={6}>
-                AI 助写
-              </TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
-          <DropdownMenuContent
-            align="start"
-            side="top"
-            sideOffset={8}
-          >
-            <DropdownMenuLabel className="font-medium text-[12px] text-muted-foreground/60">
-              AI 助写
-            </DropdownMenuLabel>
-            {PRIMARY_ACTIONS.map(({ action, icon, label }) => (
-              <DropdownMenuItem
-                className="gap-2 font-normal"
-                key={action}
-                onSelect={() => void requestRewrite(action)}
-              >
-                <HugeiconsIcon
-                  aria-hidden="true"
-                  icon={icon}
+                    <HugeiconsIcon aria-hidden="true" icon={CheckmarkCircle02Icon} size={13} />
+                    采用
+                  </Button>
+                </div>
+              </div>
+            </div>
+          ) : editState === "loading" ? (
+            <div ref={contentRef} className="flex items-center justify-between gap-2 px-2.5 py-2 text-muted-foreground" role="status">
+              <div className="flex items-center gap-2">
+                <DotMatrixLoader
+                  ariaLabel="正在生成"
+                  className="text-muted-foreground"
+                  dotSize={2}
                   size={16}
-                  strokeWidth={1.8}
                 />
-                {label}
-              </DropdownMenuItem>
-            ))}
-            <DropdownMenuSub onOpenChange={setToneMenuOpen} open={toneMenuOpen}>
-              <DropdownMenuSubTrigger
-                className="font-normal"
-                onClick={() => setToneMenuOpen(true)}
+                <ShinyText duration={1.15} shimmerWidth={48}>
+                  正在生成
+                </ShinyText>
+              </div>
+              <TooltipProvider delayDuration={300}>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      aria-label="终止生成"
+                      className="h-5 w-5 rounded-full bg-foreground p-0 text-background shadow-none hover:bg-foreground/80 hover:text-background"
+                      onClick={cancelRewrite}
+                      onMouseDown={(event) => event.preventDefault()}
+                      size="icon"
+                      type="button"
+                      variant="ghost"
+                    >
+                      <HugeiconsIcon
+                        aria-hidden="true"
+                        icon={XIcon}
+                        size={12}
+                        strokeWidth={1.8}
+                      />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent side="top" sideOffset={6}>
+                    终止生成
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            </div>
+          ) : (
+            <DropdownMenu
+              open={menuOpen}
+              onOpenChange={(open) => {
+                setMenuOpen(open);
+
+                if (!open) {
+                  setToneMenuOpen(false);
+                }
+              }}
+            >
+              <TooltipProvider delayDuration={300}>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <DropdownMenuTrigger asChild>
+                      <button
+                        aria-label="打开 AI 助写菜单"
+                        className="flex h-7 w-7 items-center justify-center rounded-[8px] border border-border bg-popover p-0 text-foreground shadow-[0_4px_12px_var(--shadow-soft)] outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring/20"
+                        onMouseDown={(event) => event.preventDefault()}
+                        type="button"
+                      >
+                        <HugeiconsIcon
+                          aria-hidden="true"
+                          icon={MagicWand01Icon}
+                          size={16}
+                          strokeWidth={1.8}
+                        />
+                      </button>
+                    </DropdownMenuTrigger>
+                  </TooltipTrigger>
+                  <TooltipContent side="top" sideOffset={6}>
+                    AI 助写
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+              <DropdownMenuContent
+                align="start"
+                side="top"
+                sideOffset={8}
               >
-                <HugeiconsIcon
-                  aria-hidden="true"
-                  icon={MuteIcon}
-                  size={16}
-                  strokeWidth={1.8}
-                />
-                改变语气
-              </DropdownMenuSubTrigger>
-              <DropdownMenuSubContent>
-                {TONE_ACTIONS.map(({ action, icon, label }) => (
+                <DropdownMenuLabel className="font-medium text-[12px] text-muted-foreground/60">
+                  AI 助写
+                </DropdownMenuLabel>
+                {PRIMARY_ACTIONS.map(({ action, icon, label }) => (
                   <DropdownMenuItem
                     className="gap-2 font-normal"
+                    disabled={
+                      action === "shorten" &&
+                      selection.text.length < SHORTEN_ACTION_MIN_LENGTH
+                    }
                     key={action}
                     onSelect={() => void requestRewrite(action)}
                   >
@@ -578,12 +591,50 @@ export function ComposerAiEditPlugin({
                     {label}
                   </DropdownMenuItem>
                 ))}
-              </DropdownMenuSubContent>
-            </DropdownMenuSub>
-          </DropdownMenuContent>
-        </DropdownMenu>
-      )}
-    </div>
+                <DropdownMenuSub onOpenChange={setToneMenuOpen} open={toneMenuOpen}>
+                  <DropdownMenuSubTrigger
+                    className="font-normal"
+                    onClick={() => setToneMenuOpen(true)}
+                  >
+                    <HugeiconsIcon
+                      aria-hidden="true"
+                      icon={MuteIcon}
+                      size={16}
+                      strokeWidth={1.8}
+                    />
+                    改变语气
+                  </DropdownMenuSubTrigger>
+                  <DropdownMenuSubContent>
+                    {TONE_ACTIONS.map(({ action, icon, label }) => (
+                      <DropdownMenuItem
+                        className="gap-2 font-normal"
+                        key={action}
+                        onSelect={() => void requestRewrite(action)}
+                      >
+                        <HugeiconsIcon
+                          aria-hidden="true"
+                          icon={icon}
+                          size={16}
+                          strokeWidth={1.8}
+                        />
+                        {label}
+                      </DropdownMenuItem>
+                    ))}
+                  </DropdownMenuSubContent>
+                </DropdownMenuSub>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )}
+        </div>
+      ) : null}
+    </>
+  );
+}
+
+function isQuotaUnavailableError(error: unknown) {
+  return (
+    error instanceof RequestNormalizedError &&
+    error.code === "COMPOSER_AI_EDIT_QUOTA_UNAVAILABLE"
   );
 }
 

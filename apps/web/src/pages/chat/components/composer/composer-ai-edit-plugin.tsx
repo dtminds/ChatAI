@@ -118,8 +118,9 @@ export function ComposerAiEditPlugin({
   const [result, setResult] = useState("");
   const [quotaUnavailableDialogOpen, setQuotaUnavailableDialogOpen] = useState(false);
   const isPointerSelectingRef = useRef(false);
+  const isSurfaceInteractingRef = useRef(false);
   const contentRef = useRef<HTMLDivElement | null>(null);
-  const [surfaceHeight, setSurfaceHeight] = useState(36);
+  const [surfaceHeight, setSurfaceHeight] = useState(32);
   const { ref: assistantGazeRef } = useGaze({
     lookAt: editState === "loading" ? null : "pointer",
     travel: 12,
@@ -207,6 +208,11 @@ export function ComposerAiEditPlugin({
       const rootElement = editor.getRootElement();
       const target = event.target;
 
+      if (target && surfaceRef.current?.contains(target as Node)) {
+        isSurfaceInteractingRef.current = true;
+        return;
+      }
+
       if (!rootElement || !target || !rootElement.contains(target as Node)) {
         return;
       }
@@ -220,6 +226,8 @@ export function ComposerAiEditPlugin({
       }
     };
     const handlePointerEnd = () => {
+      isSurfaceInteractingRef.current = false;
+
       if (!isPointerSelectingRef.current) {
         return;
       }
@@ -227,12 +235,45 @@ export function ComposerAiEditPlugin({
       isPointerSelectingRef.current = false;
       readSelection();
     };
+    const handleDocumentSelectionChange = () => {
+      if (
+        !selection ||
+        isPointerSelectingRef.current ||
+        isSurfaceInteractingRef.current ||
+        editState !== "menu" ||
+        menuOpen
+      ) {
+        return;
+      }
+
+      const domSelection = window.getSelection();
+      const range = domSelection?.rangeCount ? domSelection.getRangeAt(0) : null;
+      const rootElement = editor.getRootElement();
+
+      if (
+        rootElement &&
+        range &&
+        rootElement.contains(range.commonAncestorContainer)
+      ) {
+        return;
+      }
+
+      if (surfaceRef.current?.contains(document.activeElement)) {
+        return;
+      }
+
+      setSelection(null);
+      setEditState("menu");
+      setMenuOpen(false);
+      setToneMenuOpen(false);
+    };
     const handleViewportChange = () => {
       if (selection) {
         readSelection();
       }
     };
 
+    document.addEventListener("selectionchange", handleDocumentSelectionChange);
     document.addEventListener("pointerdown", handlePointerDown);
     document.addEventListener("pointerup", handlePointerEnd);
     document.addEventListener("pointercancel", handlePointerEnd);
@@ -243,6 +284,7 @@ export function ComposerAiEditPlugin({
     return () => {
       unregister();
       unregisterSelectionChange();
+      document.removeEventListener("selectionchange", handleDocumentSelectionChange);
       document.removeEventListener("pointerdown", handlePointerDown);
       document.removeEventListener("pointerup", handlePointerEnd);
       document.removeEventListener("pointercancel", handlePointerEnd);
@@ -391,7 +433,7 @@ export function ComposerAiEditPlugin({
 
   useLayoutEffect(() => {
     if (!isExpanded) {
-      setSurfaceHeight(36);
+      setSurfaceHeight(32);
       return;
     }
 
@@ -422,7 +464,7 @@ export function ComposerAiEditPlugin({
   const left = selection
     ? Math.max(
         8,
-        Math.min(selection.rect.left, window.innerWidth - (isExpanded ? 360 : 44)),
+        Math.min(selection.rect.left, window.innerWidth - (isExpanded ? 360 : 40)),
       )
     : 8;
 
@@ -456,7 +498,7 @@ export function ComposerAiEditPlugin({
             "fixed z-50 overflow-visible text-[13px] text-popover-foreground transition-[width,height] duration-200 ease-out",
             isExpanded
               ? "w-[min(22rem,calc(100vw-1rem))] overflow-hidden rounded-[10px] border border-border bg-popover shadow-[0_12px_32px_var(--shadow-soft)]"
-              : "h-9 w-9",
+              : "h-8 w-8",
             "-translate-y-full",
           )}
           data-testid="composer-ai-edit-surface"
@@ -663,7 +705,7 @@ function ComposerAiAssistantAvatar({
       expression={isThinking ? thinking : undefined}
       name={COMPOSER_AI_ASSISTANT_ID}
       size={size}
-      traits={{ shape: 0.11, "body.r": 0.999 }}
+      traits={{ shape: 0.11, "body.r": 0.999, hue: 0.815, tone: 0.36 }}
     />
   );
 }

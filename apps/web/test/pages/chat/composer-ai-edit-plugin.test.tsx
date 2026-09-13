@@ -552,6 +552,62 @@ describe("ComposerAiEditPlugin", () => {
     expect(screen.getByTestId("composer-ai-edit-surface")).toBeInTheDocument();
   });
 
+  it("hides the AI entry when the DOM selection moves outside the Composer", async () => {
+    render(
+      <>
+        <div data-testid="outside-text">会话列表中的其他文字</div>
+        <LexicalComposer
+          initialConfig={{
+            namespace: "composer-ai-edit-outside-selection-test",
+            nodes: [
+              ComposerEmojiNode,
+              ComposerImageNode,
+              ComposerLiteAttachmentNode,
+              ComposerMentionNode,
+            ],
+            onError(error) {
+              throw error;
+            },
+          }}
+        >
+          <PlainTextPlugin
+            contentEditable={<ContentEditable aria-label="消息输入" />}
+            ErrorBoundary={LexicalErrorBoundary}
+          />
+          <SeedComposerText />
+          <ComposerAiEditPlugin canEdit conversationId="conversation-1" />
+        </LexicalComposer>
+      </>,
+    );
+
+    const editor = await screen.findByRole("textbox", { name: "消息输入" });
+    await waitFor(() => expect(editor).toHaveTextContent(DEFAULT_COMPOSER_TEXT));
+    const editorTextNode = document
+      .createTreeWalker(editor, NodeFilter.SHOW_TEXT)
+      .nextNode();
+    expect(editorTextNode).not.toBeNull();
+    const range = document.createRange();
+    range.selectNodeContents(editorTextNode!);
+    const selection = window.getSelection();
+    selection?.removeAllRanges();
+    selection?.addRange(range);
+    fireEvent(document, new Event("selectionchange"));
+
+    await screen.findByTestId("composer-ai-edit-surface");
+
+    const outsideText = screen.getByTestId("outside-text");
+    const outsideTextNode = outsideText.firstChild;
+    expect(outsideTextNode).not.toBeNull();
+    range.selectNodeContents(outsideTextNode!);
+    selection?.removeAllRanges();
+    selection?.addRange(range);
+    fireEvent(document, new Event("selectionchange"));
+
+    await waitFor(() => {
+      expect(screen.queryByTestId("composer-ai-edit-surface")).not.toBeInTheDocument();
+    });
+  });
+
   it("hides the AI entry when the selected text exceeds 200 characters", async () => {
     const content = "字".repeat(201);
 

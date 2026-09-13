@@ -1,4 +1,4 @@
-import { Megaphone02Icon } from "@hugeicons/core-free-icons";
+import { MarketingIcon } from "@hugeicons/core-free-icons";
 import {
   WORKFLOW_MARKETING_MESSAGE_WAIT_MIN_BY_UNIT,
   WORKFLOW_MARKETING_MESSAGE_WAIT_MAX_BY_UNIT,
@@ -11,7 +11,7 @@ const base = createStandardNodeDefinition({
   accentClassName: "bg-cyan-600 text-white",
   accentRgb: "8 145 178",
   description: "使用企微官方群发接口、或短信群发通道批量进行营销触达",
-  icon: Megaphone02Icon,
+  icon: MarketingIcon,
   kind: "marketing-message",
   label: "群发触达",
   metric: "未选择触达任务",

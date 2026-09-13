@@ -636,7 +636,6 @@ describe("Workflow runtime policy", () => {
       capabilityPort: true,
       contactCustomFieldPort: true,
       entitlement: async () => ({ activeRunLimit: 10_000, entitled: true }),
-      marketingMessagePort: true,
       messageQueryPort: true,
     });
     expect(() => complete.service.assertRuntimeComposition()).not.toThrow();
@@ -652,7 +651,6 @@ function createHarness(options: {
   deactivationResult?: number;
   entitlement: () => Promise<WorkflowTypeEntitlementResult>;
   executionSpec?: WorkflowExecutionSpec;
-  marketingMessagePort?: boolean;
   messageQueryPort?: boolean;
 }) {
   const runtime = new InMemoryWorkflowRuntimeRepository(undefined, () => now);
@@ -736,14 +734,6 @@ function createHarness(options: {
         ? { contactCustomFieldPort: { getContactCustomFields: async () => [] } }
         : {}),
       entitlementPort: { check: options.entitlement },
-      ...(options.marketingMessagePort
-        ? {
-            marketingMessagePort: {
-              pushUser: async () => {},
-              queryPushResult: async () => ({ pushSuccess: false }),
-            },
-          }
-        : {}),
       onEntitlementDeactivated,
       ...(options.messageQueryPort
         ? { messageQueryPort: { execute: async () => ({}) } }

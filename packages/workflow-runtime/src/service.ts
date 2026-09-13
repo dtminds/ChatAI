@@ -224,7 +224,6 @@ export class WorkflowRuntimeService {
   assertRuntimeComposition() {
     const missingNodeKinds = WORKFLOW_RUNTIME_SUPPORTED_NODE_KINDS.filter((kind) => {
       if (kind === "message-query") return this.messageQueryPort === undefined;
-      if (kind === "marketing-message") return this.marketingMessagePort === undefined;
       if (kind === "ai-collect") {
         return this.aiCollectConversationPort === undefined
           || this.conversationDirectivePort === undefined;

@@ -739,7 +739,7 @@ export const workflowNodeContractRegistry = {
     WorkflowMessageExecutionConfigSchema,
     ["thirdExternalUserId"],
   ),
-  "marketing-message": runtimeReadyContract(
+  "marketing-message": draftReadyContract(
     "composite",
     1,
     WorkflowMarketingMessageDraftConfigSchema,

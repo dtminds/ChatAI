@@ -705,6 +705,21 @@ describe("compileWorkflowDraft", () => {
 
     expectCompilationIssues(draft, ["unsupported-runtime-node"]);
   });
+
+  it("rejects Marketing Message while its Java query contract is not runtime-ready", () => {
+    const draft = createDraft();
+    draft.nodes.splice(2, 0, node("marketing-message", "marketing-message", {
+      plan: { planId: 701, planName: "双十一触达" },
+      wait: { mode: "fixed", duration: 30, unit: "minute" },
+    }));
+    draft.edges.splice(1, 1,
+      { id: "wait-marketing-message", source: "wait", target: "marketing-message" },
+      { id: "marketing-message-end", source: "marketing-message", target: "end" },
+    );
+
+    expectCompilationIssues(draft, ["unsupported-runtime-node"]);
+  });
+
   it("compiles a selected coupon into one bounded issuance command", () => {
     const draft = createDraft();
     draft.nodes.splice(1, 1, node("wait", "coupon", {

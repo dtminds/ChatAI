@@ -1,6 +1,7 @@
 import { Value } from "@sinclair/typebox/value";
 import { describe, expect, it } from "vitest";
 import {
+  getWorkflowNodeContract,
   getWorkflowNodeOutputContracts,
   isWorkflowNodeDraftConfig,
   isWorkflowNodeExecutionConfig,
@@ -8,6 +9,13 @@ import {
 } from "../src/index.js";
 
 describe("Workflow Marketing Message contracts", () => {
+  it("stays draft-ready until the Java query endpoint is deployed", () => {
+    expect(getWorkflowNodeContract("marketing-message")).toMatchObject({
+      executionClass: "composite",
+      maturity: "draft-ready",
+    });
+  });
+
   it("keeps plan optional in drafts and required for execution", () => {
     const wait = { mode: "fixed", duration: 30, unit: "minute" };
     expect(isWorkflowNodeDraftConfig("marketing-message", { wait })).toBe(true);

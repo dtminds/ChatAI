@@ -39,9 +39,15 @@ export function MarketingPlanSelector({ onChange, value }: {
   const debouncedSearch = useDebouncedValue(trimmedQuery, SEARCH_DEBOUNCE_MS);
   const search = trimmedQuery === "" ? "" : debouncedSearch;
   const version = useRef(0);
+  const previousSearch = useRef(search);
 
-  useEffect(() => setPage(1), [search]);
   useEffect(() => {
+    const searchChanged = previousSearch.current !== search;
+    previousSearch.current = search;
+    if (searchChanged && page !== 1) {
+      setPage(1);
+      return;
+    }
     if (!open) return;
     const requestVersion = ++version.current;
     let cancelled = false;

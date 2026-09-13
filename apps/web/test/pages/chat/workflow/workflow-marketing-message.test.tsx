@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { useState } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -138,12 +138,27 @@ describe("workflow Marketing Message node", () => {
     await screen.findByRole("radio", { name: "第二页计划" });
     expect(listWorkflowMarketingPlans).toHaveBeenLastCalledWith({ page: 2, pageSize: 20 });
 
-    await user.type(screen.getByRole("textbox", { name: "搜索触达任务" }), "双十一");
-    await waitFor(() => expect(listWorkflowMarketingPlans).toHaveBeenLastCalledWith({
-      page: 1,
-      pageSize: 20,
-      planName: "双十一",
-    }));
+    vi.useFakeTimers();
+    try {
+      fireEvent.change(screen.getByRole("textbox", { name: "搜索触达任务" }), {
+        target: { value: "双十一" },
+      });
+      await act(() => vi.advanceTimersByTimeAsync(300));
+
+      expect(listWorkflowMarketingPlans).toHaveBeenCalledTimes(3);
+      expect(listWorkflowMarketingPlans).toHaveBeenLastCalledWith({
+        page: 1,
+        pageSize: 20,
+        planName: "双十一",
+      });
+      expect(listWorkflowMarketingPlans).not.toHaveBeenCalledWith({
+        page: 2,
+        pageSize: 20,
+        planName: "双十一",
+      });
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("shows the single push result output and node body snapshot", () => {

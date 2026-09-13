@@ -1,4 +1,4 @@
-import type { WorkflowExecutionSpec } from "@chatai/contracts";
+import type { WorkflowExecutionNode, WorkflowExecutionSpec } from "@chatai/contracts";
 import { WorkflowCapabilityExecutionError } from "@chatai/workflow-engine";
 import { describe, expect, it, vi } from "vitest";
 import {
@@ -9,6 +9,13 @@ import {
 } from "../src/index.js";
 
 const ENTERED_AT = new Date("2026-09-13T01:00:00.000Z");
+
+class MarketingMessageTestRuntimeService extends WorkflowRuntimeService {
+  protected override assertNodeExecutable(node: WorkflowExecutionNode) {
+    if (node.kind === "marketing-message") return;
+    super.assertNodeExecutable(node);
+  }
+}
 
 describe("Marketing Message runtime", () => {
   it("pushes once and advances immediately without querying in no-wait mode", async () => {
@@ -280,7 +287,7 @@ async function createHarness(options: {
   const spec = executionSpec(options.wait);
   const subjectType = options.subjectType ?? "chatai_contact";
   const workflowType = options.workflowType ?? "chatai_sop";
-  const service = new WorkflowRuntimeService(control(spec, subjectType, workflowType), runtime, undefined, {
+  const service = new MarketingMessageTestRuntimeService(control(spec, subjectType, workflowType), runtime, undefined, {
     capabilityTimeoutMs: options.capabilityTimeoutMs,
     clock: () => now,
     contactIdentityPort: { getContactIdentity },

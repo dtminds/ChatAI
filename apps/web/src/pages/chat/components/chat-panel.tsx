@@ -670,6 +670,7 @@ export function ChatPanel({
                             canToggleConversationAIHosting
                           }
                           canSendMessage={canSendMessage}
+                          conversationId={activeConversation.id}
                           historyKey={activeConversation.id}
                           shouldShowConversationAIHostingControl={
                             shouldShowConversationAIHostingControl

@@ -10,6 +10,7 @@ import type {
   WorkbenchSmartReplyAutoGeneralAnswerRequest,
   WorkbenchSmartReplyGeneralAnswerRequest,
   WorkbenchSmartReplyMakeShorterRequest,
+  ComposerAiEditRequest,
   WorkbenchSmartReplyPollRequest,
   WorkbenchSmartReplySendAnswerRequest,
   WorkbenchKnowledgePageRequest,
@@ -43,6 +44,7 @@ import type {
   WorkbenchSeatAgentModeSwitchRequest,
 } from "@chatai/contracts";
 import {
+  ComposerAiEditRequestSchema,
   QUICK_REPLY_CATEGORY_CONTENT_ITEM_LIMIT,
   QUICK_REPLY_CHILD_CATEGORY_LIMIT,
   WorkbenchPullGroupMembersRequestSchema,
@@ -721,8 +723,6 @@ type QuickReplySortBody = Static<typeof QuickReplySortBodySchema>;
 type QuickReplyParams = Static<typeof QuickReplyParamsSchema>;
 type QuickReplyScopeQuery = Static<typeof QuickReplyScopeQuerySchema>;
 type MaterialCollectionGroupQuery = Static<typeof MaterialCollectionGroupQuerySchema>;
-
-
 export async function registerChatRoutes(app: FastifyInstance) {
   app.get("/api/server/me", { preHandler: app.authenticate }, async (request) =>
     getWorkbenchService(app, request).getMe(getSubUserId(request)),
@@ -2029,6 +2029,47 @@ export async function registerChatRoutes(app: FastifyInstance) {
         getSubUserId(request),
         request.body satisfies WorkbenchSmartHeartbeatRequest,
       );
+    },
+  );
+
+  app.post<{ Body: ComposerAiEditRequest }>(
+    "/api/server/composer/ai-edit",
+    {
+      preHandler: app.authenticate,
+      schema: {
+        body: ComposerAiEditRequestSchema,
+      },
+    },
+    async (request, reply) => {
+      assertChatWriteAccess(request);
+      const abortController = new AbortController();
+      const abortOnRequestAborted = () => abortController.abort();
+      const abortOnResponseClosed = () => {
+        if (!reply.raw.writableEnded) {
+          abortController.abort();
+        }
+      };
+
+      request.raw.once("aborted", abortOnRequestAborted);
+      reply.raw.once("close", abortOnResponseClosed);
+
+      try {
+        return await app.composerAiEditService.rewrite(
+          getSubUserId(request),
+          getAuthenticatedWorkbenchScope(request.user),
+          request.body satisfies ComposerAiEditRequest,
+          abortController.signal,
+        );
+      } catch (error) {
+        if (abortController.signal.aborted) {
+          return;
+        }
+
+        throw error;
+      } finally {
+        request.raw.off("aborted", abortOnRequestAborted);
+        reply.raw.off("close", abortOnResponseClosed);
+      }
     },
   );
 

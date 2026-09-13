@@ -551,6 +551,58 @@ export type WorkbenchSmartReplyMakeShorterResponse = {
   content: string;
 };
 
+export const COMPOSER_AI_EDIT_INPUT_MIN_LENGTH = 5;
+export const COMPOSER_AI_EDIT_INPUT_MAX_LENGTH = 200;
+export const COMPOSER_AI_EDIT_CONTEXT_MAX_LENGTH = 50;
+
+export const ComposerAiEditActionSchema = Type.Union([
+  Type.Literal("polish"),
+  Type.Literal("lengthen"),
+  Type.Literal("shorten"),
+  Type.Literal("professional"),
+  Type.Literal("friendly"),
+  Type.Literal("playful"),
+  Type.Literal("apologetic"),
+]);
+
+export const ComposerAiEditRewriteModeSchema = Type.Union([
+  Type.Literal("full"),
+  Type.Literal("targeted"),
+]);
+
+export const ComposerAiEditRequestSchema = Type.Object(
+  {
+    action: ComposerAiEditActionSchema,
+    content: Type.String({
+      maxLength: COMPOSER_AI_EDIT_INPUT_MAX_LENGTH,
+      minLength: COMPOSER_AI_EDIT_INPUT_MIN_LENGTH,
+    }),
+    contextAfter: Type.String({
+      maxLength: COMPOSER_AI_EDIT_CONTEXT_MAX_LENGTH,
+    }),
+    contextBefore: Type.String({
+      maxLength: COMPOSER_AI_EDIT_CONTEXT_MAX_LENGTH,
+    }),
+    conversationId: Type.String({ minLength: 1 }),
+    rewriteMode: ComposerAiEditRewriteModeSchema,
+  },
+  { additionalProperties: false },
+);
+
+export const ComposerAiEditResponseSchema = Type.Object(
+  {
+    content: Type.String({ maxLength: 1000, minLength: 1 }),
+  },
+  { additionalProperties: false },
+);
+
+export type ComposerAiEditAction = Static<typeof ComposerAiEditActionSchema>;
+export type ComposerAiEditRewriteMode = Static<
+  typeof ComposerAiEditRewriteModeSchema
+>;
+export type ComposerAiEditRequest = Static<typeof ComposerAiEditRequestSchema>;
+export type ComposerAiEditResponse = Static<typeof ComposerAiEditResponseSchema>;
+
 export type WorkbenchSmartReplySendAnswerRequest = {
   conversationId: string;
   optNos: string[];

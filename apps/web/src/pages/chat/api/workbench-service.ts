@@ -53,6 +53,8 @@ import {
   type WorkbenchSmartReplyGeneralAnswerResponse,
   type WorkbenchSmartReplyMakeShorterRequest,
   type WorkbenchSmartReplyMakeShorterResponse,
+  type ComposerAiEditRequest,
+  type ComposerAiEditResponse,
   type WorkbenchSmartReplySendAnswerRequest,
   type WorkbenchSmartReplySendAnswerResponse,
   type WorkbenchSmartReplyPollRequest,
@@ -144,6 +146,7 @@ import {
   normalizeQuickReplyAttachments,
   validateQuickReplyPayload,
 } from "@chatai/contracts";
+
 import type {
   ChatMode,
   FileMessageContent,
@@ -151,6 +154,7 @@ import type {
   VideoMessageContent,
 } from "@/pages/chat/chat-types";
 
+const COMPOSER_AI_EDIT_TIMEOUT_MS = 35_000;
 const VIDEO_MATERIAL_COLLECT_TIMEOUT_MS = 130000;
 
 export type WorkbenchConversationListOptions = {
@@ -273,6 +277,10 @@ export type WorkbenchService = {
   requestSmartReplyMakeShorter: (
     request: WorkbenchSmartReplyMakeShorterRequest,
   ) => Promise<WorkbenchSmartReplyMakeShorterResponse>;
+  rewriteComposerText: (
+    request: ComposerAiEditRequest,
+    options?: { signal?: AbortSignal },
+  ) => Promise<ComposerAiEditResponse>;
   sendSmartReplyAnswer: (
     request: WorkbenchSmartReplySendAnswerRequest,
   ) => Promise<WorkbenchSmartReplySendAnswerResponse>;
@@ -561,6 +569,9 @@ export function createMockWorkbenchService(): WorkbenchService {
       }
 
       return clone(conversation);
+    },
+    async rewriteComposerText(request) {
+      return { content: request.content };
     },
     async getMe() {
       return clone(state.subUser);
@@ -2645,6 +2656,16 @@ export function createHttpWorkbenchService(): WorkbenchService {
         WorkbenchSmartReplyMakeShorterResponse,
         WorkbenchSmartReplyMakeShorterRequest
       >("/server/smart-reply/make-shorter", request);
+    },
+    rewriteComposerText(request, options) {
+      return http.post<ComposerAiEditResponse, ComposerAiEditRequest>(
+        "/server/composer/ai-edit",
+        request,
+        {
+          signal: options?.signal,
+          timeout: COMPOSER_AI_EDIT_TIMEOUT_MS,
+        },
+      );
     },
     sendSmartReplyAnswer(request) {
       return http.post<

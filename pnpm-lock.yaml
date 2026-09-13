@@ -19,6 +19,9 @@ importers:
       '@chatai/insights':
         specifier: workspace:*
         version: link:../../packages/insights
+      '@chatai/llm':
+        specifier: workspace:*
+        version: link:../../packages/llm
       '@chatai/tickets':
         specifier: workspace:*
         version: link:../../packages/tickets

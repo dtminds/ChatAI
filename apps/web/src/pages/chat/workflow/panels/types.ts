@@ -1,5 +1,6 @@
 import type {
   WorkflowEntryEventType,
+  WorkflowType,
 } from "@chatai/contracts";
 import type { WorkflowDraftSaveStatus } from "../workflow-repository-types";
 import type {
@@ -31,6 +32,7 @@ export type NodeSettingsProps<TKind extends WorkflowNodeKind = WorkflowNodeKind>
   resources?: WorkflowNodeSettingsResources;
   testContext?: WorkflowNodeTestContext;
   workflowId?: string;
+  workflowType?: WorkflowType;
 };
 
 export type WorkflowNodeTestContext = {

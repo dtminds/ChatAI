@@ -2,6 +2,7 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { useState } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import type { WorkflowType } from "@chatai/contracts";
 import { projectWorkflowNodeExecutionConfig } from "@chatai/workflow-engine/node-contract-registry";
 import { createNodeFromKind } from "@/pages/chat/workflow/graph";
 import { getNodeDefinition } from "@/pages/chat/workflow/node-definitions";
@@ -107,6 +108,17 @@ describe("workflow Marketing Message node", () => {
     }));
   });
 
+  it("shows a disabled create placeholder only for WeCom SOP", () => {
+    const { rerender } = render(
+      <StatefulConfig onNodeChange={vi.fn()} workflowType="wecom_sop" />,
+    );
+
+    expect(screen.getByRole("button", { name: "去创建" })).toBeDisabled();
+
+    rerender(<StatefulConfig onNodeChange={vi.fn()} workflowType="chatai_sop" />);
+    expect(screen.queryByRole("button", { name: "去创建" })).not.toBeInTheDocument();
+  });
+
   it("pages and searches from page 1", async () => {
     const user = userEvent.setup();
     render(<StatefulConfig onNodeChange={vi.fn()} />);
@@ -142,8 +154,9 @@ describe("workflow Marketing Message node", () => {
   });
 });
 
-function StatefulConfig({ onNodeChange }: {
+function StatefulConfig({ onNodeChange, workflowType }: {
   onNodeChange: (patch: WorkflowNodeConfigPatch<"marketing-message">) => void;
+  workflowType?: WorkflowType;
 }) {
   const [node, setNode] = useState(createNode());
   return <MarketingMessageConfig
@@ -154,6 +167,7 @@ function StatefulConfig({ onNodeChange }: {
       onNodeChange(patch);
       setNode(current => ({ ...current, data: { ...current.data, ...patch } }));
     }}
+    workflowType={workflowType}
   />;
 }
 

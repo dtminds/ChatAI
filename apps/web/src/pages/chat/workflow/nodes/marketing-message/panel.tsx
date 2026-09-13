@@ -3,6 +3,7 @@ import {
   type WorkflowMarketingMessageWait,
 } from "@chatai/contracts";
 import { useEffect, useState } from "react";
+import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { WorkflowSettingsSection } from "../../panels/settings-section";
@@ -10,7 +11,11 @@ import type { NodeSettingsProps } from "../../panels/types";
 import { getMarketingMessageMetric, normalizeMarketingMessageWait, normalizeMarketingPlan } from "./config";
 import { MarketingPlanSelector } from "./plan-selector";
 
-export function MarketingMessageConfig({ node, onNodeChange }: NodeSettingsProps<"marketing-message">) {
+export function MarketingMessageConfig({
+  node,
+  onNodeChange,
+  workflowType,
+}: NodeSettingsProps<"marketing-message">) {
   const plan = normalizeMarketingPlan(node.data.plan);
   const wait = normalizeMarketingMessageWait(node.data.wait);
   const update = (nextPlan = plan, nextWait = wait) => onNodeChange({
@@ -21,7 +26,12 @@ export function MarketingMessageConfig({ node, onNodeChange }: NodeSettingsProps
   });
 
   return <>
-    <WorkflowSettingsSection title="触达任务">
+    <WorkflowSettingsSection
+      actions={workflowType === "wecom_sop"
+        ? <Button className="h-auto p-0 text-[13px]" disabled type="button" variant="link">去创建</Button>
+        : undefined}
+      title="触达任务"
+    >
       <MarketingPlanSelector onChange={value => update(value, wait)} value={plan} />
     </WorkflowSettingsSection>
     <WorkflowSettingsSection title="等待时长">

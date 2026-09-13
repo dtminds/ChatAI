@@ -171,7 +171,15 @@ import {
   isPlayableVoicePathname,
   toPlayableVoicePathname,
 } from "./media-config.js";
-import { normalizeMediaAssetUrl } from "./workbench-content-utils.js";
+import {
+  normalizeMediaAssetUrl,
+  parseJsonRecordOrEmpty as parseMaterialContentRecord,
+  readTrimmedRecordString as readMaterialString,
+} from "./workbench-content-utils.js";
+import {
+  normalizeWorkbenchPage,
+  normalizeWorkbenchPageSize,
+} from "./workbench-pagination.js";
 import {
   getCurrentWorkbenchPlatformScope,
   type AuthenticatedWorkbenchScope,
@@ -193,11 +201,7 @@ import {
 import {
   WorkbenchAccess,
 } from "./workbench-access.js";
-import {
-  parseMaterialContentRecord,
-  readMaterialString,
-  WorkbenchMaterialService,
-} from "./workbench-material.service.js";
+import { WorkbenchMaterialService } from "./workbench-material.service.js";
 
 const POLL_CONVERSATION_CHANGE_LIMIT = 500;
 const POLL_LAST_MESSAGE_OVERLAP_MS = 1;
@@ -3441,8 +3445,8 @@ export class MysqlWorkbenchService implements WorkbenchService {
   ): Promise<WorkbenchQuickReplyListResponse> {
     const me = await this.getAuthenticatedWorkbenchScope(subUserId);
     const scopeType = parseQuickReplyScopeType(request.scopeType);
-    const page = normalizePage(request.page);
-    const pageSize = normalizePageSize(request.pageSize ?? 50);
+    const page = normalizeWorkbenchPage(request.page);
+    const pageSize = normalizeWorkbenchPageSize(request.pageSize ?? 50);
     const result = await this.repository.listQuickReplies({
       categoryId: request.categoryId,
       keyword: request.keyword,
@@ -4344,18 +4348,6 @@ function parseMessageContentRecord(rawContent: string) {
 
 function readStringValue(value: unknown) {
   return typeof value === "string" ? value : "";
-}
-
-function normalizePage(value: number | undefined) {
-  return Number.isSafeInteger(value) && value != null && value > 0 ? value : 1;
-}
-
-function normalizePageSize(value: number | undefined) {
-  if (!Number.isSafeInteger(value) || value == null || value <= 0) {
-    return 100;
-  }
-
-  return Math.min(value, 100);
 }
 
 function toPlayableVoiceCosObjectPath(rawUrl: string) {

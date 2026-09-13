@@ -48,7 +48,14 @@ import {
 } from "./workbench-repository.js";
 import { getMaterialContentTypeForBizType } from "./material-collection-mappers.js";
 import { WorkbenchAccess } from "./workbench-access.js";
-import { isRecord } from "./workbench-content-utils.js";
+import {
+  parseJsonRecordOrEmpty,
+  readTrimmedRecordString,
+} from "./workbench-content-utils.js";
+import {
+  normalizeWorkbenchPage,
+  normalizeWorkbenchPageSize,
+} from "./workbench-pagination.js";
 
 const MATERIAL_COLLECTION_GROUP_TITLE_MAX_LENGTH = 10;
 
@@ -74,8 +81,8 @@ export class WorkbenchMaterialService {
     }
 
     const requiredGroupId = groupId ?? 0;
-    const page = normalizeMaterialPage(request.page);
-    const pageSize = normalizeMaterialPageSize(request.pageSize);
+    const page = normalizeWorkbenchPage(request.page);
+    const pageSize = normalizeWorkbenchPageSize(request.pageSize);
     const keyword = request.keyword?.trim();
     const result = await this.repository.listMaterialCollections({
       bizType,
@@ -537,8 +544,8 @@ export class WorkbenchMaterialService {
       return { content: message.content };
     }
 
-    const content = parseMaterialContentRecord(message.content);
-    const fileUrl = readMaterialString(content, "fileUrl");
+    const content = parseJsonRecordOrEmpty(message.content);
+    const fileUrl = readTrimmedRecordString(content, "fileUrl");
     const resolved = resolveMaterialVideoCollectFields(message.content);
 
     if ("errorMsg" in resolved) {
@@ -656,18 +663,6 @@ function parseMaterialGroupBizType(
   }
 
   return bizType;
-}
-
-function normalizeMaterialPage(value: number | undefined) {
-  return Number.isSafeInteger(value) && value != null && value > 0 ? value : 1;
-}
-
-function normalizeMaterialPageSize(value: number | undefined) {
-  if (!Number.isSafeInteger(value) || value == null || value <= 0) {
-    return 100;
-  }
-
-  return Math.min(value, 100);
 }
 
 function readEnterpriseMaterialGroupId(groupId: string | 0 | undefined) {
@@ -892,10 +887,12 @@ function readMaterialTitle(
     return "表情";
   }
 
-  const content = parseMaterialContentRecord(rawContent);
+  const content = parseJsonRecordOrEmpty(rawContent);
 
   if (contentType === "file") {
-    return truncateMaterialTitle(readMaterialString(content, "fileName") || msgInfoId);
+    return truncateMaterialTitle(
+      readTrimmedRecordString(content, "fileName") || msgInfoId,
+    );
   }
 
   if (contentType === "image") {
@@ -904,43 +901,25 @@ function readMaterialTitle(
 
   if (contentType === "mini-program") {
     return truncateMaterialTitle(
-      readMaterialString(content, "description") ||
-        readMaterialString(content, "title") ||
+      readTrimmedRecordString(content, "description") ||
+        readTrimmedRecordString(content, "title") ||
         msgInfoId,
     );
   }
 
-  return truncateMaterialTitle(readMaterialString(content, "title") || msgInfoId);
+  return truncateMaterialTitle(
+    readTrimmedRecordString(content, "title") || msgInfoId,
+  );
 }
 
 function truncateMaterialTitle(title: string) {
   return title.slice(0, MATERIAL_COLLECTION_TITLE_MAX_LENGTH);
 }
 
-export function parseMaterialContentRecord(rawContent: string | null) {
-  if (!rawContent) {
-    return {};
-  }
-
-  try {
-    const parsed: unknown = JSON.parse(rawContent);
-
-    return isRecord(parsed) ? parsed : {};
-  } catch {
-    return {};
-  }
-}
-
-export function readMaterialString(record: Record<string, unknown>, key: string) {
-  const value = record[key];
-
-  return typeof value === "string" ? value.trim() : "";
-}
-
 function readVideoMaterialDownloadStatusError(rawContent: string | null) {
-  const content = parseMaterialContentRecord(rawContent);
+  const content = parseJsonRecordOrEmpty(rawContent);
 
-  if (readMaterialString(content, "downloadStatus") !== "finished") {
+  if (readTrimmedRecordString(content, "downloadStatus") !== "finished") {
     return { errorMsg: "视频下载未完成，无法收录" };
   }
 

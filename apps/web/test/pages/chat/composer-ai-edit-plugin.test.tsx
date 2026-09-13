@@ -18,9 +18,14 @@ import {
 } from "@/pages/chat/components/composer/lexical-nodes";
 import { $insertComposerText } from "@/pages/chat/components/composer/lexical-utils";
 
-const { rewriteComposerTextMock, toastErrorMock } = vi.hoisted(() => ({
+const { rewriteComposerTextMock, toastErrorMock, useGazeMock } = vi.hoisted(() => ({
   rewriteComposerTextMock: vi.fn(),
   toastErrorMock: vi.fn(),
+  useGazeMock: vi.fn(() => ({
+    lookAt: vi.fn(),
+    ref: vi.fn(),
+    remeasure: vi.fn(),
+  })),
 }));
 
 const DEFAULT_COMPOSER_TEXT = "您好，请稍等";
@@ -35,6 +40,10 @@ vi.mock("sonner", () => ({
   toast: {
     error: toastErrorMock,
   },
+}));
+
+vi.mock("@blobatar/react/gaze", () => ({
+  useGaze: useGazeMock,
 }));
 
 function SeedComposerText({ text = DEFAULT_COMPOSER_TEXT }: { text?: string }) {
@@ -57,6 +66,7 @@ describe("ComposerAiEditPlugin", () => {
     const replacement = "我马上帮您确认";
     rewriteComposerTextMock.mockReset();
     rewriteComposerTextMock.mockResolvedValue({ content: replacement });
+    useGazeMock.mockClear();
     const user = userEvent.setup();
 
     render(
@@ -99,6 +109,18 @@ describe("ComposerAiEditPlugin", () => {
     fireEvent(document, new Event("selectionchange"));
 
     await screen.findByTestId("composer-ai-edit-surface");
+    const assistantAvatar = screen.getByTestId("composer-ai-assistant-avatar");
+    expect(assistantAvatar).toHaveAttribute("width", "40");
+    expect(assistantAvatar).toHaveAttribute("height", "40");
+    expect(assistantAvatar).toHaveAttribute(
+      "data-assistant-id",
+      "chatai-composer-ai-assistant-v1",
+    );
+    expect(assistantAvatar.querySelector(".mo-always")).not.toBeNull();
+    expect(useGazeMock).toHaveBeenLastCalledWith({
+      lookAt: null,
+      travel: 12,
+    });
     expect(screen.queryByRole("textbox", { name: "自定义 AI 助写要求" })).not.toBeInTheDocument();
     expect(screen.queryByRole("menuitem", { name: "润色文案" })).not.toBeInTheDocument();
     const aiEditTrigger = screen.getByRole("button", { name: "打开 AI 助写菜单" });
@@ -106,6 +128,10 @@ describe("ComposerAiEditPlugin", () => {
     expect(await screen.findByRole("tooltip", { name: "AI 助写" })).toBeInTheDocument();
     await user.unhover(aiEditTrigger);
     await user.click(aiEditTrigger);
+    expect(useGazeMock).toHaveBeenLastCalledWith({
+      lookAt: "pointer",
+      travel: 12,
+    });
     expect(
       screen
         .getByTestId("composer-ai-edit-surface")
@@ -633,6 +659,7 @@ describe("ComposerAiEditPlugin", () => {
   it("aborts an in-flight rewrite when the user stops generation", async () => {
     rewriteComposerTextMock.mockReset();
     toastErrorMock.mockReset();
+    useGazeMock.mockClear();
     let requestSignal: AbortSignal | undefined;
     let resolveRewrite: ((value: { content: string }) => void) | undefined;
     rewriteComposerTextMock.mockImplementation(
@@ -685,6 +712,14 @@ describe("ComposerAiEditPlugin", () => {
     await user.click(screen.getByRole("button", { name: "打开 AI 助写菜单" }));
     await user.click(screen.getByRole("menuitem", { name: "润色文案" }));
     await screen.findByText("正在生成");
+    const loadingAvatar = screen.getByTestId("composer-ai-assistant-avatar");
+    expect(loadingAvatar).toHaveAttribute("width", "28");
+    expect(loadingAvatar.querySelector(".mo-always")).not.toBeNull();
+    expect(screen.queryByTestId("dot-matrix-loader")).not.toBeInTheDocument();
+    expect(useGazeMock).toHaveBeenLastCalledWith({
+      lookAt: null,
+      travel: 12,
+    });
 
     await user.click(screen.getByRole("button", { name: "终止生成" }));
 

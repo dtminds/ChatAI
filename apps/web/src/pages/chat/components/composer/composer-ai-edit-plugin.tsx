@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { Blobatar } from "@blobatar/react";
+import { useGaze } from "@blobatar/react/gaze";
 import {
   AiMagicIcon,
   AiContentGenerator02Icon,
@@ -8,7 +10,6 @@ import {
   Cancel01Icon,
   CheckmarkCircle02Icon,
   ExpandParagraphIcon,
-  MagicWand01Icon,
   Minimize01Icon,
   Sad01Icon,
   SmileIcon,
@@ -17,6 +18,9 @@ import {
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { useLexicalComposerContext } from "@lexical/react/LexicalComposerContext";
+import { thinking } from "blobatar/expression";
+import "blobatar/gaze.css";
+import "blobatar/motion.css";
 import {
   COMPOSER_AI_EDIT_INPUT_MAX_LENGTH,
   COMPOSER_AI_EDIT_INPUT_MIN_LENGTH,
@@ -33,7 +37,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { DotMatrixLoader } from "@/components/ui/dot-matrix-loader";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -96,6 +99,7 @@ const TONE_ACTIONS: Array<{
 ];
 
 const SHORTEN_ACTION_MIN_LENGTH = 15;
+const COMPOSER_AI_ASSISTANT_ID = "chatai-composer-ai-assistant-v1";
 
 export function ComposerAiEditPlugin({
   canEdit,
@@ -114,7 +118,11 @@ export function ComposerAiEditPlugin({
   const [quotaUnavailableDialogOpen, setQuotaUnavailableDialogOpen] = useState(false);
   const isMouseSelectingRef = useRef(false);
   const contentRef = useRef<HTMLDivElement | null>(null);
-  const [surfaceHeight, setSurfaceHeight] = useState(28);
+  const [surfaceHeight, setSurfaceHeight] = useState(40);
+  const { ref: assistantGazeRef } = useGaze({
+    lookAt: editState === "menu" && menuOpen ? "pointer" : null,
+    travel: 12,
+  });
 
   const readSelection = useCallback(() => {
     if (
@@ -374,7 +382,7 @@ export function ComposerAiEditPlugin({
 
   useLayoutEffect(() => {
     if (!isExpanded) {
-      setSurfaceHeight(28);
+      setSurfaceHeight(40);
       return;
     }
 
@@ -405,7 +413,7 @@ export function ComposerAiEditPlugin({
   const left = selection
     ? Math.max(
         8,
-        Math.min(selection.rect.left, window.innerWidth - (isExpanded ? 360 : 40)),
+        Math.min(selection.rect.left, window.innerWidth - (isExpanded ? 360 : 48)),
       )
     : 8;
 
@@ -439,7 +447,7 @@ export function ComposerAiEditPlugin({
             "fixed z-50 overflow-visible text-[13px] text-popover-foreground transition-[width,height] duration-200 ease-out",
             isExpanded
               ? "w-[min(22rem,calc(100vw-1rem))] overflow-hidden rounded-[10px] border border-border bg-popover shadow-[0_12px_32px_var(--shadow-soft)]"
-              : "h-7 w-7",
+              : "h-10 w-10",
             "-translate-y-full",
           )}
           data-testid="composer-ai-edit-surface"
@@ -493,11 +501,10 @@ export function ComposerAiEditPlugin({
           ) : editState === "loading" ? (
             <div ref={contentRef} className="flex items-center justify-between gap-2 px-2.5 py-2 text-muted-foreground" role="status">
               <div className="flex items-center gap-2">
-                <DotMatrixLoader
-                  ariaLabel="正在生成"
-                  className="text-muted-foreground"
-                  dotSize={2}
-                  size={16}
+                <ComposerAiAssistantAvatar
+                  gazeRef={assistantGazeRef}
+                  size={28}
+                  thinking
                 />
                 <ShinyText duration={1.15} shimmerWidth={48}>
                   正在生成
@@ -546,15 +553,13 @@ export function ComposerAiEditPlugin({
                     <DropdownMenuTrigger asChild>
                       <button
                         aria-label="打开 AI 助写菜单"
-                        className="flex h-7 w-7 items-center justify-center rounded-[8px] border border-border bg-popover p-0 text-foreground shadow-[0_4px_12px_var(--shadow-soft)] outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring/20"
+                        className="inline-flex h-10 w-10 cursor-pointer items-center justify-center bg-transparent p-0 outline-none focus-visible:rounded-full focus-visible:ring-2 focus-visible:ring-ring/30"
                         onMouseDown={(event) => event.preventDefault()}
                         type="button"
                       >
-                        <HugeiconsIcon
-                          aria-hidden="true"
-                          icon={MagicWand01Icon}
-                          size={16}
-                          strokeWidth={1.8}
+                        <ComposerAiAssistantAvatar
+                          gazeRef={assistantGazeRef}
+                          size={40}
                         />
                       </button>
                     </DropdownMenuTrigger>
@@ -628,6 +633,29 @@ export function ComposerAiEditPlugin({
         </div>
       ) : null}
     </>
+  );
+}
+
+function ComposerAiAssistantAvatar({
+  gazeRef,
+  size,
+  thinking: isThinking = false,
+}: {
+  gazeRef?: ReturnType<typeof useGaze>["ref"];
+  size: number;
+  thinking?: boolean;
+}) {
+  return (
+    <Blobatar
+      ref={gazeRef}
+      animate="always"
+      data-assistant-id={COMPOSER_AI_ASSISTANT_ID}
+      data-testid="composer-ai-assistant-avatar"
+      expression={isThinking ? thinking : undefined}
+      name={COMPOSER_AI_ASSISTANT_ID}
+      size={size}
+      traits={{ shape: 0.11 }}
+    />
   );
 }
 

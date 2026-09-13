@@ -512,7 +512,7 @@ export function ComposerAiEditPlugin({
               <div className="flex items-center gap-2">
                 <ComposerAiAssistantAvatar
                   gazeRef={assistantGazeRef}
-                  size={28}
+                  size={24}
                   thinking
                 />
                 <ShinyText duration={1.15} shimmerWidth={48}>
@@ -562,13 +562,13 @@ export function ComposerAiEditPlugin({
                     <DropdownMenuTrigger asChild>
                       <button
                         aria-label="打开 AI 助写菜单"
-                        className="inline-flex h-9 w-9 cursor-pointer items-center justify-center rounded-[8px] border border-border bg-popover p-0 text-foreground shadow-[0_4px_12px_var(--shadow-soft)] outline-none focus-visible:ring-2 focus-visible:ring-ring/20"
+                        className="inline-flex h-8 w-8 cursor-pointer items-center justify-center rounded-[8px] border border-border bg-popover p-0 text-foreground shadow-[0_4px_12px_var(--shadow-soft)] outline-none focus-visible:ring-2 focus-visible:ring-ring/20"
                         onMouseDown={(event) => event.preventDefault()}
                         type="button"
                       >
                         <ComposerAiAssistantAvatar
                           gazeRef={assistantGazeRef}
-                          size={28}
+                          size={24}
                         />
                       </button>
                     </DropdownMenuTrigger>

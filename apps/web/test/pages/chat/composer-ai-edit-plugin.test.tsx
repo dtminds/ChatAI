@@ -110,8 +110,8 @@ describe("ComposerAiEditPlugin", () => {
 
     await screen.findByTestId("composer-ai-edit-surface");
     const assistantAvatar = screen.getByTestId("composer-ai-assistant-avatar");
-    expect(assistantAvatar).toHaveAttribute("width", "28");
-    expect(assistantAvatar).toHaveAttribute("height", "28");
+    expect(assistantAvatar).toHaveAttribute("width", "24");
+    expect(assistantAvatar).toHaveAttribute("height", "24");
     expect(assistantAvatar).toHaveAttribute(
       "data-assistant-id",
       "chatai-composer-ai-assistant-v1",
@@ -713,7 +713,7 @@ describe("ComposerAiEditPlugin", () => {
     await user.click(screen.getByRole("menuitem", { name: "润色文案" }));
     await screen.findByText("正在生成");
     const loadingAvatar = screen.getByTestId("composer-ai-assistant-avatar");
-    expect(loadingAvatar).toHaveAttribute("width", "28");
+    expect(loadingAvatar).toHaveAttribute("width", "24");
     expect(loadingAvatar.querySelector(".mo-always")).not.toBeNull();
     expect(screen.queryByTestId("dot-matrix-loader")).not.toBeInTheDocument();
     expect(useGazeMock).toHaveBeenLastCalledWith({

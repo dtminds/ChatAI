@@ -30,6 +30,10 @@ export function parseJsonRecord(value: string | null) {
   }
 }
 
+export function parseJsonRecordOrEmpty(value: string | null) {
+  return parseJsonRecord(value) ?? {};
+}
+
 export function readRecordNumber(value: Record<string, unknown>, key: string) {
   const field = value[key];
   const numeric = typeof field === "number" ? field : Number(field);
@@ -41,6 +45,13 @@ export function readRecordString(value: Record<string, unknown>, key: string) {
   const field = value[key];
 
   return typeof field === "string" ? field : "";
+}
+
+export function readTrimmedRecordString(
+  value: Record<string, unknown>,
+  key: string,
+) {
+  return readRecordString(value, key).trim();
 }
 
 export function isRecord(value: unknown): value is Record<string, unknown> {

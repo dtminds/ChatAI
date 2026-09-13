@@ -78,7 +78,6 @@ import type {
   WorkbenchCustomerLastConversationResponse,
   WorkbenchCustomerRelationConversationsResponse,
   WorkbenchCustomerSeatRelationsResponse,
-  MaterialCollectionBizType,
   WorkbenchMaterialCollectionCreateRequest,
   WorkbenchMaterialCollectionCreateResponse,
   WorkbenchMaterialCollectionGroupCreateRequest,
@@ -90,7 +89,6 @@ import type {
   WorkbenchMaterialCollectionListResponse,
   WorkbenchMaterialCollectionMoveRequest,
   WorkbenchMaterialCollectionOkResponse,
-  WorkbenchMaterialCollectionContentType,
   WorkbenchMaterialCollectionUpdateRequest,
   WorkbenchQuickReplyBatchCreateRequest,
   WorkbenchQuickReplyBatchCreateResponse,
@@ -142,14 +140,8 @@ import {
   JAVA_MENTION_HIT_TYPE,
   JAVA_MENTION_LOCATION,
   JAVA_SEND_TYPE,
-  WORKBENCH_INTERNAL_API_FAILED_CODE,
 } from "./workbench-java-client.js";
 import { buildSidebarIframeTuseCipherTexts } from "../../lib/tuse-crypto.js";
-import { normalizeAttachmentIds } from "./attachment-mappers.js";
-import { normalizeKnowledgeId } from "./knowledge-doc-mappers.js";
-import { JAVA_KNOWLEDGE_FAQ_SOURCE } from "./knowledge-faq-mappers.js";
-import { SMART_REPLY_MAKE_SHORTER_TEMPLATE_ID } from "./ai-helper-mappers.js";
-import { normalizeSmartReplyMsgIds } from "./smart-reply-mappers.js";
 import {
   type ConversationLookup,
   decodeConversationListCursor,
@@ -174,8 +166,10 @@ import {
   type WorkbenchPlatformScope,
 } from "../workbench-platform-scope.js";
 import { WorkbenchAccess } from "./workbench-access.js";
+import { WorkbenchKnowledgeService } from "./workbench-knowledge.service.js";
 import { WorkbenchMaterialService } from "./workbench-material.service.js";
 import { WorkbenchQuickReplyService } from "./workbench-quick-reply.service.js";
+import { WorkbenchSmartReplyService } from "./workbench-smart-reply.service.js";
 
 const POLL_CONVERSATION_CHANGE_LIMIT = 500;
 const POLL_LAST_MESSAGE_OVERLAP_MS = 1;
@@ -187,7 +181,6 @@ const MESSAGE_REVOKE_CLOCK_SKEW_TOLERANCE_MS = 5 * 1000;
 const FULL_AUTO_SYSTEM_MESSAGE_DEDUPE_WINDOW_MS = 120 * 1000;
 const SMART_REPLY_MESSAGE_PAGE_CANDIDATE_LIMIT = 5;
 const SMART_REPLY_TRIGGER_RAW_MSGTYPES = new Set(["text", "image", "voice"]);
-const MATERIAL_COLLECTION_GROUP_TITLE_MAX_LENGTH = 10;
 const DEFAULT_H5_COVER_URL = "https://b5.bokr.com.cn/dist/default-cover.png";
 
 type SmartReplyMessagePageMetadata = {
@@ -198,14 +191,6 @@ type SmartReplyMessagePageMetadata = {
     thirdUserId: string;
     uid: number;
   };
-};
-
-type SmartReplyJavaScope = {
-  chatType: number;
-  thirdExternalId: string;
-  thirdGroupId?: string;
-  thirdUserId: string;
-  uid: number;
 };
 
 type MessagePageWithSmartReplyMetadata = WorkbenchMessagePageDto &
@@ -249,66 +234,6 @@ function collectSmartReplyMessagePageCandidateIds(messages: WorkbenchMessageDto[
   }
 
   return msgIds;
-}
-
-function assertSmartReplySupportedConversation(conversation: ConversationLookup) {
-  if (
-    conversation.chatType !== CHAT_TYPE.SINGLE &&
-    conversation.chatType !== CHAT_TYPE.GROUP
-  ) {
-    throw new BadRequestError(
-      "SMART_REPLY_SCOPE_INVALID",
-      "当前会话暂不支持智能回复",
-    );
-  }
-}
-
-function getSmartReplyJavaScope(conversation: ConversationLookup): SmartReplyJavaScope {
-  assertSmartReplySupportedConversation(conversation);
-
-  const thirdUserId = conversation.thirdUserId?.trim();
-
-  if (!thirdUserId) {
-    throw new BadRequestError(
-      "SMART_REPLY_SCOPE_INVALID",
-      "当前会话缺少智能回复所需的席位标识",
-    );
-  }
-
-  if (conversation.chatType === CHAT_TYPE.GROUP) {
-    const thirdGroupId = conversation.thirdGroupId?.trim();
-
-    if (!thirdGroupId) {
-      throw new BadRequestError(
-        "SMART_REPLY_SCOPE_INVALID",
-        "当前会话缺少智能回复所需的群标识",
-      );
-    }
-
-    return {
-      chatType: CHAT_TYPE.GROUP,
-      thirdExternalId: "",
-      thirdGroupId,
-      thirdUserId,
-      uid: conversation.uid,
-    };
-  }
-
-  const thirdExternalId = conversation.thirdExternalUserId?.trim();
-
-  if (!thirdExternalId) {
-    throw new BadRequestError(
-      "SMART_REPLY_SCOPE_INVALID",
-      "当前会话缺少智能回复所需的外部标识",
-    );
-  }
-
-  return {
-    chatType: CHAT_TYPE.SINGLE,
-    thirdExternalId,
-    thirdUserId,
-    uid: conversation.uid,
-  };
 }
 
 export type WorkbenchService = {
@@ -744,8 +669,10 @@ export type WorkbenchService = {
 
 export class MysqlWorkbenchService implements WorkbenchService {
   private readonly access: WorkbenchAccess;
+  private readonly knowledgeService: WorkbenchKnowledgeService;
   private readonly materialService: WorkbenchMaterialService;
   private readonly quickReplyService: WorkbenchQuickReplyService;
+  private readonly smartReplyService: WorkbenchSmartReplyService;
 
   constructor(
     private readonly repository: WorkbenchRepository,
@@ -757,6 +684,11 @@ export class MysqlWorkbenchService implements WorkbenchService {
       getCurrentWorkbenchPlatformScope(),
   ) {
     this.access = new WorkbenchAccess(repository, workbenchScope);
+    this.knowledgeService = new WorkbenchKnowledgeService(
+      javaClient,
+      this.access,
+      logger,
+    );
     this.materialService = new WorkbenchMaterialService(
       repository,
       javaClient,
@@ -764,6 +696,10 @@ export class MysqlWorkbenchService implements WorkbenchService {
       logger,
     );
     this.quickReplyService = new WorkbenchQuickReplyService(repository, this.access);
+    this.smartReplyService = new WorkbenchSmartReplyService(
+      javaClient,
+      this.access,
+    );
   }
 
   async getBroadcastProtectionStatus(uid: number) {
@@ -1911,392 +1847,99 @@ export class MysqlWorkbenchService implements WorkbenchService {
     subUserId: string,
     request: WorkbenchSmartReplyPollRequest,
   ) {
-    const scope = await this.getAuthenticatedWorkbenchScope(subUserId);
-    const conversation = await this.getAccessibleConversation(
-      subUserId,
-      request.conversationId,
-      scope,
-    );
-    const javaScope = getSmartReplyJavaScope(conversation);
-
-    const javaMsgIds = normalizeSmartReplyMsgIds(request.msgIds);
-
-    if (javaMsgIds.length === 0) {
-      return { suggestions: [] };
-    }
-
-    return this.javaClient.listUserHistoryAnswers({
-      chatType: javaScope.chatType,
-      msgIds: javaMsgIds,
-      thirdExternalId: javaScope.thirdExternalId,
-      thirdGroupId: javaScope.thirdGroupId,
-      thirdUserId: javaScope.thirdUserId,
-      uid: javaScope.uid,
-    });
+    return this.smartReplyService.pollSmartReplies(subUserId, request);
   }
 
   async requestSmartReplyGeneralAnswer(
     subUserId: string,
     request: WorkbenchSmartReplyGeneralAnswerRequest,
   ) {
-    const scope = await this.getAuthenticatedWorkbenchScope(subUserId);
-    const conversation = await this.getAccessibleConversation(
+    return this.smartReplyService.requestSmartReplyGeneralAnswer(
       subUserId,
-      request.conversationId,
-      scope,
+      request,
     );
-
-    if (!Number.isSafeInteger(request.msgId) || request.msgId <= 0) {
-      throw new BadRequestError("SMART_REPLY_MSG_INVALID", "消息序号无效");
-    }
-
-    const javaScope = getSmartReplyJavaScope(conversation);
-
-    return this.javaClient.requestGeneralAnswer({
-      chatType: javaScope.chatType,
-      msgId: request.msgId,
-      questionImgs: request.questionImgs ?? [],
-      thirdExternalId: javaScope.thirdExternalId,
-      thirdGroupId: javaScope.thirdGroupId,
-      thirdUserId: javaScope.thirdUserId,
-      uid: javaScope.uid,
-    });
   }
 
   async requestSmartReplyAutoGeneralAnswer(
     subUserId: string,
     request: WorkbenchSmartReplyAutoGeneralAnswerRequest,
   ) {
-    const scope = await this.getAuthenticatedWorkbenchScope(subUserId);
-    const conversation = await this.getAccessibleConversation(
+    return this.smartReplyService.requestSmartReplyAutoGeneralAnswer(
       subUserId,
-      request.conversationId,
-      scope,
+      request,
     );
-
-    if (conversation.chatType === CHAT_TYPE.GROUP) {
-      throw new BadRequestError(
-        "SMART_REPLY_AUTO_GENERAL_ANSWER_UNSUPPORTED",
-        "群聊不支持自动生成智能回复",
-      );
-    }
-
-    if (!Number.isSafeInteger(request.msgId) || request.msgId <= 0) {
-      throw new BadRequestError("SMART_REPLY_MSG_INVALID", "消息序号无效");
-    }
-
-    const javaScope = getSmartReplyJavaScope(conversation);
-
-    return this.javaClient.requestAutoGeneralAnswer({
-      chatType: javaScope.chatType,
-      msgId: request.msgId,
-      thirdExternalId: javaScope.thirdExternalId,
-      thirdGroupId: javaScope.thirdGroupId,
-      thirdUserId: javaScope.thirdUserId,
-      uid: javaScope.uid,
-    });
   }
 
   async requestSmartReplyMakeShorter(
     subUserId: string,
     request: WorkbenchSmartReplyMakeShorterRequest,
   ) {
-    const scope = await this.getAuthenticatedWorkbenchScope(subUserId);
-    const conversation = await this.getAccessibleConversation(
+    return this.smartReplyService.requestSmartReplyMakeShorter(
       subUserId,
-      request.conversationId,
-      scope,
+      request,
     );
-    assertSmartReplySupportedConversation(conversation);
-
-    const content = request.content.trim();
-
-    if (!content) {
-      throw new BadRequestError("SMART_REPLY_CONTENT_EMPTY", "智能回复内容不能为空");
-    }
-
-    const configParamId = await this.javaClient.getAiHelperTemplate({
-      templateId: SMART_REPLY_MAKE_SHORTER_TEMPLATE_ID,
-      uid: conversation.uid,
-    });
-
-    if (configParamId == null) {
-      throw new BadGatewayError(
-        WORKBENCH_INTERNAL_API_FAILED_CODE,
-        "智能回复模板配置无效",
-      );
-    }
-
-    const { generateId } = await this.javaClient.submitAiHelperGenerateAsk({
-      params: [
-        {
-          id: configParamId,
-          value: [content],
-        },
-      ],
-      templateId: SMART_REPLY_MAKE_SHORTER_TEMPLATE_ID,
-      uid: conversation.uid,
-    });
-
-    const shortenedContent = await this.javaClient.streamAiHelperAsk({
-      generateId,
-      uid: conversation.uid,
-    });
-
-    return { content: shortenedContent };
   }
 
   async sendSmartReplyAnswer(
     subUserId: string,
     request: WorkbenchSmartReplySendAnswerRequest,
   ) {
-    const scope = await this.getAuthenticatedWorkbenchScope(subUserId);
-    const conversation = await this.getAccessibleConversation(
-      subUserId,
-      request.conversationId,
-      scope,
-    );
-    assertSmartReplySupportedConversation(conversation);
-
-    const recordId = request.recordId.trim();
-
-    if (!recordId) {
-      throw new BadRequestError("SMART_REPLY_RECORD_INVALID", "智能回复记录无效");
-    }
-
-    const optNos = (request.optNos ?? [])
-      .map((optNo) => optNo.trim())
-      .filter((optNo) => optNo.length > 0);
-
-    if (optNos.length === 0) {
-      throw new BadRequestError("SMART_REPLY_OPT_NO_INVALID", "发送消息操作编号无效");
-    }
-
-    await this.javaClient.sendRecommendAnswer({
-      optNos,
-      recordId,
-      uid: conversation.uid,
-    });
-
-    return { ok: true as const };
+    return this.smartReplyService.sendSmartReplyAnswer(subUserId, request);
   }
 
   async listSmartReplyAttachments(
     subUserId: string,
     request: WorkbenchSmartReplyAttachmentsRequest,
   ) {
-    const scope = await this.getAuthenticatedWorkbenchScope(subUserId);
-    const conversation = await this.getAccessibleConversation(
+    return this.smartReplyService.listSmartReplyAttachments(
       subUserId,
-      request.conversationId,
-      scope,
+      request,
     );
-    assertSmartReplySupportedConversation(conversation);
-
-    const ids = normalizeAttachmentIds(request.ids);
-
-    if (ids.length === 0) {
-      return { attachments: [] };
-    }
-
-    return this.javaClient.listAttachments({
-      ids,
-      uid: conversation.uid,
-    });
   }
 
   async checkSmartReplyTextModeration(
     subUserId: string,
     request: WorkbenchSmartReplyTextModerationRequest,
   ) {
-    const content = request.content.trim();
-
-    if (!content) {
-      throw new BadRequestError("TEXT_MODERATION_CONTENT_EMPTY", "检测内容不能为空");
-    }
-
-    const scope = await this.getAuthenticatedWorkbenchScope(subUserId);
-    const conversation = await this.getAccessibleConversation(
+    return this.smartReplyService.checkSmartReplyTextModeration(
       subUserId,
-      request.conversationId,
-      scope,
+      request,
     );
-    assertSmartReplySupportedConversation(conversation);
-
-    return this.javaClient.checkTextModerationPlus({
-      content,
-      uid: conversation.uid,
-    });
   }
 
   async listKnowledgePage(
     subUserId: string,
     request: WorkbenchKnowledgePageRequest,
   ) {
-    const scope = await this.getAuthenticatedWorkbenchScope(subUserId);
-    const conversation = await this.getAccessibleConversation(
-      subUserId,
-      request.conversationId,
-      scope,
-    );
-    assertSmartReplySupportedConversation(conversation);
-
-    const response = await this.javaClient.listKnowledgePage({
-      page: 1,
-      pageSize: 9999,
-      uid: conversation.uid,
-    });
-
-    this.logger.info(
-      {
-        conversationId: request.conversationId,
-        list: response.list,
-        listLength: response.list.length,
-        operation: "list-knowledge-page",
-        uid: conversation.uid,
-      },
-      "知识集列表映射结果",
-    );
-
-    return response;
+    return this.knowledgeService.listKnowledgePage(subUserId, request);
   }
 
   async getKnowledgeConfig(
     subUserId: string,
     request: WorkbenchKnowledgeConfigRequest,
   ) {
-    const scope = await this.getAuthenticatedWorkbenchScope(subUserId);
-    const conversation = await this.getAccessibleConversation(
-      subUserId,
-      request.conversationId,
-      scope,
-    );
-    assertSmartReplySupportedConversation(conversation);
-
-    return this.javaClient.getKnowledgeConfig({
-      uid: conversation.uid,
-    });
+    return this.knowledgeService.getKnowledgeConfig(subUserId, request);
   }
 
   async listKnowledgeDocPage(
     subUserId: string,
     request: WorkbenchKnowledgeDocPageRequest,
   ) {
-    const scope = await this.getAuthenticatedWorkbenchScope(subUserId);
-    const conversation = await this.getAccessibleConversation(
-      subUserId,
-      request.conversationId,
-      scope,
-    );
-    assertSmartReplySupportedConversation(conversation);
-
-    const knowledgeId = normalizeKnowledgeId(request.knowledgeId);
-
-    if (knowledgeId == null) {
-      this.logger.warn(
-        {
-          conversationId: request.conversationId,
-          knowledgeId: request.knowledgeId,
-          operation: "list-knowledge-doc-page",
-          uid: conversation.uid,
-        },
-        "知识集 ID 无效",
-      );
-      throw new BadRequestError("INVALID_KNOWLEDGE_ID", "知识集 ID 无效");
-    }
-
-    const response = await this.javaClient.listKnowledgeDocPage({
-      knowledgeId,
-      page: 1,
-      pageSize: 9999,
-      uid: conversation.uid,
-    });
-
-    this.logger.info(
-      {
-        conversationId: request.conversationId,
-        knowledgeId,
-        list: response.list,
-        listLength: response.list.length,
-        operation: "list-knowledge-doc-page",
-        uid: conversation.uid,
-      },
-      "知识集 FAQ 列表映射结果",
-    );
-
-    return response;
+    return this.knowledgeService.listKnowledgeDocPage(subUserId, request);
   }
 
   async addKnowledgeFaq(
     subUserId: string,
     request: WorkbenchKnowledgeFaqAddRequest,
   ) {
-    const scope = await this.getAuthenticatedWorkbenchScope(subUserId);
-    const conversation = await this.getAccessibleConversation(
-      subUserId,
-      request.conversationId,
-      scope,
-    );
-    assertSmartReplySupportedConversation(conversation);
-
-    const docId = normalizeKnowledgeId(request.docId);
-
-    if (docId == null) {
-      throw new BadRequestError("INVALID_KNOWLEDGE_DOC_ID", "FAQ ID 无效");
-    }
-
-    if (request.list.length === 0) {
-      throw new BadRequestError("INVALID_KNOWLEDGE_FAQ_LIST", "FAQ 内容不能为空");
-    }
-
-    return this.javaClient.addKnowledgeFaq({
-      docId,
-      list: request.list.map((item) => ({
-        answer: item.answer,
-        attachIds: item.attachIds,
-        question: item.question,
-        similarQuestion: item.similarQuestion,
-      })),
-      source: JAVA_KNOWLEDGE_FAQ_SOURCE,
-      uid: conversation.uid,
-    });
+    return this.knowledgeService.addKnowledgeFaq(subUserId, request);
   }
 
   async sendSmartHeartbeat(
     subUserId: string,
     request: WorkbenchSmartHeartbeatRequest,
   ) {
-    const scope = await this.getAuthenticatedWorkbenchScope(subUserId);
-    const conversation = await this.getOperableConversation(
-      subUserId,
-      request.conversationId,
-      scope,
-    );
-
-    if (conversation.thirdGroupId) {
-      throw new BadRequestError(
-        "SMART_HEARTBEAT_GROUP_UNSUPPORTED",
-        "群聊不支持沟通心跳",
-      );
-    }
-
-    const thirdExternalUserId = conversation.thirdExternalUserId?.trim();
-
-    if (!thirdExternalUserId) {
-      throw new BadRequestError(
-        "SMART_HEARTBEAT_CUSTOMER_MISSING",
-        "客户信息缺失",
-      );
-    }
-
-    await this.javaClient.sendSmartHeartbeat({
-      platform: conversation.platform,
-      thirdExternalUserId,
-      thirdUserId: conversation.thirdUserId,
-      uid: conversation.uid,
-    });
-
-    return { ok: true as const };
+    return this.smartReplyService.sendSmartHeartbeat(subUserId, request);
   }
 
   async sendMessage(subUserId: string, payload: WorkbenchSendMessagePayload) {

@@ -18,9 +18,14 @@ import {
 } from "@/pages/chat/components/composer/lexical-nodes";
 import { $insertComposerText } from "@/pages/chat/components/composer/lexical-utils";
 
-const { rewriteComposerTextMock, toastErrorMock } = vi.hoisted(() => ({
+const { rewriteComposerTextMock, toastErrorMock, useGazeMock } = vi.hoisted(() => ({
   rewriteComposerTextMock: vi.fn(),
   toastErrorMock: vi.fn(),
+  useGazeMock: vi.fn(() => ({
+    lookAt: vi.fn(),
+    ref: vi.fn(),
+    remeasure: vi.fn(),
+  })),
 }));
 
 const DEFAULT_COMPOSER_TEXT = "您好，请稍等";
@@ -35,6 +40,10 @@ vi.mock("sonner", () => ({
   toast: {
     error: toastErrorMock,
   },
+}));
+
+vi.mock("@blobatar/react/gaze", () => ({
+  useGaze: useGazeMock,
 }));
 
 function SeedComposerText({ text = DEFAULT_COMPOSER_TEXT }: { text?: string }) {
@@ -57,6 +66,7 @@ describe("ComposerAiEditPlugin", () => {
     const replacement = "我马上帮您确认";
     rewriteComposerTextMock.mockReset();
     rewriteComposerTextMock.mockResolvedValue({ content: replacement });
+    useGazeMock.mockClear();
     const user = userEvent.setup();
 
     render(
@@ -99,6 +109,15 @@ describe("ComposerAiEditPlugin", () => {
     fireEvent(document, new Event("selectionchange"));
 
     await screen.findByTestId("composer-ai-edit-surface");
+    const assistantAvatar = screen.getByTestId("composer-ai-assistant-avatar");
+    expect(assistantAvatar).toHaveAttribute(
+      "data-assistant-id",
+      "chatai-composer-ai-assistant-v1",
+    );
+    expect(useGazeMock).toHaveBeenLastCalledWith({
+      lookAt: "pointer",
+      travel: 12,
+    });
     expect(screen.queryByRole("textbox", { name: "自定义 AI 助写要求" })).not.toBeInTheDocument();
     expect(screen.queryByRole("menuitem", { name: "润色文案" })).not.toBeInTheDocument();
     const aiEditTrigger = screen.getByRole("button", { name: "打开 AI 助写菜单" });
@@ -106,6 +125,10 @@ describe("ComposerAiEditPlugin", () => {
     expect(await screen.findByRole("tooltip", { name: "AI 助写" })).toBeInTheDocument();
     await user.unhover(aiEditTrigger);
     await user.click(aiEditTrigger);
+    expect(useGazeMock).toHaveBeenLastCalledWith({
+      lookAt: "pointer",
+      travel: 12,
+    });
     expect(
       screen
         .getByTestId("composer-ai-edit-surface")
@@ -476,7 +499,7 @@ describe("ComposerAiEditPlugin", () => {
     expect(toastErrorMock).not.toHaveBeenCalled();
   });
 
-  it("waits until mouse selection ends before showing the AI entry", async () => {
+  it("shows the AI entry immediately after pointer selection ends", async () => {
     render(
       <LexicalComposer
         initialConfig={{
@@ -517,13 +540,125 @@ describe("ComposerAiEditPlugin", () => {
     fireEvent(document, new Event("selectionchange"));
     await screen.findByTestId("composer-ai-edit-surface");
 
-    fireEvent.mouseDown(editor, { button: 0 });
+    fireEvent.pointerDown(editor, { button: 0, isPrimary: true, pointerId: 1 });
     fireEvent(document, new Event("selectionchange"));
     expect(screen.queryByTestId("composer-ai-edit-surface")).not.toBeInTheDocument();
 
-    fireEvent.mouseUp(document, { button: 0 });
+    fireEvent.pointerUp(document, { button: 0, isPrimary: true, pointerId: 1 });
+
+    expect(screen.getByTestId("composer-ai-edit-surface")).toBeInTheDocument();
+  });
+
+  it("anchors the AI entry to the first line of a multi-line selection", async () => {
+    render(
+      <LexicalComposer
+        initialConfig={{
+          namespace: "composer-ai-edit-multi-line-selection-test",
+          nodes: [
+            ComposerEmojiNode,
+            ComposerImageNode,
+            ComposerLiteAttachmentNode,
+            ComposerMentionNode,
+          ],
+          onError(error) {
+            throw error;
+          },
+        }}
+      >
+        <PlainTextPlugin
+          contentEditable={<ContentEditable aria-label="消息输入" />}
+          ErrorBoundary={LexicalErrorBoundary}
+        />
+        <SeedComposerText />
+        <ComposerAiEditPlugin canEdit conversationId="conversation-1" />
+      </LexicalComposer>,
+    );
+
+    const editor = await screen.findByRole("textbox", { name: "消息输入" });
+    await waitFor(() => expect(editor).toHaveTextContent(DEFAULT_COMPOSER_TEXT));
+    const textNode = document
+      .createTreeWalker(editor, NodeFilter.SHOW_TEXT)
+      .nextNode();
+    expect(textNode).not.toBeNull();
+    const range = document.createRange();
+    range.selectNodeContents(textNode!);
+    Object.defineProperties(range, {
+      getBoundingClientRect: {
+        value: () => new DOMRect(70, 120, 400, 48),
+      },
+      getClientRects: {
+        value: () => [
+          new DOMRect(180, 120, 290, 20),
+          new DOMRect(70, 148, 220, 20),
+        ],
+      },
+    });
+    const selection = window.getSelection();
+    selection?.removeAllRanges();
+    selection?.addRange(range);
+    fireEvent(document, new Event("selectionchange"));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("composer-ai-edit-surface")).toHaveStyle({
+        left: "180px",
+      });
+    });
+  });
+
+  it("hides the AI entry when the DOM selection moves outside the Composer", async () => {
+    render(
+      <>
+        <div data-testid="outside-text">会话列表中的其他文字</div>
+        <LexicalComposer
+          initialConfig={{
+            namespace: "composer-ai-edit-outside-selection-test",
+            nodes: [
+              ComposerEmojiNode,
+              ComposerImageNode,
+              ComposerLiteAttachmentNode,
+              ComposerMentionNode,
+            ],
+            onError(error) {
+              throw error;
+            },
+          }}
+        >
+          <PlainTextPlugin
+            contentEditable={<ContentEditable aria-label="消息输入" />}
+            ErrorBoundary={LexicalErrorBoundary}
+          />
+          <SeedComposerText />
+          <ComposerAiEditPlugin canEdit conversationId="conversation-1" />
+        </LexicalComposer>
+      </>,
+    );
+
+    const editor = await screen.findByRole("textbox", { name: "消息输入" });
+    await waitFor(() => expect(editor).toHaveTextContent(DEFAULT_COMPOSER_TEXT));
+    const editorTextNode = document
+      .createTreeWalker(editor, NodeFilter.SHOW_TEXT)
+      .nextNode();
+    expect(editorTextNode).not.toBeNull();
+    const range = document.createRange();
+    range.selectNodeContents(editorTextNode!);
+    const selection = window.getSelection();
+    selection?.removeAllRanges();
+    selection?.addRange(range);
+    fireEvent(document, new Event("selectionchange"));
 
     await screen.findByTestId("composer-ai-edit-surface");
+
+    const outsideText = screen.getByTestId("outside-text");
+    const outsideTextNode = outsideText.firstChild;
+    expect(outsideTextNode).not.toBeNull();
+    range.selectNodeContents(outsideTextNode!);
+    selection?.removeAllRanges();
+    selection?.addRange(range);
+    fireEvent(document, new Event("selectionchange"));
+
+    await waitFor(() => {
+      expect(screen.queryByTestId("composer-ai-edit-surface")).not.toBeInTheDocument();
+    });
   });
 
   it("hides the AI entry when the selected text exceeds 200 characters", async () => {
@@ -633,6 +768,7 @@ describe("ComposerAiEditPlugin", () => {
   it("aborts an in-flight rewrite when the user stops generation", async () => {
     rewriteComposerTextMock.mockReset();
     toastErrorMock.mockReset();
+    useGazeMock.mockClear();
     let requestSignal: AbortSignal | undefined;
     let resolveRewrite: ((value: { content: string }) => void) | undefined;
     rewriteComposerTextMock.mockImplementation(
@@ -685,6 +821,12 @@ describe("ComposerAiEditPlugin", () => {
     await user.click(screen.getByRole("button", { name: "打开 AI 助写菜单" }));
     await user.click(screen.getByRole("menuitem", { name: "润色文案" }));
     await screen.findByText("正在生成");
+    expect(screen.getByTestId("composer-ai-assistant-avatar")).toBeInTheDocument();
+    expect(screen.queryByTestId("dot-matrix-loader")).not.toBeInTheDocument();
+    expect(useGazeMock).toHaveBeenLastCalledWith({
+      lookAt: null,
+      travel: 12,
+    });
 
     await user.click(screen.getByRole("button", { name: "终止生成" }));
 

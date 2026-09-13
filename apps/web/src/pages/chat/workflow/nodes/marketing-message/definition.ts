@@ -1,5 +1,8 @@
 import { Megaphone02Icon } from "@hugeicons/core-free-icons";
-import { WORKFLOW_MARKETING_MESSAGE_WAIT_MAX_BY_UNIT } from "@chatai/contracts";
+import {
+  WORKFLOW_MARKETING_MESSAGE_WAIT_MIN_BY_UNIT,
+  WORKFLOW_MARKETING_MESSAGE_WAIT_MAX_BY_UNIT,
+} from "@chatai/contracts";
 import type { WorkflowNodeDefinition } from "../definition-types";
 import { createStandardNodeDefinition } from "../standard-node-definition-factory";
 import { getMarketingMessageMetric, isMarketingMessageWait, normalizeMarketingMessageWait, normalizeMarketingPlan } from "./config";
@@ -7,7 +10,7 @@ import { getMarketingMessageMetric, isMarketingMessageWait, normalizeMarketingMe
 const base = createStandardNodeDefinition({
   accentClassName: "bg-cyan-600 text-white",
   accentRgb: "8 145 178",
-  description: "下发指定触达任务，等待固定时长后查询一次推送结果",
+  description: "使用企微官方群发接口、或短信群发通道批量进行营销触达",
   icon: Megaphone02Icon,
   kind: "marketing-message",
   label: "群发触达",
@@ -18,11 +21,11 @@ const base = createStandardNodeDefinition({
 
 export const marketingMessageNodeDefinition: WorkflowNodeDefinition<"marketing-message"> = {
   ...base,
-  createDefaultData: () => ({ ...base.createDefaultData(), status: "warning", wait: { duration: 1, unit: "minute" } }),
+  createDefaultData: () => ({ ...base.createDefaultData(), status: "warning", wait: { mode: "none" } }),
   getOutputVariables: () => [{
-    description: "等待结束后查询到的聚合推送结果",
+    description: "如设置了等待时间，到达设置的等待时间后，会查询一次触达是否成功，并输出真实触达结果；如未设置等待时间，则该值仅表示任务下发成功，不代表实际触达了用户。",
     key: "pushSuccess",
-    label: "推送成功",
+    label: "触达结果",
     usages: ["variable"],
     valueType: { kind: "boolean" },
   }],
@@ -38,11 +41,13 @@ export const marketingMessageNodeDefinition: WorkflowNodeDefinition<"marketing-m
     const plan = normalizeMarketingPlan(node.data.plan);
     const wait = node.data.wait;
     const normalizedWait = normalizeMarketingMessageWait(wait);
-    const maximum = WORKFLOW_MARKETING_MESSAGE_WAIT_MAX_BY_UNIT[normalizedWait.unit];
+    const waitValidationMessage = normalizedWait.mode === "fixed"
+      ? `等待时长需为 ${WORKFLOW_MARKETING_MESSAGE_WAIT_MIN_BY_UNIT[normalizedWait.unit]}-${WORKFLOW_MARKETING_MESSAGE_WAIT_MAX_BY_UNIT[normalizedWait.unit]}`
+      : "执行方式无效";
     return [
       ...(!plan ? [{ code: "marketing-message-plan-required", message: "需选择触达任务", severity: "warning" as const, source: "config" as const }] : []),
       ...(!isMarketingMessageWait(wait)
-        ? [{ code: "marketing-message-wait-invalid", message: `等待时长需为 1-${maximum}`, severity: "warning" as const, source: "config" as const }]
+        ? [{ code: "marketing-message-wait-invalid", message: waitValidationMessage, severity: "warning" as const, source: "config" as const }]
         : []),
     ];
   },

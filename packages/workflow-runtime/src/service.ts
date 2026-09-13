@@ -978,10 +978,12 @@ export class WorkflowRuntimeService {
         uid: input.run.uid,
       }));
       const pushedAt = this.clock();
-      state = {
-        bizId,
-        dueAt: getWorkflowMarketingMessageDueAt(config, pushedAt).toISOString(),
-      };
+      state = config.wait.mode === "fixed"
+        ? {
+            bizId,
+            dueAt: getWorkflowMarketingMessageDueAt(config, pushedAt).toISOString(),
+          }
+        : { bizId };
       const updated = await this.runtimeRepository.updateCapabilityExecutionInput({
         expectedRunLockVersion: input.run.lockVersion,
         expectedTaskVersion: input.claimedTask.taskVersion,
@@ -1003,6 +1005,27 @@ export class WorkflowRuntimeService {
       );
     }
 
+    if (config.wait.mode === "none") {
+      if (state.dueAt !== undefined) {
+        throw new WorkflowCapabilityExecutionError(
+          "terminal",
+          "WORKFLOW_MARKETING_MESSAGE_STATE_INVALID",
+          "流程数据异常，流程已停止",
+        );
+      }
+      return {
+        output: { pushSuccess: true },
+        sourceOutletId: "default",
+        type: "advance",
+      };
+    }
+    if (state.dueAt === undefined) {
+      throw new WorkflowCapabilityExecutionError(
+        "terminal",
+        "WORKFLOW_MARKETING_MESSAGE_STATE_INVALID",
+        "流程数据异常，流程已停止",
+      );
+    }
     const dueAt = new Date(state.dueAt);
     if (input.claimedTask.taskType === "execute" && dueAt > input.input.now) {
       return { dueAt: state.dueAt, output: {}, type: "wait" };
@@ -2090,10 +2113,10 @@ function readMarketingMessageExecutionState(input: Record<string, unknown>) {
   const bizId = value.bizId;
   const dueAt = value.dueAt;
   if (typeof bizId !== "number" || !Number.isSafeInteger(bizId) || bizId <= 0
-    || typeof dueAt !== "string" || !Number.isFinite(Date.parse(dueAt))) {
+    || (dueAt !== undefined && (typeof dueAt !== "string" || !Number.isFinite(Date.parse(dueAt))))) {
     return { kind: "invalid" as const };
   }
-  return { kind: "valid" as const, value: { bizId, dueAt } };
+  return { kind: "valid" as const, value: { bizId, ...(dueAt === undefined ? {} : { dueAt }) } };
 }
 
 function toCapabilityExecutionError(error: unknown) {

@@ -11,6 +11,25 @@ import {
 const ENTERED_AT = new Date("2026-09-13T01:00:00.000Z");
 
 describe("Marketing Message runtime", () => {
+  it("pushes once and advances immediately without querying in no-wait mode", async () => {
+    const harness = await createHarness({ wait: { mode: "none" } });
+
+    const completed = await harness.service.executeTask(taskInput(harness.created.task, ENTERED_AT));
+
+    expect(completed).toMatchObject({
+      kind: "success",
+      nextTask: { nodeId: "end" },
+      run: { context: { outputs: { marketing: { pushSuccess: true } } } },
+    });
+    expect(harness.pushUser).toHaveBeenCalledOnce();
+    expect(harness.queryPushResult).not.toHaveBeenCalled();
+    expect(harness.runtime.nodeExecutions[0]).toMatchObject({
+      input: { marketingMessage: { bizId: Number(harness.created.task.id) } },
+      output: { pushSuccess: true },
+      status: "completed",
+    });
+  });
+
   it.each([true, false])("pushes once, waits, queries once, and advances with pushSuccess=%s", async (pushSuccess) => {
     const harness = await createHarness({ pushSuccess });
 
@@ -107,7 +126,7 @@ describe("Marketing Message runtime", () => {
   });
 
   it("does not push again after the durable marker was saved before a worker crash", async () => {
-    const harness = await createHarness({ wait: { duration: 1, unit: "hour" } });
+    const harness = await createHarness({ wait: { mode: "fixed", duration: 1, unit: "hour" } });
     vi.spyOn(harness.runtime, "beginFixedWait").mockRejectedValueOnce(new Error("worker crashed"));
 
     await expect(harness.service.executeTask(taskInput(harness.created.task, ENTERED_AT)))
@@ -242,7 +261,7 @@ async function createHarness(options: {
   queryPushResult?: WorkflowMarketingMessagePort["queryPushResult"];
   subjectId?: string;
   subjectType?: "chatai_contact" | "wecom_contact";
-  wait?: { duration: number; unit: "hour" | "minute" };
+  wait?: { mode: "fixed"; duration: number; unit: "hour" | "minute" } | { mode: "none" };
   workflowType?: "chatai_sop" | "wecom_sop";
 } = {}) {
   let now = ENTERED_AT;
@@ -344,7 +363,7 @@ function control(
   };
 }
 
-function executionSpec(wait = { duration: 30, unit: "minute" as const }): WorkflowExecutionSpec {
+function executionSpec(wait = { mode: "fixed" as const, duration: 30, unit: "minute" as const }): WorkflowExecutionSpec {
   return {
     edges: [{ id: "marketing-end", source: "marketing", sourceOutletId: "default", target: "end" }],
     entryNodeId: "marketing",

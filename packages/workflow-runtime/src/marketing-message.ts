@@ -23,6 +23,9 @@ export function getWorkflowMarketingMessageDueAt(
   config: WorkflowMarketingMessageExecutionConfig,
   pushedAt: Date,
 ) {
+  if (config.wait.mode !== "fixed") {
+    throw new Error("Marketing Message dueAt is only available for fixed waits");
+  }
   const unitMilliseconds = config.wait.unit === "minute" ? 60_000 : 3_600_000;
   return new Date(pushedAt.getTime() + config.wait.duration * unitMilliseconds);
 }

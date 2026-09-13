@@ -163,7 +163,7 @@ const projectableDraftData = {
   },
   "marketing-message": {
     plan: { planId: 301, planName: "双十一触达" },
-    wait: { duration: 30, unit: "minute" },
+    wait: { mode: "fixed", duration: 30, unit: "minute" },
   },
   "message-query": {
     limit: 10,

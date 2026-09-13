@@ -9,7 +9,7 @@ export const marketingMessageNodeUi: WorkflowNodeUiBinding<"marketing-message"> 
       const wait = normalizeMarketingMessageWait(data.wait);
       return [
         { id: "plan", label: "触达任务", value: plan ? { kind: "text", text: plan.planName } : { kind: "empty" } },
-        { id: "wait", label: "等待时长", value: { kind: "text", text: `${wait.duration} ${wait.unit === "minute" ? "分钟" : "小时"}` } },
+        { id: "wait", label: "执行方式", value: { kind: "text", text: wait.mode === "none" ? "下发后立即执行" : `${wait.duration} ${wait.unit === "minute" ? "分钟" : "小时"}后查询` } },
       ];
     },
     kind: "fields",

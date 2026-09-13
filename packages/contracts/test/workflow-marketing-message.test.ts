@@ -9,7 +9,7 @@ import {
 
 describe("Workflow Marketing Message contracts", () => {
   it("keeps plan optional in drafts and required for execution", () => {
-    const wait = { duration: 30, unit: "minute" };
+    const wait = { mode: "fixed", duration: 30, unit: "minute" };
     expect(isWorkflowNodeDraftConfig("marketing-message", { wait })).toBe(true);
     expect(isWorkflowNodeExecutionConfig("marketing-message", { wait })).toBe(false);
     expect(isWorkflowNodeExecutionConfig("marketing-message", {
@@ -20,21 +20,29 @@ describe("Workflow Marketing Message contracts", () => {
       plan: { planId: 701, planName: "   " },
       wait,
     })).toBe(false);
+    expect(isWorkflowNodeExecutionConfig("marketing-message", {
+      plan: { planId: 701, planName: "双十一触达" },
+      wait: { mode: "none" },
+    })).toBe(true);
   });
 
   it("enforces minute and hour wait boundaries", () => {
     const plan = { planId: 701, planName: "双十一触达" };
     expect(isWorkflowNodeExecutionConfig("marketing-message", {
       plan,
-      wait: { duration: 2_880, unit: "minute" },
+      wait: { mode: "fixed", duration: 2_880, unit: "minute" },
     })).toBe(true);
     expect(isWorkflowNodeExecutionConfig("marketing-message", {
       plan,
-      wait: { duration: 48, unit: "hour" },
+      wait: { mode: "fixed", duration: 48, unit: "hour" },
     })).toBe(true);
     expect(isWorkflowNodeExecutionConfig("marketing-message", {
       plan,
-      wait: { duration: 49, unit: "hour" },
+      wait: { mode: "fixed", duration: 49, unit: "hour" },
+    })).toBe(false);
+    expect(isWorkflowNodeExecutionConfig("marketing-message", {
+      plan,
+      wait: { mode: "fixed", duration: 29, unit: "minute" },
     })).toBe(false);
   });
 

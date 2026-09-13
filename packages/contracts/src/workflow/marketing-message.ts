@@ -3,6 +3,10 @@ import { Type, type Static } from "@sinclair/typebox";
 export const WORKFLOW_MARKETING_PLAN_NAME_MAX_LENGTH = 128;
 export const WORKFLOW_MARKETING_PLAN_LIST_PAGE_SIZE = 20;
 export const WORKFLOW_MARKETING_PLAN_LIST_PAGE_SIZE_MAX = 50;
+export const WORKFLOW_MARKETING_MESSAGE_WAIT_MIN_BY_UNIT = {
+  hour: 1,
+  minute: 30,
+} as const;
 export const WORKFLOW_MARKETING_MESSAGE_WAIT_MAX_BY_UNIT = {
   hour: 48,
   minute: 2_880,
@@ -66,17 +70,20 @@ export const WorkflowMarketingPlanListResponseSchema = Type.Object({
 }, { additionalProperties: false });
 
 export const WorkflowMarketingMessageWaitSchema = Type.Union([
+  Type.Object({ mode: Type.Literal("none") }, { additionalProperties: false }),
   Type.Object({
+    mode: Type.Literal("fixed"),
     duration: Type.Integer({
       maximum: WORKFLOW_MARKETING_MESSAGE_WAIT_MAX_BY_UNIT.minute,
-      minimum: 1,
+      minimum: WORKFLOW_MARKETING_MESSAGE_WAIT_MIN_BY_UNIT.minute,
     }),
     unit: Type.Literal("minute"),
   }, { additionalProperties: false }),
   Type.Object({
+    mode: Type.Literal("fixed"),
     duration: Type.Integer({
       maximum: WORKFLOW_MARKETING_MESSAGE_WAIT_MAX_BY_UNIT.hour,
-      minimum: 1,
+      minimum: WORKFLOW_MARKETING_MESSAGE_WAIT_MIN_BY_UNIT.hour,
     }),
     unit: Type.Literal("hour"),
   }, { additionalProperties: false }),

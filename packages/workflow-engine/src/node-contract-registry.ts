@@ -261,7 +261,7 @@ function getWorkflowNodeInvalidConfigMessage(kind: WorkflowNodeKind) {
     case "message":
       return "Message node requires valid content, node output, or attachments";
     case "marketing-message":
-      return "Marketing Message node requires a plan and valid wait duration";
+      return "Marketing Message node requires a plan and valid execution mode";
     case "wait":
       return "Wait node requires a valid duration or fixed-time configuration";
     case "wait-event":

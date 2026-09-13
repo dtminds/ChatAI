@@ -1,4 +1,5 @@
 import {
+  WORKFLOW_MARKETING_MESSAGE_WAIT_MIN_BY_UNIT,
   WORKFLOW_MARKETING_MESSAGE_WAIT_MAX_BY_UNIT,
   WORKFLOW_MARKETING_PLAN_NAME_MAX_LENGTH,
   type WorkflowMarketingMessageWait,
@@ -22,25 +23,27 @@ export function toMarketingPlanSnapshot(
 }
 
 export function normalizeMarketingMessageWait(value: unknown): WorkflowMarketingMessageWait {
-  if (!value || typeof value !== "object" || Array.isArray(value)) {
-    return { duration: 1, unit: "minute" };
-  }
+  if (!value || typeof value !== "object" || Array.isArray(value)) return { mode: "none" };
   const record = value as Record<string, unknown>;
+  if (record.mode === "none") return { mode: "none" };
   const unit = record.unit === "hour" ? "hour" : "minute";
   const maximum = WORKFLOW_MARKETING_MESSAGE_WAIT_MAX_BY_UNIT[unit];
+  const minimum = WORKFLOW_MARKETING_MESSAGE_WAIT_MIN_BY_UNIT[unit];
   const duration = typeof record.duration === "number" && Number.isInteger(record.duration)
-    ? Math.min(maximum, Math.max(1, record.duration))
-    : 1;
-  return { duration, unit };
+    ? Math.min(maximum, Math.max(minimum, record.duration))
+    : minimum;
+  return { duration, mode: "fixed", unit };
 }
 
 export function isMarketingMessageWait(value: unknown): value is WorkflowMarketingMessageWait {
   if (!value || typeof value !== "object" || Array.isArray(value)) return false;
   const record = value as Record<string, unknown>;
+  if (record.mode === "none") return true;
+  if (record.mode !== "fixed") return false;
   if (record.unit !== "minute" && record.unit !== "hour") return false;
   return typeof record.duration === "number"
     && Number.isInteger(record.duration)
-    && record.duration >= 1
+    && record.duration >= WORKFLOW_MARKETING_MESSAGE_WAIT_MIN_BY_UNIT[record.unit]
     && record.duration <= WORKFLOW_MARKETING_MESSAGE_WAIT_MAX_BY_UNIT[record.unit];
 }
 

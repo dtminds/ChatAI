@@ -926,7 +926,7 @@ function executionSpecWithMarketingMessage() {
       {
         config: {
           plan: { planId: 701, planName: "双十一触达" },
-          wait: { duration: 1, unit: "hour" as const },
+          wait: { mode: "fixed", duration: 1, unit: "hour" as const },
         },
         id: "marketing-1",
         kind: "marketing-message" as const,

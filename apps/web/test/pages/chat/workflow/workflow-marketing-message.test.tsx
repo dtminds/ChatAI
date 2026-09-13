@@ -52,13 +52,13 @@ describe("workflow Marketing Message node", () => {
       metric: "未选择触达任务",
       status: "warning",
       title: "群发触达",
-      wait: { duration: 1, unit: "minute" },
+      wait: { mode: "none" },
     });
     expect(definition.validate?.(node, { availableVariables: [], edges: [], nodes: [node] }))
       .toEqual([expect.objectContaining({ code: "marketing-message-plan-required" })]);
     expect(definition.validate?.({
       ...node,
-      data: { ...node.data, wait: { duration: 49, unit: "hour" } },
+      data: { ...node.data, wait: { mode: "fixed", duration: 49, unit: "hour" } },
     }, { availableVariables: [], edges: [], nodes: [node] }))
       .toEqual(expect.arrayContaining([expect.objectContaining({ code: "marketing-message-wait-invalid" })]));
     expect(definition.getOutputVariables?.(node)).toEqual([
@@ -68,12 +68,12 @@ describe("workflow Marketing Message node", () => {
       data: {
         ...node.data,
         plan: { planId: 701, planName: "双十一触达" },
-        wait: { duration: 30, unit: "minute" },
+        wait: { mode: "fixed", duration: 30, unit: "minute" },
       },
       kind: "marketing-message",
     })).toEqual({
       plan: { planId: 701, planName: "双十一触达" },
-      wait: { duration: 30, unit: "minute" },
+      wait: { mode: "fixed", duration: 30, unit: "minute" },
     });
   });
 
@@ -97,6 +97,7 @@ describe("workflow Marketing Message node", () => {
       status: "ready",
     }));
 
+    await user.click(screen.getByRole("radio", { name: "等待并查询" }));
     const duration = screen.getByRole("spinbutton", { name: "等待时长" });
     await user.click(screen.getByRole("combobox", { name: "等待时间单位" }));
     await user.click(screen.getByRole("option", { name: "小时" }));
@@ -104,8 +105,16 @@ describe("workflow Marketing Message node", () => {
     fireEvent.blur(duration);
     expect(duration).toHaveValue(48);
     expect(onNodeChange).toHaveBeenLastCalledWith(expect.objectContaining({
-      wait: { duration: 48, unit: "hour" },
+      wait: { mode: "fixed", duration: 48, unit: "hour" },
     }));
+  });
+
+  it("defaults to immediate continuation and disables wait settings", () => {
+    render(<StatefulConfig onNodeChange={vi.fn()} />);
+
+    expect(screen.getByRole("radio", { name: "不等待" })).toBeChecked();
+    expect(screen.getByRole("spinbutton", { name: "等待时长" })).toBeDisabled();
+    expect(screen.getByRole("combobox", { name: "等待时间单位" })).toBeDisabled();
   });
 
   it("shows a disabled create placeholder only for WeCom SOP", () => {
@@ -140,16 +149,16 @@ describe("workflow Marketing Message node", () => {
   it("shows the single push result output and node body snapshot", () => {
     const node = createNode({
       plan: { planId: 701, planName: "双十一触达" },
-      wait: { duration: 30, unit: "minute" },
+      wait: { mode: "fixed", duration: 30, unit: "minute" },
     });
     render(<NodeOutputsSection node={node} />);
-    expect(screen.getByText("推送成功")).toBeInTheDocument();
+    expect(screen.getByText("触达结果")).toBeInTheDocument();
     const fields = marketingMessageNodeUi.body.kind === "fields"
       ? marketingMessageNodeUi.body.getFields(node.data)
       : [];
     expect(fields).toEqual([
       { id: "plan", label: "触达任务", value: { kind: "text", text: "双十一触达" } },
-      { id: "wait", label: "等待时长", value: { kind: "text", text: "30 分钟" } },
+      { id: "wait", label: "执行方式", value: { kind: "text", text: "30 分钟后查询" } },
     ]);
   });
 });

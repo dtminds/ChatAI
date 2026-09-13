@@ -66,6 +66,7 @@ import { HttpWorkflowConversationDirectivePort } from "./conversation-directive-
 import { processWorkflowConversationDirectiveDisableBatch } from "./conversation-directive-worker.js";
 import type { WorkflowLlmTestAdapter } from "./llm-test-adapter.js";
 import { MysqlWorkflowTicketCreateCapabilityPort } from "./ticket-create-capability-port.js";
+import { HttpWorkflowMarketingMessagePort } from "./marketing-message-port.js";
 
 export async function startWorkflowWorkerProcess(env: NodeJS.ProcessEnv = process.env) {
   const config = loadWorkflowWorkerConfig(env);
@@ -209,6 +210,10 @@ export async function startWorkflowWorkerProcess(env: NodeJS.ProcessEnv = proces
       entitlementPort,
       maxTaskAttempts: config.runtime.maxTaskAttempts,
       messageQueryPort: new MysqlWorkflowMessageQueryPort(database),
+      marketingMessagePort: new HttpWorkflowMarketingMessagePort({
+        baseUrl: config.javaInternalApi.baseUrl,
+        token: config.javaInternalApi.token,
+      }),
       onEntitlementDeactivated: observation =>
         logWorkflowEntitlementDeactivated(logger, observation),
       inferenceTotalTimeoutMs: config.runtime.inferenceTotalTimeoutMs,
@@ -322,6 +327,7 @@ export * from "./inference-worker.js";
 export * from "./logger.js";
 export * from "./llm-test-adapter.js";
 export * from "./message-capability-port.js";
+export * from "./marketing-message-port.js";
 export * from "./order-query-capability-port.js";
 export * from "./outbox-publisher.js";
 export * from "./observability.js";

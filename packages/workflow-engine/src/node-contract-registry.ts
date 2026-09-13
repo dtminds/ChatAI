@@ -110,6 +110,13 @@ export function projectWorkflowNodeExecutionConfig({
         });
   }
 
+  if (kind === "marketing-message") {
+    return cloneJsonRecord({
+      plan: draftConfig.plan,
+      wait: draftConfig.wait,
+    });
+  }
+
   if (kind === "handoff") {
     return cloneJsonRecord({
       customerMessage: draftConfig.customerMessage ?? [],
@@ -253,6 +260,8 @@ function getWorkflowNodeInvalidConfigMessage(kind: WorkflowNodeKind) {
       return "LLM node requires a model, complete inputs, prompts, and outputs";
     case "message":
       return "Message node requires valid content, node output, or attachments";
+    case "marketing-message":
+      return "Marketing Message node requires a plan and valid wait duration";
     case "wait":
       return "Wait node requires a valid duration or fixed-time configuration";
     case "wait-event":

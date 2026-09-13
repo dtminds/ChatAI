@@ -650,6 +650,7 @@ export class MysqlWorkflowRuntimeRepository implements
   }
 
   beginFixedWait(input: WorkflowBeginFixedWaitInput) {
+    const taskType = input.taskType ?? "wait";
     return this.db.transaction().execute(async (trx) => {
       const processed = await trx.selectFrom(INBOX_TABLE).select("id")
         .where("consumer", "=", input.inbox.consumer)
@@ -674,7 +675,7 @@ export class MysqlWorkflowRuntimeRepository implements
         || task.sequence !== run.sequence
         || task.revision !== run.revision
         || task.nodeId !== run.currentNodeId
-        || task.nodeKind !== "wait"
+        || task.nodeKind !== (taskType === "wait" ? "wait" : "marketing-message")
         || task.taskType !== "execute"
         || input.dueAt <= input.now) return { kind: "conflict" as const };
       const definition = await trx.selectFrom("xy_wap_embed_workflow_definition")
@@ -703,7 +704,7 @@ export class MysqlWorkflowRuntimeRepository implements
         lease_expires_at: null,
         lease_owner: null,
         status: decision === "defer" ? "suspended" : transitionTask(task.status, "pending"),
-        task_type: "wait",
+        task_type: taskType,
         task_version: task.taskVersion + 1,
       }).where("uid", "=", input.uid).where("id", "=", task.id)
         .where("task_version", "=", task.taskVersion)
@@ -729,7 +730,7 @@ export class MysqlWorkflowRuntimeRepository implements
           leaseExpiresAt: null,
           leaseOwner: null,
           status: decision === "defer" ? "suspended" as const : "pending" as const,
-          taskType: "wait",
+          taskType,
           taskVersion: task.taskVersion + 1,
         },
       };
@@ -3245,6 +3246,7 @@ export class MysqlWorkflowRuntimeRepository implements
           || authoritativeTask.nodeId !== run.current_node_id
           || (run.status === "waiting" && (
             (authoritativeTask.taskType !== "wait" && authoritativeTask.taskType !== "wait-event"
+              && authoritativeTask.taskType !== "marketing-message"
               && authoritativeTask.taskType !== "inference"
               && authoritativeTask.taskType !== "ai-collect"
               && !(authoritativeTask.taskType === "execute"
@@ -3776,6 +3778,7 @@ export class MysqlWorkflowRuntimeRepository implements
       const nodeKind = parseRevisionCleanupNodeKind(request.node_kind);
       const expectedTaskType = nodeKind === "wait" ? "wait"
         : nodeKind === "wait-event" ? "wait-event"
+          : nodeKind === "marketing-message" ? "marketing-message"
           : "ai-collect";
       const taskRowsByRunId = new Map<string, (typeof taskRows)[number][]>();
       for (const task of taskRows) {
@@ -5312,8 +5315,8 @@ function mapRevisionCleanup(
   };
 }
 
-function parseRevisionCleanupNodeKind(value: string): "ai-collect" | "wait" | "wait-event" {
-  if (value === "ai-collect" || value === "wait" || value === "wait-event") return value;
+function parseRevisionCleanupNodeKind(value: string): "ai-collect" | "marketing-message" | "wait" | "wait-event" {
+  if (value === "ai-collect" || value === "marketing-message" || value === "wait" || value === "wait-event") return value;
   throw new Error(`Unknown Workflow Revision cleanup node kind: ${value}`);
 }
 
@@ -5616,6 +5619,7 @@ function parseNodeKind(value: string): WorkflowNodeKind {
     "branch",
     "ratio-split",
     "message",
+    "marketing-message",
     "message-query",
     "tag",
     "coupon",

@@ -17,6 +17,7 @@ export * from "./http-order-query-capability-port.js";
 export * from "./live-revision-routing.js";
 export * from "./message.js";
 export * from "./message-query.js";
+export * from "./marketing-message.js";
 export * from "./workflow-messages.js";
 export * from "./workflow-date.js";
 export * from "./workflow-ai-usage.js";

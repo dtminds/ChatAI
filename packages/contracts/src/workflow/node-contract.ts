@@ -31,6 +31,10 @@ import {
   WORKFLOW_MESSAGES_SCHEMA_REF,
 } from "./messages.js";
 import {
+  WorkflowMarketingMessageDraftConfigSchema,
+  WorkflowMarketingMessageExecutionConfigSchema,
+} from "./marketing-message.js";
+import {
   getWorkflowCapabilityProfile,
   getWorkflowGuaranteedVariableCatalog,
   type WorkflowType,
@@ -735,6 +739,13 @@ export const workflowNodeContractRegistry = {
     WorkflowMessageExecutionConfigSchema,
     ["thirdExternalUserId"],
   ),
+  "marketing-message": runtimeReadyContract(
+    "composite",
+    1,
+    WorkflowMarketingMessageDraftConfigSchema,
+    WorkflowMarketingMessageExecutionConfigSchema,
+    ["externalUserId"],
+  ),
   "message-query": runtimeReadyContract(
     "query",
     1,
@@ -1165,6 +1176,15 @@ export function getWorkflowNodeOutputContracts(
         key: "rangeEnd",
         usages: ["time-reference", "variable"],
         valueType: { kind: "datetime" },
+      },
+    ];
+  }
+  if (kind === "marketing-message") {
+    return [
+      {
+        key: "pushSuccess",
+        usages: ["variable"],
+        valueType: { kind: "boolean" },
       },
     ];
   }

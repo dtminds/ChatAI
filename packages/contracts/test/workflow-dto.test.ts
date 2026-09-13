@@ -150,6 +150,7 @@ describe("workflow contracts", () => {
       "wait",
       "wait-event",
       "message",
+      "marketing-message",
       "message-query",
       "handoff",
       "agent",

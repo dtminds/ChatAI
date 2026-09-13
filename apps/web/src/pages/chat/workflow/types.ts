@@ -23,6 +23,7 @@ import type {
   WorkflowLlmOutputField as SharedWorkflowLlmOutputField,
   WorkflowLlmOutputFieldType as SharedWorkflowLlmOutputFieldType,
   WorkflowMessageDraftConfig,
+  WorkflowMarketingMessageDraftConfig,
   WorkflowMessageQueryConfig,
   WorkflowOrderBindDraftConfig,
   WorkflowOrderConversionDraftConfig,
@@ -135,6 +136,7 @@ export type WorkflowNodeOutputDefinition = {
 export type WorkflowVariableContentSegment = SharedWorkflowVariableContentSegment;
 
 export type MessageNodeData = WorkflowNodeDataBase<"message"> & WorkflowMessageDraftConfig;
+export type MarketingMessageNodeData = WorkflowNodeDataBase<"marketing-message"> & WorkflowMarketingMessageDraftConfig;
 export type MessageQueryNodeData = WorkflowNodeDataBase<"message-query"> & WorkflowMessageQueryConfig;
 export type WorkflowWaitEventType = "message.received";
 export type WorkflowWaitEventDelayUnit = "day" | "hour" | "minute" | "second";
@@ -183,6 +185,7 @@ export type WorkflowNodeDataMap = {
   handoff: HandoffNodeData;
   llm: LlmNodeData;
   message: MessageNodeData;
+  "marketing-message": MarketingMessageNodeData;
   "message-query": MessageQueryNodeData;
   "order-bind": OrderBindNodeData;
   "order-query": OrderQueryNodeData;

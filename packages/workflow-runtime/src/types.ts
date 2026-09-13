@@ -574,7 +574,7 @@ export type WorkflowRevisionCleanupRecord = {
   leaseOwner: string | null;
   nextAttemptAt: Date;
   nodeId: string;
-  nodeKind: "ai-collect" | "wait" | "wait-event";
+  nodeKind: "ai-collect" | "marketing-message" | "wait" | "wait-event";
   revision: number;
   status: WorkflowRevisionCleanupStatus;
   uid: number;
@@ -699,6 +699,7 @@ export type WorkflowBeginFixedWaitInput = {
   now: Date;
   runId: string;
   taskId: string;
+  taskType?: "marketing-message" | "wait";
   uid: number;
 };
 

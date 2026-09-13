@@ -47,6 +47,7 @@ import { MysqlWorkflowDataReader } from "./workflow-data-mysql.repository.js";
 import { WorkflowDataService } from "./workflow-data.service.js";
 import { createWecomContactJavaClient } from "./wecom-contact-java-client.js";
 import { registerAudienceGroupRoutes } from "./audience-group.routes.js";
+import { registerMarketingPlanRoutes } from "./marketing-plan.routes.js";
 import { canViewInsightsWorkerObservability } from "../insights/insights-worker-observer-access.js";
 import { createJavaWorkflowDirectEntryEndpointPort } from "./direct-entry-endpoint-port.js";
 import { getWorkflowActiveRunLimit } from "../../config/env.js";
@@ -151,6 +152,7 @@ export async function registerWorkflowRoutes(
     },
   );
   await registerAudienceGroupRoutes(app);
+  await registerMarketingPlanRoutes(app);
   const dataService = options.dataService ?? new WorkflowDataService(
     new MysqlWorkflowDataReader(app.db, {
       logger: app.log,

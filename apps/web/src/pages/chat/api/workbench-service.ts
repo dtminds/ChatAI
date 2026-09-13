@@ -1,12 +1,12 @@
 import { createHttpWorkbenchService } from "./workbench-http-service";
 import { createMockWorkbenchService } from "./workbench-mock-service";
-import type { WorkbenchService } from "./workbench-contract";
+import type { WorkbenchService } from "./workbench-service-types";
 
 export type {
   WorkbenchConversationListOptions,
   WorkbenchService,
   WorkbenchServiceMode,
-} from "./workbench-contract";
+} from "./workbench-service-types";
 export { createHttpWorkbenchService } from "./workbench-http-service";
 export { createMockWorkbenchService } from "./workbench-mock-service";
 

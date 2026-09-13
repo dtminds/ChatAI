@@ -104,7 +104,7 @@ import {
   type WorkbenchQuickReplyUpdateRequest,
 } from "@chatai/contracts";
 
-import type { WorkbenchService } from "./workbench-contract";
+import type { WorkbenchService } from "./workbench-service-types";
 
 const COMPOSER_AI_EDIT_TIMEOUT_MS = 35_000;
 const VIDEO_MATERIAL_COLLECT_TIMEOUT_MS = 130000;

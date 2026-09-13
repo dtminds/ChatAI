@@ -10,7 +10,7 @@ import {
   normalizeQuickReplyAttachments,
   validateQuickReplyPayload,
 } from "@chatai/contracts";
-import type { WorkbenchService } from "./workbench-contract";
+import type { WorkbenchService } from "./workbench-service-types";
 import {
   filterMockHistoryMessages,
   normalizeHistoryLimit,

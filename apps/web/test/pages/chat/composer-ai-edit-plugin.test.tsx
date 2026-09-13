@@ -549,6 +549,62 @@ describe("ComposerAiEditPlugin", () => {
     expect(screen.getByTestId("composer-ai-edit-surface")).toBeInTheDocument();
   });
 
+  it("anchors the AI entry to the first line of a multi-line selection", async () => {
+    render(
+      <LexicalComposer
+        initialConfig={{
+          namespace: "composer-ai-edit-multi-line-selection-test",
+          nodes: [
+            ComposerEmojiNode,
+            ComposerImageNode,
+            ComposerLiteAttachmentNode,
+            ComposerMentionNode,
+          ],
+          onError(error) {
+            throw error;
+          },
+        }}
+      >
+        <PlainTextPlugin
+          contentEditable={<ContentEditable aria-label="消息输入" />}
+          ErrorBoundary={LexicalErrorBoundary}
+        />
+        <SeedComposerText />
+        <ComposerAiEditPlugin canEdit conversationId="conversation-1" />
+      </LexicalComposer>,
+    );
+
+    const editor = await screen.findByRole("textbox", { name: "消息输入" });
+    await waitFor(() => expect(editor).toHaveTextContent(DEFAULT_COMPOSER_TEXT));
+    const textNode = document
+      .createTreeWalker(editor, NodeFilter.SHOW_TEXT)
+      .nextNode();
+    expect(textNode).not.toBeNull();
+    const range = document.createRange();
+    range.selectNodeContents(textNode!);
+    Object.defineProperties(range, {
+      getBoundingClientRect: {
+        value: () => new DOMRect(70, 120, 400, 48),
+      },
+      getClientRects: {
+        value: () => [
+          new DOMRect(180, 120, 290, 20),
+          new DOMRect(70, 148, 220, 20),
+        ],
+      },
+    });
+    const selection = window.getSelection();
+    selection?.removeAllRanges();
+    selection?.addRange(range);
+    fireEvent(document, new Event("selectionchange"));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("composer-ai-edit-surface")).toHaveStyle({
+        left: "180px",
+      });
+    });
+  });
+
   it("hides the AI entry when the DOM selection moves outside the Composer", async () => {
     render(
       <>

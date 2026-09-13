@@ -177,7 +177,10 @@ export function ComposerAiEditPlugin({
       return;
     }
 
-    const rect = range?.getBoundingClientRect?.() ?? (range ? new DOMRect() : null);
+    const rect =
+      Array.from(range.getClientRects()).find(
+        (clientRect) => clientRect.width > 0 && clientRect.height > 0,
+      ) ?? range.getBoundingClientRect();
 
     if (!rect) {
       return;

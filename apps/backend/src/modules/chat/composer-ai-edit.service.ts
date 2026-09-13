@@ -75,6 +75,7 @@ export class ComposerAiEditService {
     subUserId: string,
     scope: AuthenticatedWorkbenchScope,
     input: ComposerAiEditRequest,
+    requestSignal?: AbortSignal,
   ): Promise<ComposerAiEditResponse> {
     await this.assertOperableConversation(subUserId, scope, input.conversationId);
 
@@ -87,8 +88,11 @@ export class ComposerAiEditService {
 
     await this.quota.reserve(scope.uid);
 
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), this.timeoutMs);
+    const timeoutController = new AbortController();
+    const timeout = setTimeout(() => timeoutController.abort(), this.timeoutMs);
+    const signal = requestSignal
+      ? AbortSignal.any([requestSignal, timeoutController.signal])
+      : timeoutController.signal;
 
     try {
       const response = await this.fetch(
@@ -114,7 +118,7 @@ export class ComposerAiEditService {
             "Content-Type": "application/json",
           },
           method: "POST",
-          signal: controller.signal,
+          signal,
         },
       );
 
@@ -151,8 +155,15 @@ export class ComposerAiEditService {
         throw error;
       }
 
+      if (requestSignal?.aborted) {
+        throw new BadGatewayError(
+          "COMPOSER_AI_EDIT_CLIENT_ABORTED",
+          "AI 助写请求已取消",
+        );
+      }
+
       throw new BadGatewayError(
-        controller.signal.aborted
+        timeoutController.signal.aborted
           ? "COMPOSER_AI_EDIT_TIMEOUT"
           : "COMPOSER_AI_EDIT_REQUEST_FAILED",
         "AI 助写暂时不可用",

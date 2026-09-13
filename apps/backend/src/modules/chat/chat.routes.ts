@@ -2040,13 +2040,36 @@ export async function registerChatRoutes(app: FastifyInstance) {
         body: ComposerAiEditRequestSchema,
       },
     },
-    async (request) => {
+    async (request, reply) => {
       assertChatWriteAccess(request);
-      return app.composerAiEditService.rewrite(
-        getSubUserId(request),
-        getAuthenticatedWorkbenchScope(request.user),
-        request.body satisfies ComposerAiEditRequest,
-      );
+      const abortController = new AbortController();
+      const abortOnRequestAborted = () => abortController.abort();
+      const abortOnResponseClosed = () => {
+        if (!reply.raw.writableEnded) {
+          abortController.abort();
+        }
+      };
+
+      request.raw.once("aborted", abortOnRequestAborted);
+      reply.raw.once("close", abortOnResponseClosed);
+
+      try {
+        return await app.composerAiEditService.rewrite(
+          getSubUserId(request),
+          getAuthenticatedWorkbenchScope(request.user),
+          request.body satisfies ComposerAiEditRequest,
+          abortController.signal,
+        );
+      } catch (error) {
+        if (abortController.signal.aborted) {
+          return;
+        }
+
+        throw error;
+      } finally {
+        request.raw.off("aborted", abortOnRequestAborted);
+        reply.raw.off("close", abortOnResponseClosed);
+      }
     },
   );
 

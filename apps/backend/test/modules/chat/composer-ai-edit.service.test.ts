@@ -323,4 +323,48 @@ describe("ComposerAiEditService", () => {
     ).rejects.toBe(quotaError);
     expect(fetch).not.toHaveBeenCalled();
   });
+
+  it("aborts the model request when the caller disconnects", async () => {
+    const requestController = new AbortController();
+    let resolveFetchStarted: (() => void) | undefined;
+    const fetchStarted = new Promise<void>((resolve) => {
+      resolveFetchStarted = resolve;
+    });
+    const fetch = vi.fn().mockImplementation(
+      (_url: string, init: RequestInit) => new Promise<Response>((_resolve, reject) => {
+        const signal = init.signal as AbortSignal;
+        signal.addEventListener("abort", () => {
+          reject(new DOMException("The operation was aborted", "AbortError"));
+        }, { once: true });
+        resolveFetchStarted?.();
+      }),
+    );
+    const service = new ComposerAiEditService({
+      apiKey: "test-key",
+      fetch,
+      quota: createQuota(),
+      repository: createRepository(),
+    });
+
+    const rewrite = service.rewrite(
+      "sub-1",
+      { platform: 5, uid: 9 },
+      {
+        action: "polish",
+        content: "这是待改文案",
+        contextAfter: "",
+        contextBefore: "",
+        conversationId: "conversation-1",
+        rewriteMode: "full",
+      },
+      requestController.signal,
+    );
+    await fetchStarted;
+
+    requestController.abort();
+
+    await expect(rewrite).rejects.toMatchObject({
+      code: "COMPOSER_AI_EDIT_CLIENT_ABORTED",
+    });
+  });
 });

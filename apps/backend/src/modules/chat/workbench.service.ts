@@ -78,7 +78,6 @@ import type {
   WorkbenchCustomerLastConversationResponse,
   WorkbenchCustomerRelationConversationsResponse,
   WorkbenchCustomerSeatRelationsResponse,
-  MaterialCollectionBizType,
   WorkbenchMaterialCollectionCreateRequest,
   WorkbenchMaterialCollectionCreateResponse,
   WorkbenchMaterialCollectionGroupCreateRequest,
@@ -90,7 +89,6 @@ import type {
   WorkbenchMaterialCollectionListResponse,
   WorkbenchMaterialCollectionMoveRequest,
   WorkbenchMaterialCollectionOkResponse,
-  WorkbenchMaterialCollectionContentType,
   WorkbenchMaterialCollectionUpdateRequest,
   WorkbenchQuickReplyBatchCreateRequest,
   WorkbenchQuickReplyBatchCreateResponse,
@@ -183,7 +181,6 @@ const MESSAGE_REVOKE_CLOCK_SKEW_TOLERANCE_MS = 5 * 1000;
 const FULL_AUTO_SYSTEM_MESSAGE_DEDUPE_WINDOW_MS = 120 * 1000;
 const SMART_REPLY_MESSAGE_PAGE_CANDIDATE_LIMIT = 5;
 const SMART_REPLY_TRIGGER_RAW_MSGTYPES = new Set(["text", "image", "voice"]);
-const MATERIAL_COLLECTION_GROUP_TITLE_MAX_LENGTH = 10;
 const DEFAULT_H5_COVER_URL = "https://b5.bokr.com.cn/dist/default-cover.png";
 
 type SmartReplyMessagePageMetadata = {

@@ -40,7 +40,6 @@ export class WorkbenchKnowledgeService {
     this.logger.info(
       {
         conversationId: request.conversationId,
-        list: response.list,
         listLength: response.list.length,
         operation: "list-knowledge-page",
         uid: conversation.uid,
@@ -106,7 +105,6 @@ export class WorkbenchKnowledgeService {
       {
         conversationId: request.conversationId,
         knowledgeId,
-        list: response.list,
         listLength: response.list.length,
         operation: "list-knowledge-doc-page",
         uid: conversation.uid,

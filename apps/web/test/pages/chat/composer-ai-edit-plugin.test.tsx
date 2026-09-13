@@ -110,15 +110,15 @@ describe("ComposerAiEditPlugin", () => {
 
     await screen.findByTestId("composer-ai-edit-surface");
     const assistantAvatar = screen.getByTestId("composer-ai-assistant-avatar");
-    expect(assistantAvatar).toHaveAttribute("width", "40");
-    expect(assistantAvatar).toHaveAttribute("height", "40");
+    expect(assistantAvatar).toHaveAttribute("width", "28");
+    expect(assistantAvatar).toHaveAttribute("height", "28");
     expect(assistantAvatar).toHaveAttribute(
       "data-assistant-id",
       "chatai-composer-ai-assistant-v1",
     );
     expect(assistantAvatar.querySelector(".mo-always")).not.toBeNull();
     expect(useGazeMock).toHaveBeenLastCalledWith({
-      lookAt: null,
+      lookAt: "pointer",
       travel: 12,
     });
     expect(screen.queryByRole("textbox", { name: "自定义 AI 助写要求" })).not.toBeInTheDocument();
@@ -502,7 +502,7 @@ describe("ComposerAiEditPlugin", () => {
     expect(toastErrorMock).not.toHaveBeenCalled();
   });
 
-  it("waits until mouse selection ends before showing the AI entry", async () => {
+  it("shows the AI entry immediately after pointer selection ends", async () => {
     render(
       <LexicalComposer
         initialConfig={{
@@ -543,13 +543,13 @@ describe("ComposerAiEditPlugin", () => {
     fireEvent(document, new Event("selectionchange"));
     await screen.findByTestId("composer-ai-edit-surface");
 
-    fireEvent.mouseDown(editor, { button: 0 });
+    fireEvent.pointerDown(editor, { button: 0, isPrimary: true, pointerId: 1 });
     fireEvent(document, new Event("selectionchange"));
     expect(screen.queryByTestId("composer-ai-edit-surface")).not.toBeInTheDocument();
 
-    fireEvent.mouseUp(document, { button: 0 });
+    fireEvent.pointerUp(document, { button: 0, isPrimary: true, pointerId: 1 });
 
-    await screen.findByTestId("composer-ai-edit-surface");
+    expect(screen.getByTestId("composer-ai-edit-surface")).toBeInTheDocument();
   });
 
   it("hides the AI entry when the selected text exceeds 200 characters", async () => {

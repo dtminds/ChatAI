@@ -21,6 +21,7 @@ import { useLexicalComposerContext } from "@lexical/react/LexicalComposerContext
 import { thinking } from "blobatar/expression";
 import "blobatar/gaze.css";
 import "blobatar/motion.css";
+import { COMMAND_PRIORITY_LOW, SELECTION_CHANGE_COMMAND } from "lexical";
 import {
   COMPOSER_AI_EDIT_INPUT_MAX_LENGTH,
   COMPOSER_AI_EDIT_INPUT_MIN_LENGTH,
@@ -116,17 +117,17 @@ export function ComposerAiEditPlugin({
   const [activeAction, setActiveAction] = useState<ComposerAiEditAction | null>(null);
   const [result, setResult] = useState("");
   const [quotaUnavailableDialogOpen, setQuotaUnavailableDialogOpen] = useState(false);
-  const isMouseSelectingRef = useRef(false);
+  const isPointerSelectingRef = useRef(false);
   const contentRef = useRef<HTMLDivElement | null>(null);
-  const [surfaceHeight, setSurfaceHeight] = useState(40);
+  const [surfaceHeight, setSurfaceHeight] = useState(36);
   const { ref: assistantGazeRef } = useGaze({
-    lookAt: editState === "menu" && menuOpen ? "pointer" : null,
+    lookAt: editState === "loading" ? null : "pointer",
     travel: 12,
   });
 
   const readSelection = useCallback(() => {
     if (
-      isMouseSelectingRef.current ||
+      isPointerSelectingRef.current ||
       editState === "preview" ||
       editState === "loading" ||
       menuOpen
@@ -136,7 +137,7 @@ export function ComposerAiEditPlugin({
 
     let nextSnapshot: ComposerTextSelectionSnapshot | null = null;
 
-    editor.getEditorState().read(() => {
+    editor.read("latest", () => {
       nextSnapshot = $getComposerTextSelectionSnapshot();
     });
 
@@ -190,9 +191,16 @@ export function ComposerAiEditPlugin({
     const unregister = editor.registerUpdateListener(() => {
       readSelection();
     });
-    const handleSelectionChange = () => readSelection();
-    const handleMouseDown = (event: MouseEvent) => {
-      if (event.button !== 0) {
+    const unregisterSelectionChange = editor.registerCommand(
+      SELECTION_CHANGE_COMMAND,
+      () => {
+        readSelection();
+        return false;
+      },
+      COMMAND_PRIORITY_LOW,
+    );
+    const handlePointerDown = (event: PointerEvent) => {
+      if (!event.isPrimary || event.button !== 0) {
         return;
       }
 
@@ -203,7 +211,7 @@ export function ComposerAiEditPlugin({
         return;
       }
 
-      isMouseSelectingRef.current = true;
+      isPointerSelectingRef.current = true;
 
       if (editState === "menu") {
         setSelection(null);
@@ -211,13 +219,13 @@ export function ComposerAiEditPlugin({
         setToneMenuOpen(false);
       }
     };
-    const handleMouseUp = () => {
-      if (!isMouseSelectingRef.current) {
+    const handlePointerEnd = () => {
+      if (!isPointerSelectingRef.current) {
         return;
       }
 
-      isMouseSelectingRef.current = false;
-      window.setTimeout(readSelection, 0);
+      isPointerSelectingRef.current = false;
+      readSelection();
     };
     const handleViewportChange = () => {
       if (selection) {
@@ -225,19 +233,20 @@ export function ComposerAiEditPlugin({
       }
     };
 
-    document.addEventListener("selectionchange", handleSelectionChange);
-    document.addEventListener("mousedown", handleMouseDown);
-    document.addEventListener("mouseup", handleMouseUp);
-    window.addEventListener("blur", handleMouseUp);
+    document.addEventListener("pointerdown", handlePointerDown);
+    document.addEventListener("pointerup", handlePointerEnd);
+    document.addEventListener("pointercancel", handlePointerEnd);
+    window.addEventListener("blur", handlePointerEnd);
     window.addEventListener("resize", handleViewportChange);
     window.addEventListener("scroll", handleViewportChange, true);
 
     return () => {
       unregister();
-      document.removeEventListener("selectionchange", handleSelectionChange);
-      document.removeEventListener("mousedown", handleMouseDown);
-      document.removeEventListener("mouseup", handleMouseUp);
-      window.removeEventListener("blur", handleMouseUp);
+      unregisterSelectionChange();
+      document.removeEventListener("pointerdown", handlePointerDown);
+      document.removeEventListener("pointerup", handlePointerEnd);
+      document.removeEventListener("pointercancel", handlePointerEnd);
+      window.removeEventListener("blur", handlePointerEnd);
       window.removeEventListener("resize", handleViewportChange);
       window.removeEventListener("scroll", handleViewportChange, true);
     };
@@ -382,7 +391,7 @@ export function ComposerAiEditPlugin({
 
   useLayoutEffect(() => {
     if (!isExpanded) {
-      setSurfaceHeight(40);
+      setSurfaceHeight(36);
       return;
     }
 
@@ -413,7 +422,7 @@ export function ComposerAiEditPlugin({
   const left = selection
     ? Math.max(
         8,
-        Math.min(selection.rect.left, window.innerWidth - (isExpanded ? 360 : 48)),
+        Math.min(selection.rect.left, window.innerWidth - (isExpanded ? 360 : 44)),
       )
     : 8;
 
@@ -447,7 +456,7 @@ export function ComposerAiEditPlugin({
             "fixed z-50 overflow-visible text-[13px] text-popover-foreground transition-[width,height] duration-200 ease-out",
             isExpanded
               ? "w-[min(22rem,calc(100vw-1rem))] overflow-hidden rounded-[10px] border border-border bg-popover shadow-[0_12px_32px_var(--shadow-soft)]"
-              : "h-10 w-10",
+              : "h-9 w-9",
             "-translate-y-full",
           )}
           data-testid="composer-ai-edit-surface"
@@ -553,13 +562,13 @@ export function ComposerAiEditPlugin({
                     <DropdownMenuTrigger asChild>
                       <button
                         aria-label="打开 AI 助写菜单"
-                        className="inline-flex h-10 w-10 cursor-pointer items-center justify-center bg-transparent p-0 outline-none focus-visible:rounded-full focus-visible:ring-2 focus-visible:ring-ring/30"
+                        className="inline-flex h-9 w-9 cursor-pointer items-center justify-center rounded-[8px] border border-border bg-popover p-0 text-foreground shadow-[0_4px_12px_var(--shadow-soft)] outline-none focus-visible:ring-2 focus-visible:ring-ring/20"
                         onMouseDown={(event) => event.preventDefault()}
                         type="button"
                       >
                         <ComposerAiAssistantAvatar
                           gazeRef={assistantGazeRef}
-                          size={40}
+                          size={28}
                         />
                       </button>
                     </DropdownMenuTrigger>
@@ -654,7 +663,7 @@ function ComposerAiAssistantAvatar({
       expression={isThinking ? thinking : undefined}
       name={COMPOSER_AI_ASSISTANT_ID}
       size={size}
-      traits={{ shape: 0.11 }}
+      traits={{ shape: 0.11, "body.r": 0.999 }}
     />
   );
 }

@@ -4,7 +4,7 @@ import {
   type WorkflowMarketingPlanListItem,
   type WorkflowMarketingPlanSnapshot,
 } from "@chatai/contracts";
-import { Search01Icon } from "@hugeicons/core-free-icons";
+import { ArrowDown01Icon, Search01Icon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { useEffect, useRef, useState } from "react";
 import { Badge } from "@/components/ui/badge";
@@ -84,7 +84,13 @@ export function MarketingPlanSelector({ onChange, value }: {
       variant="outline"
     >
       <span className={cn("truncate", !value && "text-muted-foreground")}>{value?.planName ?? "请选择触达任务"}</span>
-      <span aria-hidden="true" className="text-muted-foreground">选择</span>
+      <HugeiconsIcon
+        aria-hidden="true"
+        className="shrink-0 text-muted-foreground"
+        icon={ArrowDown01Icon}
+        size={16}
+        strokeWidth={1.8}
+      />
     </Button>
     <Dialog onOpenChange={setDialogOpen} open={open}>
       <DialogContent className="flex max-h-[calc(100vh-2rem)] w-[min(720px,calc(100vw-2rem))] max-w-[720px] flex-col gap-0 overflow-hidden p-0">

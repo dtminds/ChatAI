@@ -376,6 +376,50 @@ describe("workflow runtime repository", () => {
     expect(repository.tasks.find(task => task.id === created.task.id)?.status).toBe("cancelled");
   });
 
+  it("cleans a deleted Marketing Message node while its run is waiting", async () => {
+    const now = new Date("2026-07-10T00:00:00.000Z");
+    const repository = new InMemoryWorkflowRuntimeRepository(
+      undefined,
+      () => now,
+      async () => ({
+        executionSpec: publishedSpec(),
+        revision: 2,
+        subjectType: "chatai_contact",
+        workflowType: "chatai_sop",
+      }),
+    );
+    const waiting = await createWaitingMarketingMessageRun(repository, "cleanup-marketing-message");
+    const cleanup = repository.addRevisionCleanupRequest({
+      nodeId: "marketing-1",
+      nodeKind: "marketing-message",
+      revision: 2,
+      uid: 9,
+      workflowId: "31",
+    });
+    await repository.claimRevisionCleanupBatch({
+      leaseExpiresAt: new Date("2026-07-10T00:01:00.000Z"),
+      leaseOwner: "cleanup-worker",
+      limit: 1,
+      maxAttempts: 5,
+      now,
+    });
+
+    await expect(repository.processRevisionCleanupBatch({
+      cleanupId: cleanup.id,
+      leaseOwner: "cleanup-worker",
+      limit: 1,
+      now,
+    })).resolves.toMatchObject({ cancelled: 1, kind: "success", status: "done" });
+    expect(repository.runs.find(run => run.id === waiting.run.id)).toMatchObject({
+      status: "cancelled",
+      terminalReason: "flow_changed_current_node_deleted",
+    });
+    expect(repository.tasks.find(task => task.id === waiting.task.id)).toMatchObject({
+      status: "cancelled",
+      taskType: "marketing-message",
+    });
+  });
+
   it("cleans a deleted AI Collect node while its run is waiting", async () => {
     const now = new Date("2026-07-10T00:00:00.000Z");
     const repository = new InMemoryWorkflowRuntimeRepository(
@@ -1438,6 +1482,46 @@ async function createWaitingRun(
     now: new Date("2026-07-10T00:00:00.000Z"),
     runId: created.run.id,
     taskId: claimed.task.id,
+    uid: 9,
+  });
+  if (waiting.kind !== "success") throw new Error("wait failed");
+  return waiting;
+}
+
+async function createWaitingMarketingMessageRun(
+  repository: InMemoryWorkflowRuntimeRepository,
+  entryEventId: string,
+) {
+  const now = new Date("2026-07-10T00:00:00.000Z");
+  const created = await repository.createRunWithInitialTask({
+    ...createRunInput(),
+    entryEventId,
+    initialNodeId: "marketing-1",
+    initialNodeKind: "marketing-message",
+    subjectId: entryEventId,
+  });
+  if (created.kind !== "success") throw new Error("create failed");
+  const claimed = await repository.claimTask({
+    expectedTaskVersion: created.task.taskVersion,
+    leaseExpiresAt: new Date("2026-07-10T00:01:00.000Z"),
+    leaseOwner: "task-worker",
+    taskId: created.task.id,
+    uid: 9,
+  });
+  if (claimed.kind !== "success") throw new Error("claim failed");
+  const waiting = await repository.beginFixedWait({
+    dueAt: new Date("2026-07-11T00:00:00.000Z"),
+    expectedRunLockVersion: created.run.lockVersion,
+    expectedTaskVersion: claimed.task.taskVersion,
+    inbox: {
+      consumer: "workflow-task",
+      expiresAt: new Date("2026-08-10T00:00:00.000Z"),
+      messageId: `marketing-message:${entryEventId}`,
+    },
+    now,
+    runId: created.run.id,
+    taskId: claimed.task.id,
+    taskType: "marketing-message",
     uid: 9,
   });
   if (waiting.kind !== "success") throw new Error("wait failed");

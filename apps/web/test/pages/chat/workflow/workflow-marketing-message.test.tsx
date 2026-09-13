@@ -51,7 +51,7 @@ describe("workflow Marketing Message node", () => {
       metric: "未选择触达任务",
       status: "warning",
       title: "群发触达",
-      wait: { duration: 1, unit: "hour" },
+      wait: { duration: 1, unit: "minute" },
     });
     expect(definition.validate?.(node, { availableVariables: [], edges: [], nodes: [node] }))
       .toEqual([expect.objectContaining({ code: "marketing-message-plan-required" })]);

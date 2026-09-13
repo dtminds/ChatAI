@@ -18,7 +18,7 @@ const base = createStandardNodeDefinition({
 
 export const marketingMessageNodeDefinition: WorkflowNodeDefinition<"marketing-message"> = {
   ...base,
-  createDefaultData: () => ({ ...base.createDefaultData(), status: "warning", wait: { duration: 1, unit: "hour" } }),
+  createDefaultData: () => ({ ...base.createDefaultData(), status: "warning", wait: { duration: 1, unit: "minute" } }),
   getOutputVariables: () => [{
     description: "等待结束后查询到的聚合推送结果",
     key: "pushSuccess",

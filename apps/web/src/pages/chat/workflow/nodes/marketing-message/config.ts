@@ -23,10 +23,10 @@ export function toMarketingPlanSnapshot(
 
 export function normalizeMarketingMessageWait(value: unknown): WorkflowMarketingMessageWait {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
-    return { duration: 1, unit: "hour" };
+    return { duration: 1, unit: "minute" };
   }
   const record = value as Record<string, unknown>;
-  const unit = record.unit === "minute" ? "minute" : "hour";
+  const unit = record.unit === "hour" ? "hour" : "minute";
   const maximum = WORKFLOW_MARKETING_MESSAGE_WAIT_MAX_BY_UNIT[unit];
   const duration = typeof record.duration === "number" && Number.isInteger(record.duration)
     ? Math.min(maximum, Math.max(1, record.duration))

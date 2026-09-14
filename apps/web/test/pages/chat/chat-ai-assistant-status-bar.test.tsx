@@ -62,20 +62,18 @@ describe("ChatAIAssistantStatusBar", () => {
     vi.useRealTimers();
   });
 
-  it("waits for the named customer without activating the border beam", () => {
+  it("waits for the named customer without rendering a border beam", () => {
     render(
       <ChatAIAssistantStatusBar customerName="客户甲" status="waiting" />,
     );
 
-    expect(screen.getByText("等待 客户甲 消息")).toBeInTheDocument();
-    expect(screen.getByTestId("ai-assistant-border-beam")).toHaveAttribute(
-      "data-active",
-      "false",
+    expect(screen.getByRole("status")).toHaveTextContent(
+      "正在等待 客户甲 的消息",
     );
-    expect(screen.getByTestId("ai-assistant-border-beam")).toHaveAttribute(
-      "data-border-radius",
-      "999",
-    );
+    expect(screen.getByText("客户甲").tagName).toBe("STRONG");
+    expect(
+      screen.queryByTestId("ai-assistant-border-beam"),
+    ).not.toBeInTheDocument();
     expect(screen.getByTestId("chat-ai-assistant-status-bar")).toHaveAttribute(
       "data-mode",
       "wait",

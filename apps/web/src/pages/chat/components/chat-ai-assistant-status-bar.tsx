@@ -23,8 +23,49 @@ type StatusBarView = {
   status: ChatAIAssistantStatus;
 };
 
-type StatusBarMode = "wait" | "on";
+type OnStatusBarStatus = Exclude<ChatAIAssistantStatus, "waiting">;
 type BeamTheme = "light" | "dark";
+
+type OnStatusBarThemeStyles = {
+  approveButton: string;
+  beamBrightness: number;
+  beamColorVariant: "colorful" | "ocean";
+  beamSaturation: number;
+  content: string;
+  ignoreButton: string;
+  orb?: string;
+  surface: string;
+  text: string;
+};
+
+const ON_STATUS_BAR_THEME_STYLES: Record<
+  BeamTheme,
+  OnStatusBarThemeStyles
+> = {
+  light: {
+    approveButton:
+      "bg-neutral-strong text-neutral-strong-foreground hover:bg-neutral-strong/90 hover:text-neutral-strong-foreground",
+    beamBrightness: 2.1,
+    beamColorVariant: "colorful",
+    beamSaturation: 0.5,
+    content: "text-muted-foreground",
+    ignoreButton:
+      "text-muted-foreground hover:bg-muted hover:text-foreground",
+    surface: "bg-muted/80 backdrop-blur-xs",
+    text: "text-muted-foreground",
+  },
+  dark: {
+    approveButton: "bg-white text-neutral-900 hover:bg-white/90",
+    beamBrightness: 1.2,
+    beamColorVariant: "ocean",
+    beamSaturation: 0.15,
+    content: "text-white/90",
+    ignoreButton: "text-white/70 hover:bg-white/10 hover:text-white",
+    orb: "opacity-85",
+    surface: "bg-neutral-800",
+    text: "text-white/90",
+  },
+};
 
 export function ChatAIAssistantStatusBar({
   className,
@@ -110,6 +151,7 @@ export function ChatAIAssistantStatusBar({
         >
           <StatusBarSurface
             beamTheme={beamTheme}
+            customerName={customerName}
             onApprove={onApprove}
             onIgnore={onIgnore}
             thinkingActions={thinkingActions}
@@ -137,6 +179,7 @@ export function ChatAIAssistantStatusBar({
       >
         <StatusBarSurface
           beamTheme={beamTheme}
+          customerName={customerName}
           onApprove={onApprove}
           onIgnore={onIgnore}
           thinkingActions={thinkingActions}
@@ -149,77 +192,126 @@ export function ChatAIAssistantStatusBar({
 
 function StatusBarSurface({
   beamTheme,
+  customerName,
   onApprove,
   onIgnore,
   thinkingActions,
   view,
 }: {
   beamTheme: BeamTheme;
+  customerName?: string;
   onApprove?: () => void;
   onIgnore?: () => void;
   thinkingActions?: ReactNode;
   view: StatusBarView;
 }) {
-  const mode = getStatusBarMode(view.status);
-  const isOn = mode === "on";
-  const isDarkOnSurface = isOn && beamTheme === "dark";
-  const beamSize = view.status === "thinking" ? "pulse-inner" : "line";
-  const actions =
-    view.status === "thinking"
-      ? thinkingActions
-      : view.status === "confirmation"
-        ? (
-            <div className="flex shrink-0 items-center gap-1.5">
-              <Button
-                className={cn(
-                  "h-7 rounded-[8px] px-3 text-xs shadow-none",
-                  isDarkOnSurface
-                    ? "text-white/70 hover:bg-white/10 hover:text-white"
-                    : "text-muted-foreground hover:bg-muted hover:text-foreground",
-                )}
-                disabled={!onIgnore}
-                onClick={onIgnore}
-                size="sm"
-                type="button"
-                variant="ghost"
-              >
-                忽略
-              </Button>
-              <Button
-                className={cn(
-                  "h-7 rounded-[8px] border-transparent px-3 text-xs shadow-none",
-                  isDarkOnSurface
-                    ? "bg-white text-neutral-900 hover:bg-white/90"
-                    : "bg-neutral-strong text-neutral-strong-foreground hover:bg-neutral-strong/90 hover:text-neutral-strong-foreground",
-                )}
-                disabled={!onApprove}
-                onClick={onApprove}
-                size="sm"
-                type="button"
-              >
-                批准
-              </Button>
-            </div>
-          )
-        : null;
+  if (view.status === "waiting") {
+    return (
+      <WaitStatusBarSurface
+        customerName={customerName}
+        label={view.label}
+      />
+    );
+  }
+
+  return (
+    <OnStatusBarSurface
+      beamTheme={beamTheme}
+      label={view.label}
+      onApprove={onApprove}
+      onIgnore={onIgnore}
+      status={view.status}
+      thinkingActions={thinkingActions}
+    />
+  );
+}
+
+function WaitStatusBarSurface({
+  customerName,
+  label,
+}: {
+  customerName?: string;
+  label: string;
+}) {
+  const resolvedCustomerName = customerName?.trim();
+  const shouldEmphasizeCustomerName =
+    resolvedCustomerName &&
+    label === getDefaultStatusLabel("waiting", resolvedCustomerName);
+
+  return (
+    <div
+      className="relative z-20 h-full rounded-full border border-success/18"
+      data-mode="wait"
+      data-status="waiting"
+      data-testid="chat-ai-assistant-status-bar"
+      role="status"
+    >
+      <div
+        aria-hidden="true"
+        className="absolute inset-0 z-0 rounded-full bg-success-muted/60 backdrop-blur-xs"
+      />
+      <div className="relative z-10 flex h-full items-center justify-center gap-3 px-4 text-[13px] leading-4 font-medium text-foreground/80">
+        <div className="flex min-w-0 items-center gap-2">
+          <HugeiconsIcon
+            aria-hidden="true"
+            icon={BubbleChatSparkIcon}
+            size={16}
+            strokeWidth={1.8}
+          />
+          <span className="min-w-0 truncate">
+            {shouldEmphasizeCustomerName ? (
+              <>
+                正在等待{" "}
+                <strong className="font-semibold text-foreground">
+                  {resolvedCustomerName}
+                </strong>{" "}
+                的消息
+              </>
+            ) : (
+              label
+            )}
+          </span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function OnStatusBarSurface({
+  beamTheme,
+  label,
+  onApprove,
+  onIgnore,
+  status,
+  thinkingActions,
+}: {
+  beamTheme: BeamTheme;
+  label: string;
+  onApprove?: () => void;
+  onIgnore?: () => void;
+  status: OnStatusBarStatus;
+  thinkingActions?: ReactNode;
+}) {
+  const isThinking = status === "thinking";
+  const themeStyles = ON_STATUS_BAR_THEME_STYLES[beamTheme];
 
   return (
     <BorderBeam
-      active={isOn}
+      active
       borderRadius={999}
-      saturation={isDarkOnSurface ? 0.15 : 0.5}
-      staticColors={view.status === "thinking"}
+      saturation={themeStyles.beamSaturation}
+      staticColors={isThinking}
       className="relative z-20 block h-full rounded-full"
-      colorVariant={isDarkOnSurface ? "ocean" : "colorful"}
-      brightness={isDarkOnSurface ? 1.2 : 2.1}
-      duration={view.status === "thinking" ? 2.4 : 4.6}
-      size={beamSize}
+      colorVariant={themeStyles.beamColorVariant}
+      brightness={themeStyles.beamBrightness}
+      duration={isThinking ? 2.4 : 4.6}
+      size={isThinking ? "pulse-inner" : "line"}
       theme={beamTheme}
     >
       <div
         className="relative h-full rounded-full border border-divider"
-        data-mode={mode}
-        data-status={view.status}
+        data-mode="on"
+        data-status={status}
         data-testid="chat-ai-assistant-status-bar"
         role="status"
       >
@@ -227,68 +319,92 @@ function StatusBarSurface({
           aria-hidden="true"
           className={cn(
             "absolute inset-0 z-0 rounded-full",
-            isOn
-              ? isDarkOnSurface
-                ? "bg-neutral-800"
-                : "bg-muted/80 backdrop-blur-xs"
-              : "bg-success-muted/60 backdrop-blur-xs",
+            themeStyles.surface,
           )}
         />
         <div
           className={cn(
-            "relative z-10 flex h-full items-center gap-3 px-4 text-[13px] leading-4 font-medium",
-            isOn
-              ? cn(
-                  "justify-between",
-                  isDarkOnSurface
-                    ? "text-white/90"
-                    : "text-muted-foreground",
-                )
-              : "justify-center text-muted-foreground",
+            "relative z-10 flex h-full items-center justify-between gap-3 px-4 text-[13px] leading-4 font-medium",
+            themeStyles.content,
           )}
         >
           <div className="flex min-w-0 items-center gap-2">
-            {isOn ? (
-              <AgentThinkingOrb
-                className={isDarkOnSurface ? "opacity-85" : undefined}
-                speed={view.status === "thinking" ? 1 : 0.6}
-                state={view.status === "thinking" ? "solving" : "searching"}
-              />
-            ) : (
-              <HugeiconsIcon
-                aria-hidden="true"
-                icon={BubbleChatSparkIcon}
-                size={16}
-                strokeWidth={1.8}
-              />
-            )}
-            {isOn ? (
-              <AnimatedTextSwitch
-                className={cn(
-                  "min-w-0 text-[13px] font-medium",
-                  isDarkOnSurface
-                    ? "text-white/90"
-                    : "text-muted-foreground",
-                )}
-                shiny={view.status === "thinking"}
-                shinyDuration={2.5}
-                shinyShimmerWidth={44}
-                staggerMs={12}
-                value={view.label}
-              />
-            ) : (
-              <span className="min-w-0 truncate">{view.label}</span>
-            )}
+            <AgentThinkingOrb
+              className={themeStyles.orb}
+              speed={isThinking ? 1 : 0.6}
+              state={isThinking ? "solving" : "searching"}
+            />
+            <AnimatedTextSwitch
+              className={cn(
+                "min-w-0 text-[13px] font-medium",
+                themeStyles.text,
+              )}
+              shiny={isThinking}
+              shinyDuration={2.5}
+              shinyShimmerWidth={44}
+              staggerMs={12}
+              value={label}
+            />
           </div>
-          {isOn && actions ? actions : null}
+          <OnStatusBarActions
+            onApprove={onApprove}
+            onIgnore={onIgnore}
+            status={status}
+            themeStyles={themeStyles}
+            thinkingActions={thinkingActions}
+          />
         </div>
       </div>
     </BorderBeam>
   );
 }
 
-function getStatusBarMode(status: ChatAIAssistantStatus): StatusBarMode {
-  return status === "waiting" ? "wait" : "on";
+function OnStatusBarActions({
+  onApprove,
+  onIgnore,
+  status,
+  themeStyles,
+  thinkingActions,
+}: {
+  onApprove?: () => void;
+  onIgnore?: () => void;
+  status: OnStatusBarStatus;
+  themeStyles: OnStatusBarThemeStyles;
+  thinkingActions?: ReactNode;
+}) {
+  if (status === "thinking") {
+    return thinkingActions;
+  }
+
+  return (
+    <div className="flex shrink-0 items-center gap-1.5">
+      <Button
+        className={cn(
+          "h-7 rounded-[8px] px-3 text-xs shadow-none",
+          themeStyles.ignoreButton,
+        )}
+        disabled={!onIgnore}
+        onClick={onIgnore}
+        size="sm"
+        type="button"
+        variant="ghost"
+      >
+        忽略
+      </Button>
+      <Button
+        className={cn(
+          "h-7 rounded-[8px] border-transparent px-3 text-xs shadow-none",
+          themeStyles.approveButton,
+        )}
+        disabled={!onApprove}
+        onClick={onApprove}
+        size="sm"
+        type="button"
+      >
+        批准
+      </Button>
+    </div>
+  );
 }
 
 function getDefaultStatusLabel(

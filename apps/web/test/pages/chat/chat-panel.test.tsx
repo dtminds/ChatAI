@@ -1046,7 +1046,10 @@ describe("ChatPanel", () => {
     );
 
     expect(screen.getByTestId("chat-ai-assistant-status-bar")).toBeInTheDocument();
-    expect(screen.getByText("等待 客户 消息")).toBeInTheDocument();
+    expect(screen.getByTestId("chat-ai-assistant-status-bar")).toHaveTextContent(
+      "正在等待 客户 的消息",
+    );
+    expect(screen.getByText("客户", { selector: "strong" })).toBeInTheDocument();
     expect(screen.queryByTestId("chat-agent-hosting-status-bar")).not.toBeInTheDocument();
 
     rerender(
@@ -1101,7 +1104,7 @@ describe("ChatPanel", () => {
     await screen.findByLabelText("确认退款 100 元");
 
     await user.click(screen.getByRole("button", { name: "忽略" }));
-    await screen.findByText("等待 客户 消息");
+    await screen.findByText("客户", { selector: "strong" });
 
     await openDebugMenu();
     await user.click(
@@ -1115,7 +1118,7 @@ describe("ChatPanel", () => {
     );
     await screen.findByLabelText("正在执行售后 SOP");
     await user.click(screen.getByRole("button", { name: "停止" }));
-    await screen.findByText("等待 客户 消息");
+    await screen.findByText("客户", { selector: "strong" });
 
     rerender(
       createStatusBarPanel({
@@ -1127,7 +1130,7 @@ describe("ChatPanel", () => {
       }),
     );
 
-    await screen.findByText("等待 客户 消息");
+    await screen.findByText("客户", { selector: "strong" });
   });
 
   it("returns the AI assistant bar to waiting after ignoring a confirmation", async () => {
@@ -1154,7 +1157,9 @@ describe("ChatPanel", () => {
     await user.click(screen.getByRole("button", { name: "忽略" }));
 
     expect(onIgnoreAIAssistantSuggestion).toHaveBeenCalledTimes(1);
-    expect(await screen.findByText("等待 客户 消息")).toBeInTheDocument();
+    expect(
+      await screen.findByText("客户", { selector: "strong" }),
+    ).toBeInTheDocument();
   });
 
   it("hides agent hosting status bar for exited agent mode conversations", () => {

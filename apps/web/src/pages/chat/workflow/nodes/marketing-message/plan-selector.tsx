@@ -101,7 +101,7 @@ export function MarketingPlanSelector({ onChange, value }: {
     <Dialog onOpenChange={setDialogOpen} open={open}>
       <DialogContent className="flex max-h-[calc(100vh-2rem)] w-[min(720px,calc(100vw-2rem))] max-w-[720px] flex-col gap-0 overflow-hidden p-0">
         <div className="px-6 py-4"><DialogTitle className="text-[15px]">选择触达任务</DialogTitle></div>
-        <div className="px-6 pb-3 pt-2">
+        <div className="px-6 pb-3">
           <div className="relative w-[280px] max-w-full">
             <HugeiconsIcon aria-hidden="true" className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" icon={Search01Icon} size={17} strokeWidth={1.8} />
             <Input aria-label="搜索触达任务" className="h-10 pl-9 text-[13px] md:text-[13px]" maxLength={WORKFLOW_MARKETING_PLAN_NAME_MAX_LENGTH} onChange={event => setQuery(event.target.value)} placeholder="搜索触达任务" value={query} />

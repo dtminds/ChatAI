@@ -4,6 +4,8 @@ export const MAX_CUSTOMER_PANEL_WIDTH = 420;
 export const MIN_MESSAGE_PANEL_WIDTH = 520;
 export const CUSTOMER_PANEL_RESIZE_HANDLE_WIDTH = 4;
 export const CONVERSATION_LIST_PANEL_WIDTH = 256;
+export const MIN_CHAT_WORKBENCH_CONTENT_WIDTH =
+  CONVERSATION_LIST_PANEL_WIDTH + MIN_MESSAGE_PANEL_WIDTH;
 // Product floor for the horizontal workbench. This intentionally allows a small
 // compression range before horizontal scrolling starts.
 export const MIN_WORKBENCH_CONTENT_WIDTH = 1100;

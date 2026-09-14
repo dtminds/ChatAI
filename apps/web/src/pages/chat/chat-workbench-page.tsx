@@ -151,6 +151,7 @@ import {
 } from "@/pages/chat/lib/scroll-anchor";
 import {
   CONVERSATION_LIST_PANEL_WIDTH,
+  MIN_CHAT_WORKBENCH_CONTENT_WIDTH,
   MIN_WORKBENCH_CONTENT_WIDTH,
 } from "@/pages/chat/lib/panel-width";
 
@@ -642,6 +643,8 @@ function ChatWorkbenchContent({
   const [isAccountRailCollapsed, setIsAccountRailCollapsed] = useState(
     getInitialAccountRailCollapsed,
   );
+  const [hasPersistentChatSidebar, setHasPersistentChatSidebar] =
+    useState(true);
   const [mobilePane, setMobilePane] = useState<MobileWorkbenchPane>("list");
   const [inputEnterBehavior, setInputEnterBehavior] =
     useState<InputEnterBehavior>("send");
@@ -2701,6 +2704,7 @@ function ChatWorkbenchContent({
         activeConversation?.isShadowGroup ? undefined : handleRevokeMessage
       }
       onMessageViewportScroll={handleMessageViewportScroll}
+      onPersistentSidebarChange={setHasPersistentChatSidebar}
       onPinConversation={pinConversation}
       onRetryMessage={handleRetryFailedMessage}
       onLoadSendFailReason={handleLoadSendFailReason}
@@ -2891,7 +2895,13 @@ function ChatWorkbenchContent({
               data-testid="chat-workbench-content"
               style={activeView === "tickets"
                 ? undefined
-                : { minWidth: `${MIN_WORKBENCH_CONTENT_WIDTH}px` }}
+                : {
+                    minWidth: `${
+                      activeView === "chat" && !hasPersistentChatSidebar
+                        ? MIN_CHAT_WORKBENCH_CONTENT_WIDTH
+                        : MIN_WORKBENCH_CONTENT_WIDTH
+                    }px`,
+                  }}
             >
               {activeView === "customers" ? (
                 <Suspense fallback={<WorkbenchSectionLoading />}>

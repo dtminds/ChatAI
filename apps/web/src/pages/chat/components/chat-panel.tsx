@@ -3,7 +3,7 @@ import type {
   ReactNode,
   RefObject,
 } from "react";
-import { useEffect, useState } from "react";
+import { useEffect, useLayoutEffect, useState } from "react";
 import { Cancel01Icon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import type { LexicalEditor } from "lexical";
@@ -174,6 +174,7 @@ type ChatPanelProps = {
   onRevokeMessage?: (message: ChatMessage) => void;
   onClearQuotedMessage: () => void;
   onMessageViewportScroll: () => void;
+  onPersistentSidebarChange?: (visible: boolean) => void;
   onPinConversation?: (conversationId: string) => void | Promise<void>;
   onRetryMessage: (uiMessageKey: string) => void | Promise<void>;
   onLoadSendFailReason?: (uiMessageKey: string) => Promise<string | undefined>;
@@ -303,6 +304,7 @@ export function ChatPanel({
   onRevokeMessage,
   onClearQuotedMessage,
   onMessageViewportScroll,
+  onPersistentSidebarChange,
   onPinConversation,
   onRetryMessage,
   onLoadSendFailReason,
@@ -357,6 +359,10 @@ export function ChatPanel({
   const sidebarPanelLabel = activeConversation?.mode === "group"
     ? "群成员信息栏"
     : "客户信息栏";
+  const hasPersistentDesktopSidebar =
+    !isMobileLayout &&
+    hasActiveConversation &&
+    (!isDesktopSidebarCollapsed || isUserMemoryOpen);
 
   const historyPanelNode = historyPanel ? (
     <MessageHistorySidePanel
@@ -444,6 +450,10 @@ export function ChatPanel({
   useEffect(() => {
     setIsMobileSidebarOpen(false);
   }, [activeConversation?.id, isMobileLayout]);
+
+  useLayoutEffect(() => {
+    onPersistentSidebarChange?.(hasPersistentDesktopSidebar);
+  }, [hasPersistentDesktopSidebar, onPersistentSidebarChange]);
 
   useEffect(() => {
     if (!canShowUserMemory) {
@@ -631,7 +641,7 @@ export function ChatPanel({
 
                   <div className="relative z-10 flex flex-col overflow-visible">
                     {hasActiveFileUpload ? (
-                      <div className="relative z-20 mx-4 -mb-3">
+                      <div className="relative z-20 mx-auto -mb-3 w-[calc(100%-2rem)] max-w-[860px]">
                         <FileUploadQueueBar
                           items={fileUploadQueue}
                           onCancelFileUpload={onCancelFileUpload}

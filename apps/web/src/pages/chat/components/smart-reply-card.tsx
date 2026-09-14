@@ -1088,7 +1088,7 @@ export function SmartReplyInlineProcessingHint({
     >
       <p className="text-[13px] leading-5">
         {animated ? (
-          <ShinyText duration={1.15} shimmerWidth={44}>
+          <ShinyText duration={1.15}>
             {label}
           </ShinyText>
         ) : (
@@ -1248,7 +1248,7 @@ function SmartReplyReadonlyContent({
         <div className="flex items-center gap-1 text-muted-foreground">
           <AgentThinkingOrb speed={1.2} />
           <p className="text-[13px]" role="status">
-            <ShinyText duration={1.15} shimmerWidth={44}>
+            <ShinyText duration={1.15}>
               {processingLabel ??
                 (isThinking ? SMART_REPLY_THINKING_LABEL : "正在处理消息...")}
             </ShinyText>

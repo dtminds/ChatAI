@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { act, render, screen } from "@testing-library/react";
 import { useForm } from "react-hook-form";
 import { describe, expect, it, vi } from "vitest";
@@ -23,6 +25,11 @@ import {
 } from "@/pages/chat/settings/shared";
 import { AnimatedTextSwitch } from "@/components/ui/animated-text-switch";
 import { Sun01Icon } from "@hugeicons/core-free-icons";
+
+const appStyles = readFileSync(
+  resolve(process.cwd(), "src/styles/index.css"),
+  "utf8",
+);
 
 function BrokenFormFieldUsage() {
   useFormField();
@@ -77,6 +84,9 @@ describe("extended UI primitives", () => {
     render(
       <ShinyText
         aria-label="AI 正在思考"
+        baseColor="rgb(120 120 120)"
+        duration={1.7}
+        highlightColor="rgb(20 20 20)"
       >
         AI正在生成话术...
       </ShinyText>,
@@ -85,6 +95,24 @@ describe("extended UI primitives", () => {
     const text = screen.getByText("AI正在生成话术...");
     expect(text).toHaveAttribute("data-slot", "shiny-text");
     expect(text).toHaveAttribute("aria-label", "AI 正在思考");
+    expect(text).toHaveStyle({
+      "--shiny-text-base-color": "rgb(120 120 120)",
+      "--shiny-text-cycle-duration": "2s",
+      "--shiny-text-highlight-color": "rgb(20 20 20)",
+    });
+  });
+
+  it("keeps the text filled while pausing after a complete shiny sweep", () => {
+    const shinyTextRule = appStyles.match(/\.shiny-text\s*\{([^}]*)\}/)?.[1];
+    const shinyTextKeyframes = appStyles.match(
+      /@keyframes shiny-text-sweep\s*\{([\s\S]*?)\n\}/,
+    )?.[1];
+
+    expect(shinyTextRule).toContain(
+      "background-color: var(--shiny-text-base-color)",
+    );
+    expect(shinyTextRule).toContain("background-repeat: no-repeat");
+    expect(shinyTextKeyframes).toContain("background-position: -50% center");
   });
 
   it("renders animated text switch as a single accessible phrase", () => {
@@ -223,8 +251,9 @@ describe("extended UI primitives", () => {
     const { container, rerender } = render(
       <AnimatedTextSwitch
         shiny
+        shinyBaseColor="rgb(120 120 120)"
         shinyDuration={1.1}
-        shinyShimmerWidth={72}
+        shinyHighlightColor="rgb(20 20 20)"
         staggerMs={1}
         value="等待发送"
       />,
@@ -243,8 +272,9 @@ describe("extended UI primitives", () => {
     rerender(
       <AnimatedTextSwitch
         shiny
+        shinyBaseColor="rgb(120 120 120)"
         shinyDuration={1.1}
-        shinyShimmerWidth={72}
+        shinyHighlightColor="rgb(20 20 20)"
         staggerMs={1}
         value="正在发送"
       />,
@@ -269,6 +299,10 @@ describe("extended UI primitives", () => {
     expect(container.querySelector("[data-phase='enter']")).toHaveClass(
       "shiny-text",
     );
+    expect(container.querySelector("[data-phase='enter']")).toHaveStyle({
+      "--shiny-text-base-color": "rgb(120 120 120)",
+      "--shiny-text-highlight-color": "rgb(20 20 20)",
+    });
     expect(
       container.querySelector("[data-phase='enter'] [data-slot='animated-text-switch-char']"),
     ).toBeNull();

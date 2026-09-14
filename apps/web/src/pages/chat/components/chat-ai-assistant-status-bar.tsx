@@ -1,14 +1,14 @@
 import {
   type AnimationEvent,
   useLayoutEffect,
+  useRef,
   useState,
 } from "react";
 import { BorderBeam } from "border-beam";
-import { BubbleChatSparkIcon } from "@hugeicons/core-free-icons";
-import { HugeiconsIcon } from "@hugeicons/react";
 import { AgentThinkingOrb } from "@/components/ui/agent-thinking-orb";
 import { AnimatedTextSwitch } from "@/components/ui/animated-text-switch";
 import { Button } from "@/components/ui/button";
+import { ElapsedTime } from "@/components/ui/elapsed-time";
 import { cn } from "@/lib/utils";
 import { useAppearanceStore } from "@/store/appearance-store";
 
@@ -32,6 +32,10 @@ type StatusBarView = {
 
 type OnStatusBarStatus = Exclude<ChatAIAssistantStatus, "waiting">;
 type BeamTheme = "light" | "dark";
+
+const THINKING_SHINY_MIN_DURATION_SECONDS = 1.4;
+const THINKING_SHINY_MAX_DURATION_SECONDS = 4;
+const THINKING_SHINY_SECONDS_PER_CHARACTER = 0.12;
 
 type OnStatusBarThemeStyles = {
   beamBrightness: number;
@@ -70,7 +74,7 @@ const ON_STATUS_BAR_THEME_STYLES: Record<
     primaryActionButton: "bg-white text-neutral-900 hover:bg-white/90",
     quietActionButton:
       "bg-transparent text-white/70 hover:bg-transparent hover:text-white active:bg-transparent",
-    surface: "bg-neutral-800",
+    surface: "bg-muted/90 backdrop-blur-xs",
     text: "text-white/90",
   },
 };
@@ -99,6 +103,8 @@ export function ChatAIAssistantStatusBar({
     status,
   }));
   const [outgoingView, setOutgoingView] = useState<StatusBarView | null>(null);
+  const [thinkingStartedAt, setThinkingStartedAt] = useState(() => Date.now());
+  const previousStatusRef = useRef(status);
   const beamTheme = useAppearanceStore((state): BeamTheme =>
     state.themePreference === "dark" ||
     (state.themePreference === "system" && state.isSystemDarkMode)
@@ -135,6 +141,15 @@ export function ChatAIAssistantStatusBar({
     visibleView.label,
     visibleView.status,
   ]);
+  useLayoutEffect(() => {
+    if (
+      status === "thinking" &&
+      previousStatusRef.current !== "thinking"
+    ) {
+      setThinkingStartedAt(Date.now());
+    }
+    previousStatusRef.current = status;
+  }, [status]);
 
   const handleEntranceAnimationEnd = (
     event: AnimationEvent<HTMLDivElement>,
@@ -162,6 +177,7 @@ export function ChatAIAssistantStatusBar({
             customerName={customerName}
             onApprove={onApprove}
             onIgnore={onIgnore}
+            thinkingStartedAt={thinkingStartedAt}
             thinkingActions={thinkingActions}
             view={outgoingView}
           />
@@ -190,6 +206,7 @@ export function ChatAIAssistantStatusBar({
           customerName={customerName}
           onApprove={onApprove}
           onIgnore={onIgnore}
+          thinkingStartedAt={thinkingStartedAt}
           thinkingActions={thinkingActions}
           view={visibleView}
         />
@@ -203,6 +220,7 @@ function StatusBarSurface({
   customerName,
   onApprove,
   onIgnore,
+  thinkingStartedAt,
   thinkingActions,
   view,
 }: {
@@ -210,6 +228,7 @@ function StatusBarSurface({
   customerName?: string;
   onApprove?: () => void;
   onIgnore?: () => void;
+  thinkingStartedAt: number;
   thinkingActions?: readonly ChatAIAssistantAction[];
   view: StatusBarView;
 }) {
@@ -229,6 +248,7 @@ function StatusBarSurface({
       onApprove={onApprove}
       onIgnore={onIgnore}
       status={view.status}
+      thinkingStartedAt={thinkingStartedAt}
       thinkingActions={thinkingActions}
     />
   );
@@ -260,11 +280,9 @@ function WaitStatusBarSurface({
       />
       <div className="relative z-10 flex h-full items-center justify-center gap-3 px-4 text-[13px] leading-4 font-medium text-foreground/80">
         <div className="flex min-w-0 items-center gap-2">
-          <HugeiconsIcon
-            aria-hidden="true"
-            icon={BubbleChatSparkIcon}
-            size={16}
-            strokeWidth={1.8}
+          <AgentThinkingOrb
+            speed={0.6}
+            state="connecting"
           />
           <span className="min-w-0 truncate">
             {shouldEmphasizeCustomerName ? (
@@ -291,6 +309,7 @@ function OnStatusBarSurface({
   onApprove,
   onIgnore,
   status,
+  thinkingStartedAt,
   thinkingActions,
 }: {
   beamTheme: BeamTheme;
@@ -298,6 +317,7 @@ function OnStatusBarSurface({
   onApprove?: () => void;
   onIgnore?: () => void;
   status: OnStatusBarStatus;
+  thinkingStartedAt: number;
   thinkingActions?: readonly ChatAIAssistantAction[];
 }) {
   const isThinking = status === "thinking";
@@ -339,28 +359,35 @@ function OnStatusBarSurface({
           <div className="flex min-w-0 items-center gap-2">
             <AgentThinkingOrb
               className={themeStyles.orb}
-              speed={isThinking ? 1 : 0.6}
-              state={isThinking ? "solving" : "searching"}
+              speed={0.6}
+              state={isThinking ? "breathing" : "searching"}
             />
             <AnimatedTextSwitch
               className={cn(
                 "min-w-0 text-[13px] font-medium",
-                themeStyles.text,
+                isThinking ? "text-muted-foreground" : themeStyles.text,
               )}
               shiny={isThinking}
-              shinyDuration={2.5}
-              shinyShimmerWidth={44}
+              shinyDuration={getThinkingShinyDuration(label)}
               staggerMs={12}
               value={label}
             />
+            {isThinking ? (
+              <ElapsedTime
+                key={thinkingStartedAt}
+                startedAt={thinkingStartedAt}
+              />
+            ) : null}
           </div>
-          <OnStatusBarActions
-            onApprove={onApprove}
-            onIgnore={onIgnore}
-            status={status}
-            themeStyles={themeStyles}
-            thinkingActions={thinkingActions}
-          />
+          <div className="flex shrink-0 items-center gap-1.5">
+            <OnStatusBarActions
+              onApprove={onApprove}
+              onIgnore={onIgnore}
+              status={status}
+              themeStyles={themeStyles}
+              thinkingActions={thinkingActions}
+            />
+          </div>
         </div>
       </div>
     </BorderBeam>
@@ -404,31 +431,36 @@ function OnStatusBarActions({
     return null;
   }
 
-  return (
-    <div className="flex shrink-0 items-center gap-1.5">
-      {actions.map((action) => {
-        const tone = action.tone ?? "quiet";
+  return actions.map((action) => {
+    const tone = action.tone ?? "quiet";
 
-        return (
-          <Button
-            className={cn(
-              "h-7 rounded-[8px] border-transparent px-3 text-xs shadow-none",
-              tone === "primary"
-                ? themeStyles.primaryActionButton
-                : themeStyles.quietActionButton,
-            )}
-            disabled={action.disabled || !action.onSelect}
-            key={action.id}
-            onClick={action.onSelect}
-            size="sm"
-            type="button"
-            variant={tone === "primary" ? "default" : "ghost"}
-          >
-            {action.label}
-          </Button>
-        );
-      })}
-    </div>
+    return (
+      <Button
+        className={cn(
+          "h-7 rounded-[8px] border-transparent px-3 text-xs shadow-none",
+          tone === "primary"
+            ? themeStyles.primaryActionButton
+            : themeStyles.quietActionButton,
+        )}
+        disabled={action.disabled || !action.onSelect}
+        key={action.id}
+        onClick={action.onSelect}
+        size="sm"
+        type="button"
+        variant={tone === "primary" ? "default" : "ghost"}
+      >
+        {action.label}
+      </Button>
+    );
+  });
+}
+
+function getThinkingShinyDuration(label: string) {
+  const duration =
+    Array.from(label).length * THINKING_SHINY_SECONDS_PER_CHARACTER;
+  return Math.min(
+    THINKING_SHINY_MAX_DURATION_SECONDS,
+    Math.max(THINKING_SHINY_MIN_DURATION_SECONDS, duration),
   );
 }
 

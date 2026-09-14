@@ -106,7 +106,37 @@ describe("ChatAIAssistantStatusBar", () => {
     );
     expect(
       document.querySelector('[data-slot="agent-thinking-orb"]'),
-    ).toHaveAttribute("data-orb-state", "solving");
+    ).toHaveAttribute("data-orb-state", "breathing");
+    expect(screen.getByText("0.0s")).toHaveAttribute(
+      "data-slot",
+      "elapsed-time",
+    );
+  });
+
+  it("tracks thinking time without resetting when its description changes", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-09-14T10:00:00+08:00"));
+    const { rerender } = render(
+      <ChatAIAssistantStatusBar label="正在查询订单信息" status="thinking" />,
+    );
+
+    expect(screen.getByText("0.0s")).toBeInTheDocument();
+
+    act(() => {
+      vi.advanceTimersByTime(1_230);
+    });
+    expect(screen.getByText("1.2s")).toBeInTheDocument();
+
+    rerender(
+      <ChatAIAssistantStatusBar
+        label="正在核对退款条件"
+        status="thinking"
+      />,
+    );
+    act(() => {
+      vi.advanceTimersByTime(61_100);
+    });
+    expect(screen.getByText("1m 2.3s")).toBeInTheDocument();
   });
 
   it("switches externally supplied thinking descriptions with animated text", () => {
@@ -167,6 +197,7 @@ describe("ChatAIAssistantStatusBar", () => {
     await user.click(screen.getByRole("button", { name: "停止" }));
 
     expect(onStop).toHaveBeenCalledTimes(1);
+    expect(screen.getByText("0.0s")).toBeInTheDocument();
   });
 
   it("uses the dark beam preset when the page theme is dark", () => {

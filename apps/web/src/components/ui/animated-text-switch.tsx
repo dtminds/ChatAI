@@ -1,4 +1,5 @@
 import * as React from "react";
+import { getShinyTextCycleDuration } from "@/components/ui/shiny-text";
 import { cn } from "@/lib/utils";
 
 type AnimatedTextSwitchProps = Omit<
@@ -8,8 +9,9 @@ type AnimatedTextSwitchProps = Omit<
   value: string;
   charClassName?: string;
   shiny?: boolean;
+  shinyBaseColor?: string;
   shinyDuration?: number;
-  shinyShimmerWidth?: number;
+  shinyHighlightColor?: string;
   staggerMs?: number;
 };
 
@@ -33,8 +35,9 @@ function AnimatedTextSwitch({
   className,
   charClassName,
   shiny = false,
+  shinyBaseColor,
   shinyDuration = 1.35,
-  shinyShimmerWidth = 56,
+  shinyHighlightColor,
   staggerMs = 18,
   style,
   ...props
@@ -203,8 +206,16 @@ function AnimatedTextSwitch({
             style={
               shouldRenderShinyText
                 ? ({
-                    "--shiny-text-duration": `${shinyDuration}s`,
-                    "--shiny-text-shimmer-width": `${shinyShimmerWidth}px`,
+                    ...(shinyBaseColor
+                      ? { "--shiny-text-base-color": shinyBaseColor }
+                      : {}),
+                    "--shiny-text-cycle-duration": `${getShinyTextCycleDuration(shinyDuration)}s`,
+                    ...(shinyHighlightColor
+                      ? {
+                          "--shiny-text-highlight-color":
+                            shinyHighlightColor,
+                        }
+                      : {}),
                   } as React.CSSProperties)
                 : undefined
             }

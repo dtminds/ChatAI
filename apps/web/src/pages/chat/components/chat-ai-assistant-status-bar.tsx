@@ -1,9 +1,7 @@
 import {
   type AnimationEvent,
   type ReactNode,
-  useEffect,
   useLayoutEffect,
-  useRef,
   useState,
 } from "react";
 import { BorderBeam } from "border-beam";
@@ -27,8 +25,6 @@ type StatusBarView = {
 
 type StatusBarMode = "wait" | "on";
 type BeamTheme = "light" | "dark";
-
-const ON_MODE_BEAM_RESTART_DELAY_MS = 80;
 
 export function ChatAIAssistantStatusBar({
   className,
@@ -60,21 +56,21 @@ export function ChatAIAssistantStatusBar({
       ? "dark"
       : "light",
   );
-  const visibleMode = getStatusBarMode(visibleView.status);
-  const targetMode = getStatusBarMode(status);
-
   useLayoutEffect(() => {
     if (outgoingView) {
-      if (
-        visibleMode === targetMode &&
-        (visibleView.status !== status || visibleView.label !== targetLabel)
-      ) {
+      if (outgoingView.status === status) {
+        setOutgoingView(null);
+        setVisibleView({ label: targetLabel, status });
+        return;
+      }
+
+      if (visibleView.status !== status || visibleView.label !== targetLabel) {
         setVisibleView({ label: targetLabel, status });
       }
       return;
     }
 
-    if (visibleMode !== targetMode) {
+    if (visibleView.status !== status) {
       setOutgoingView(visibleView);
       setVisibleView({ label: targetLabel, status });
       return;
@@ -86,9 +82,7 @@ export function ChatAIAssistantStatusBar({
   }, [
     status,
     targetLabel,
-    targetMode,
     outgoingView,
-    visibleMode,
     visibleView.label,
     visibleView.status,
   ]);
@@ -112,7 +106,7 @@ export function ChatAIAssistantStatusBar({
         <div
           className="chat-ai-assistant-status-layer--exiting absolute inset-x-0 top-0 h-[42px] will-change-transform"
           data-testid="chat-ai-assistant-status-outgoing-layer"
-          key={`mode-${getStatusBarMode(outgoingView.status)}`}
+          key={`outgoing-${outgoingView.status}`}
         >
           <StatusBarSurface
             beamTheme={beamTheme}
@@ -130,7 +124,7 @@ export function ChatAIAssistantStatusBar({
             "chat-ai-assistant-status-layer--entering",
         )}
         data-testid="chat-ai-assistant-status-motion-layer"
-        key={`mode-${visibleMode}`}
+        key={`current-${visibleView.status}`}
         onAnimationEnd={handleEntranceAnimationEnd}
         style={
           outgoingView
@@ -169,14 +163,7 @@ function StatusBarSurface({
   const mode = getStatusBarMode(view.status);
   const isOn = mode === "on";
   const isDarkOnSurface = isOn && beamTheme === "dark";
-  const [renderedBeamStatus, setRenderedBeamStatus] = useState(view.status);
-  const [beamActive, setBeamActive] = useState(isOn);
-  const targetBeamStatusRef = useRef(view.status);
-  const beamRestartTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
-    null,
-  );
-  const beamSize =
-    renderedBeamStatus === "thinking" ? "pulse-inner" : "line";
+  const beamSize = view.status === "thinking" ? "pulse-inner" : "line";
   const actions =
     view.status === "thinking"
       ? thinkingActions
@@ -216,56 +203,16 @@ function StatusBarSurface({
           )
         : null;
 
-  useLayoutEffect(() => {
-    targetBeamStatusRef.current = view.status;
-
-    if (!isOn) {
-      setBeamActive(false);
-      setRenderedBeamStatus(view.status);
-      return;
-    }
-
-    if (view.status !== renderedBeamStatus) {
-      setBeamActive(false);
-    }
-  }, [isOn, renderedBeamStatus, view.status]);
-
-  useEffect(
-    () => () => {
-      if (beamRestartTimerRef.current !== null) {
-        clearTimeout(beamRestartTimerRef.current);
-      }
-    },
-    [],
-  );
-
-  const handleBeamDeactivate = () => {
-    if (!isOn) {
-      return;
-    }
-
-    if (beamRestartTimerRef.current !== null) {
-      clearTimeout(beamRestartTimerRef.current);
-    }
-
-    beamRestartTimerRef.current = setTimeout(() => {
-      setRenderedBeamStatus(targetBeamStatusRef.current);
-      setBeamActive(true);
-      beamRestartTimerRef.current = null;
-    }, ON_MODE_BEAM_RESTART_DELAY_MS);
-  };
-
   return (
     <BorderBeam
-      active={isOn && beamActive}
+      active={isOn}
       borderRadius={999}
       saturation={isDarkOnSurface ? 0.15 : 0.5}
-      staticColors={renderedBeamStatus === "thinking"}
+      staticColors={view.status === "thinking"}
       className="relative z-20 block h-full rounded-full"
       colorVariant={isDarkOnSurface ? "ocean" : "colorful"}
       brightness={isDarkOnSurface ? 1.2 : 2.1}
-      duration={renderedBeamStatus === "thinking" ? 2.4 : 4.6}
-      onDeactivate={handleBeamDeactivate}
+      duration={view.status === "thinking" ? 2.4 : 4.6}
       size={beamSize}
       theme={beamTheme}
     >

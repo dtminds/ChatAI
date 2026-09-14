@@ -1,4 +1,4 @@
-import { type ReactNode, useEffect, useRef } from "react";
+import type { ReactNode } from "react";
 import { act, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -10,26 +10,15 @@ vi.mock("border-beam", () => ({
     active,
     borderRadius,
     children,
-    onDeactivate,
     size,
     theme,
   }: {
     active?: boolean;
     borderRadius?: number;
     children: ReactNode;
-    onDeactivate?: () => void;
     size?: string;
     theme?: string;
   }) => {
-    const previousActiveRef = useRef(active);
-
-    useEffect(() => {
-      if (previousActiveRef.current && !active) {
-        onDeactivate?.();
-      }
-      previousActiveRef.current = active;
-    }, [active, onDeactivate]);
-
     return (
       <div
         data-active={active ? "true" : "false"}
@@ -144,6 +133,9 @@ describe("ChatAIAssistantStatusBar", () => {
         .getByLabelText("正在核对退款条件")
         .querySelector("[data-phase='exit']"),
     ).toBeInTheDocument();
+    expect(
+      screen.queryByTestId("chat-ai-assistant-status-outgoing-layer"),
+    ).not.toBeInTheDocument();
 
     act(() => {
       vi.advanceTimersByTime(130);
@@ -215,10 +207,12 @@ describe("ChatAIAssistantStatusBar", () => {
     expect(onApprove).toHaveBeenCalledTimes(1);
   });
 
-  it("deactivates the current beam before switching on-mode effects", () => {
-    vi.useFakeTimers();
+  it("slides out and replaces the bar when thinking becomes confirmation", () => {
     const { rerender } = render(
-      <ChatAIAssistantStatusBar status="thinking" />,
+      <ChatAIAssistantStatusBar
+        label="正在核对退款条件"
+        status="thinking"
+      />,
     );
 
     rerender(
@@ -228,27 +222,21 @@ describe("ChatAIAssistantStatusBar", () => {
       />,
     );
 
-    expect(screen.getByTestId("ai-assistant-border-beam")).toHaveAttribute(
-      "data-active",
-      "false",
+    expect(
+      screen.getByTestId("chat-ai-assistant-status-outgoing-layer"),
+    ).toHaveTextContent("正在核对退款条件");
+    const incomingLayer = screen.getByTestId(
+      "chat-ai-assistant-status-motion-layer",
     );
-    expect(screen.getByTestId("ai-assistant-border-beam")).toHaveAttribute(
-      "data-size",
-      "pulse-inner",
+    expect(incomingLayer).toHaveTextContent("确认退款 100 元");
+    expect(incomingLayer).toHaveClass(
+      "chat-ai-assistant-status-layer--entering",
     );
-
-    act(() => {
-      vi.advanceTimersByTime(80);
-    });
-
-    expect(screen.getByTestId("ai-assistant-border-beam")).toHaveAttribute(
-      "data-active",
-      "true",
-    );
-    expect(screen.getByTestId("ai-assistant-border-beam")).toHaveAttribute(
-      "data-size",
-      "line",
-    );
+    const beams = screen.getAllByTestId("ai-assistant-border-beam");
+    expect(beams[0]).toHaveAttribute("data-active", "true");
+    expect(beams[0]).toHaveAttribute("data-size", "pulse-inner");
+    expect(beams[1]).toHaveAttribute("data-active", "true");
+    expect(beams[1]).toHaveAttribute("data-size", "line");
   });
 
   it("mounts the incoming tone hidden before its delayed entrance", () => {

@@ -105,7 +105,7 @@ export function MarketingPlanSelector({ onChange, value }: {
           <RadioGroup onValueChange={(id) => {
             const plan = plans.find(item => item.planId === Number(id));
             if (plan) setDraft(toMarketingPlanSnapshot(plan));
-          }} value={draft ? String(draft.planId) : undefined}>
+          }} value={draft ? String(draft.planId) : ""}>
             <Table aria-label="触达任务">
               <TableHeader><TableRow><TableHead className="w-12"><span className="sr-only">选择</span></TableHead><TableHead>任务名称</TableHead><TableHead className="w-40">触达渠道</TableHead><TableHead className="w-24">状态</TableHead></TableRow></TableHeader>
               <TableBody>

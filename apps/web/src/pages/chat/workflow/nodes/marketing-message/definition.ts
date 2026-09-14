@@ -42,7 +42,7 @@ export const marketingMessageNodeDefinition: WorkflowNodeDefinition<"marketing-m
     const wait = node.data.wait;
     const normalizedWait = normalizeMarketingMessageWait(wait);
     const waitValidationMessage = normalizedWait.mode === "fixed"
-      ? `等待时长需为 ${WORKFLOW_MARKETING_MESSAGE_WAIT_MIN_BY_UNIT[normalizedWait.unit]}-${WORKFLOW_MARKETING_MESSAGE_WAIT_MAX_BY_UNIT[normalizedWait.unit]}`
+      ? `等待时长需为 ${WORKFLOW_MARKETING_MESSAGE_WAIT_MIN_BY_UNIT[normalizedWait.unit]}-${WORKFLOW_MARKETING_MESSAGE_WAIT_MAX_BY_UNIT[normalizedWait.unit]} ${normalizedWait.unit === "minute" ? "分钟" : "小时"}`
       : "等待策略配置异常";
     return [
       ...(!plan ? [{ code: "marketing-message-plan-required", message: "需选择触达任务", severity: "warning" as const, source: "config" as const }] : []),

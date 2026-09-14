@@ -1,7 +1,7 @@
 import { act, fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { useState } from "react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { WorkflowType } from "@chatai/contracts";
 import { projectWorkflowNodeExecutionConfig } from "@chatai/workflow-engine/node-contract-registry";
 import { createNodeFromKind } from "@/pages/chat/workflow/graph";
@@ -18,6 +18,8 @@ vi.mock("@/pages/chat/workflow/nodes/marketing-message/api", () => ({
 }));
 
 describe("workflow Marketing Message node", () => {
+  afterEach(() => vi.restoreAllMocks());
+
   beforeEach(() => {
     listWorkflowMarketingPlans.mockReset();
     listWorkflowMarketingPlans.mockImplementation(async ({ page = 1, planName } = {}) => {
@@ -60,7 +62,10 @@ describe("workflow Marketing Message node", () => {
       ...node,
       data: { ...node.data, wait: { mode: "fixed", duration: 49, unit: "hour" } },
     }, { availableVariables: [], edges: [], nodes: [node] }))
-      .toEqual(expect.arrayContaining([expect.objectContaining({ code: "marketing-message-wait-invalid" })]));
+      .toEqual(expect.arrayContaining([expect.objectContaining({
+        code: "marketing-message-wait-invalid",
+        message: "等待时长需为 1-48 小时",
+      })]));
     expect(definition.getOutputVariables?.(node)).toEqual([
       expect.objectContaining({ key: "pushSuccess", valueType: { kind: "boolean" } }),
     ]);
@@ -80,6 +85,7 @@ describe("workflow Marketing Message node", () => {
   it("selects a plan snapshot and configures the bounded fixed wait", async () => {
     const user = userEvent.setup();
     const onNodeChange = vi.fn();
+    const warning = vi.spyOn(console, "warn").mockImplementation(() => undefined);
     render(<StatefulConfig onNodeChange={onNodeChange} />);
 
     await user.click(screen.getByRole("button", { name: /请选择触达任务/ }));
@@ -107,6 +113,7 @@ describe("workflow Marketing Message node", () => {
     expect(onNodeChange).toHaveBeenLastCalledWith(expect.objectContaining({
       wait: { mode: "fixed", duration: 48, unit: "hour" },
     }));
+    expect(warning).not.toHaveBeenCalledWith(expect.stringContaining("uncontrolled to controlled"));
   });
 
   it("defaults to immediate continuation and disables wait settings", () => {

@@ -706,7 +706,7 @@ describe("compileWorkflowDraft", () => {
     expectCompilationIssues(draft, ["unsupported-runtime-node"]);
   });
 
-  it("rejects Marketing Message while its Java query contract is not runtime-ready", () => {
+  it("rejects Marketing Message until its Java integration is accepted", () => {
     const draft = createDraft();
     draft.nodes.splice(2, 0, node("marketing-message", "marketing-message", {
       plan: { planId: 701, planName: "双十一触达" },

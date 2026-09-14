@@ -43,9 +43,15 @@ describe("Workflow Marketing Message Java port", () => {
     });
   });
 
-  it.each([true, false])("queries the Java aggregate pushSuccess=%s", async (pushSuccess) => {
+  it.each([
+    { status: 1, pushSuccess: true },
+    { status: 2, pushSuccess: false },
+    { status: 0, pushSuccess: false },
+    { status: null, pushSuccess: false },
+    { status: undefined, pushSuccess: false },
+  ])("maps Java status $status to pushSuccess=$pushSuccess", async ({ status, pushSuccess }) => {
     const fetchMock = vi.fn<typeof fetch>(async () => javaResponse({
-      data: { pushSuccess },
+      data: { status },
       error: 0,
       errorMsg: "",
       success: true,
@@ -54,23 +60,25 @@ describe("Workflow Marketing Message Java port", () => {
 
     await expect(port.queryPushResult({
       bizId: 123,
+      planId: 701,
       signal: new AbortController().signal,
       uid: 272,
     })).resolves.toEqual({ pushSuccess });
 
     const [url, init] = fetchMock.mock.calls[0]!;
     expect(String(url)).toBe(`https://java.example.com${JAVA_MARKETING_MESSAGE_QUERY_PATH}`);
-    expect(JSON.parse(String(init?.body))).toEqual({ bizId: 123, uid: 272 });
+    expect(JSON.parse(String(init?.body))).toEqual({ bizId: 123, planId: 701, uid: 272 });
   });
 
   it.each([
     { body: { error: 40001, errorMsg: "任务不存在", success: false }, code: "WORKFLOW_MARKETING_MESSAGE_REJECTED" },
-    { body: { data: {}, success: true }, code: "WORKFLOW_MARKETING_MESSAGE_RESPONSE_INVALID" },
+    { body: { success: true }, code: "WORKFLOW_MARKETING_MESSAGE_RESPONSE_INVALID" },
   ])("terminates on invalid Java result: $code", async ({ body, code }) => {
     const port = createPort(vi.fn<typeof fetch>(async () => javaResponse(body)));
 
     await expect(port.queryPushResult({
       bizId: 123,
+      planId: 701,
       signal: new AbortController().signal,
       uid: 272,
     })).rejects.toMatchObject({ code, failureKind: "terminal" });

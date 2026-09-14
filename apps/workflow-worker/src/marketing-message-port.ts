@@ -11,7 +11,7 @@ import {
 } from "./capability-port-support.js";
 
 export const JAVA_MARKETING_MESSAGE_PUSH_PATH = "/third-internal/cdp-market-plan/push-user";
-export const JAVA_MARKETING_MESSAGE_QUERY_PATH = "/third-internal/cdp-market-plan/query-push-result";
+export const JAVA_MARKETING_MESSAGE_QUERY_PATH = "/third-internal/cdp-market-plan/get-push-user-result";
 
 const throwIfAborted = createAbortGuard(
   "WORKFLOW_MARKETING_MESSAGE_ABORTED",
@@ -56,16 +56,17 @@ export class HttpWorkflowMarketingMessagePort implements WorkflowMarketingMessag
   async queryPushResult(
     input: WorkflowMarketingMessageQueryInput,
   ): Promise<{ pushSuccess: boolean }> {
-    requirePositiveSafeIntegers({ bizId: input.bizId, uid: input.uid });
+    requirePositiveSafeIntegers({ bizId: input.bizId, planId: input.planId, uid: input.uid });
     const body = await this.post(JAVA_MARKETING_MESSAGE_QUERY_PATH, {
       bizId: input.bizId,
+      planId: input.planId,
       uid: input.uid,
     }, input.signal, "query");
     const payload = requireSuccessfulEnvelope(body, "query");
-    if (!isRecord(payload.data) || typeof payload.data.pushSuccess !== "boolean") {
-      throw invalidResponse("Marketing Message query response is missing data.pushSuccess");
+    if (!isRecord(payload.data)) {
+      throw invalidResponse("Marketing Message query response is missing data");
     }
-    return { pushSuccess: payload.data.pushSuccess };
+    return { pushSuccess: payload.data.status === 1 };
   }
 
   private async post(

@@ -73,6 +73,7 @@ describe("Marketing Message runtime", () => {
     expect(harness.queryPushResult).toHaveBeenCalledOnce();
     expect(harness.queryPushResult).toHaveBeenCalledWith({
       bizId: Number(harness.created.task.id),
+      planId: 701,
       signal: expect.any(AbortSignal),
       uid: 9,
     });

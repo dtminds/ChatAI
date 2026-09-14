@@ -9,7 +9,7 @@ import {
 } from "../src/index.js";
 
 describe("Workflow Marketing Message contracts", () => {
-  it("stays draft-ready until the Java query endpoint is deployed", () => {
+  it("stays draft-ready until Java integration is accepted", () => {
     expect(getWorkflowNodeContract("marketing-message")).toMatchObject({
       executionClass: "composite",
       maturity: "draft-ready",

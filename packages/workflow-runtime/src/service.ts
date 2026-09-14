@@ -1032,7 +1032,12 @@ export class WorkflowRuntimeService {
     }
     const result = await executeMarketingMessageOperation(
       this.capabilityTimeoutMs,
-      signal => port.queryPushResult({ bizId, signal, uid: input.run.uid }),
+      signal => port.queryPushResult({
+        bizId,
+        planId: config.plan.planId,
+        signal,
+        uid: input.run.uid,
+      }),
     );
     if (!result || typeof result.pushSuccess !== "boolean") {
       throw new WorkflowCapabilityExecutionError(

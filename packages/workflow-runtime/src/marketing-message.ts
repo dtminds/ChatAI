@@ -11,6 +11,7 @@ export type WorkflowMarketingMessagePushInput = {
 
 export type WorkflowMarketingMessageQueryInput = {
   bizId: number;
+  planId: number;
   signal: AbortSignal;
   uid: number;
 };

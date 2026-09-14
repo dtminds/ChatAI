@@ -30,7 +30,7 @@ type ChatMessagePanelProps = {
   canUseMessageForward?: boolean;
   hasMoreHistory: boolean;
   historyLoadLabel?: string;
-  hasAgentHostingOverlay?: boolean;
+  hasComposerStatusOverlay?: boolean;
   isConversationLoading: boolean;
   conversationId: string;
   conversationMode: ChatMode;
@@ -75,7 +75,7 @@ export function ChatMessagePanel({
   canUseMessageForward = false,
   hasMoreHistory,
   historyLoadLabel,
-  hasAgentHostingOverlay = false,
+  hasComposerStatusOverlay = false,
   isConversationLoading,
   conversationId,
   conversationMode,
@@ -205,7 +205,7 @@ export function ChatMessagePanel({
           <div
             className={cn(
               "min-w-0 px-5 pt-5",
-              hasAgentHostingOverlay ? "pb-22" : "pb-17",
+              hasComposerStatusOverlay ? "pb-22" : "pb-17",
             )}
           >
             <div

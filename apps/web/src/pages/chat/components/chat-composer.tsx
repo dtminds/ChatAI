@@ -701,7 +701,7 @@ export function ChatComposer({
   return (
     <TooltipProvider delayDuration={300}>
       <div
-        className="relative mx-auto mb-4 mt-3 flex w-[calc(100%-2rem)] max-w-[860px] flex-col gap-1.5 rounded-[18px] border border-divider bg-card px-4 pb-2 pt-3 shadow-[0_2px_8px_var(--shadow-soft)]"
+        className="chat-composer-surface relative z-10 mx-auto mb-4 mt-3 flex w-[calc(100%-2rem)] max-w-[860px] flex-col gap-1.5 rounded-[18px] border px-4 pb-2 pt-3"
         data-testid="chat-composer"
         onDragEnter={handleComposerDragEnter}
         onDragLeave={handleComposerDragLeave}

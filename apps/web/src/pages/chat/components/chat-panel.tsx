@@ -19,6 +19,15 @@ import {
   ChatComposer,
   type ComposerMaterialLibraryBizType,
 } from "@/pages/chat/components/chat-composer";
+import {
+  ChatAIAssistantStatusBar,
+  type ChatAIAssistantStatus,
+} from "@/pages/chat/components/chat-ai-assistant-status-bar";
+import {
+  ChatAIAssistantDebugMenu,
+  getChatAIAssistantDebugScenarioView,
+  type ChatAIAssistantDebugScenario,
+} from "@/pages/chat/components/chat-ai-assistant-debug-menu";
 import { ChatAgentHostingStatusBar } from "@/pages/chat/components/chat-agent-hosting-status-bar";
 import { ChatHandoffStatusBar } from "@/pages/chat/components/chat-handoff-status-bar";
 import { ChatHeader } from "@/pages/chat/components/chat-header";
@@ -54,6 +63,7 @@ import {
 } from "@/pages/chat/lib/chat-agent-hosting-status";
 import type { SmartReplySendPayload } from "@/pages/chat/api/smart-reply-adapter";
 import { hasConversationHandoff } from "@/pages/chat/lib/conversation-handoff-preview";
+import { resolveConversationAIAssistantEligibility } from "@/pages/chat/lib/conversation-ai-assistant";
 
 const WORKBENCH_SIDEBAR_COLLAPSED_STORAGE_KEY =
   "chatai.workbenchSidebarCollapsed";
@@ -76,6 +86,9 @@ type ChatPanelProps = {
   fullAutoActionPending?: boolean;
   seatAgentModeActionPending?: boolean;
   fullAutoDisplayStatus?: AgentHostingStatus;
+  aiAssistantStatus?: ChatAIAssistantStatus;
+  aiAssistantStatusLabel?: string;
+  aiAssistantThinkingActions?: ReactNode;
   activeAccount?: Account;
   seatAIHostingEnabled?: boolean;
   conversationAIHostingConfigured?: boolean;
@@ -132,6 +145,8 @@ type ChatPanelProps = {
   onCancelFileUpload: (uploadId: string) => void;
   onCancelAgentHosting?: () => void;
   onEnableAgentHosting?: () => void;
+  onApproveAIAssistantSuggestion?: () => void;
+  onIgnoreAIAssistantSuggestion?: () => void;
   onChangeSeatAgentMode?: (mode: WorkbenchSeatAgentMode) => void;
   onChangeFullAuto?: (enabled: boolean) => void;
   onMarkHandoffHandled?: () => void;
@@ -226,6 +241,9 @@ export function ChatPanel({
   fullAutoActionPending = false,
   seatAgentModeActionPending = false,
   fullAutoDisplayStatus,
+  aiAssistantStatus = "waiting",
+  aiAssistantStatusLabel,
+  aiAssistantThinkingActions,
   activeAccount,
   seatAIHostingEnabled = false,
   conversationAIHostingConfigured = false,
@@ -264,6 +282,8 @@ export function ChatPanel({
   onCancelFileUpload,
   onCancelAgentHosting,
   onEnableAgentHosting,
+  onApproveAIAssistantSuggestion,
+  onIgnoreAIAssistantSuggestion,
   onChangeSeatAgentMode,
   onChangeFullAuto,
   onMarkHandoffHandled,
@@ -338,6 +358,10 @@ export function ChatPanel({
   const [isDesktopSidebarCollapsed, setIsDesktopSidebarCollapsed] = useState(
     readDesktopSidebarCollapsedPreference,
   );
+  const [aiAssistantDebugScenario, setAIAssistantDebugScenario] =
+    useState<ChatAIAssistantDebugScenario | null>(null);
+  const [isAIAssistantSuggestionIgnored, setIsAIAssistantSuggestionIgnored] =
+    useState(false);
   const resolvedAuxiliaryPanel = activeAuxiliaryPanel ?? null;
   const resolvedAgentHostingStatus =
     fullAutoDisplayStatus ??
@@ -348,6 +372,25 @@ export function ChatPanel({
     resolvedAgentHostingStatus === "exited"
       ? null
       : resolvedAgentHostingStatus;
+  const aiAssistantStatusVisible =
+    resolveConversationAIAssistantEligibility({
+      account: activeAccount,
+      canUseConversationActions: false,
+      conversation: activeConversation,
+    }).canDisplay && !agentHostingStatus;
+  const hasComposerStatusOverlay =
+    Boolean(agentHostingStatus) || aiAssistantStatusVisible;
+  const aiAssistantDebugView = aiAssistantDebugScenario
+    ? getChatAIAssistantDebugScenarioView(aiAssistantDebugScenario)
+    : null;
+  const resolvedAIAssistantStatus =
+    aiAssistantDebugView?.status ??
+    (isAIAssistantSuggestionIgnored ? "waiting" : aiAssistantStatus);
+  const resolvedAIAssistantStatusLabel = aiAssistantDebugView
+    ? aiAssistantDebugView.label
+    : isAIAssistantSuggestionIgnored
+      ? undefined
+      : aiAssistantStatusLabel;
   const hasActiveFileUpload = fileUploadQueue.length > 0;
   const hasActiveConversation = activeConversation !== undefined;
   const isTicketSupported = isConversationTicketSupported(activeConversation);
@@ -450,6 +493,15 @@ export function ChatPanel({
   useEffect(() => {
     setIsMobileSidebarOpen(false);
   }, [activeConversation?.id, isMobileLayout]);
+
+  useEffect(() => {
+    setAIAssistantDebugScenario(null);
+    setIsAIAssistantSuggestionIgnored(false);
+  }, [activeConversation?.id]);
+
+  useEffect(() => {
+    setIsAIAssistantSuggestionIgnored(false);
+  }, [aiAssistantStatus, aiAssistantStatusLabel]);
 
   useLayoutEffect(() => {
     onPersistentSidebarChange?.(hasPersistentDesktopSidebar);
@@ -568,7 +620,7 @@ export function ChatPanel({
                   canCollectMaterialActions={canCollectMaterialActions}
                   canUseMessageActions={canSendMessage}
                   canUseMessageForward={canUseMessageForward}
-                  hasAgentHostingOverlay={!!agentHostingStatus}
+                  hasComposerStatusOverlay={hasComposerStatusOverlay}
                   hasMoreHistory={hasMoreHistory}
                   historyLoadLabel={historyLoadLabel}
                   isConversationLoading={isConversationLoading}
@@ -663,6 +715,59 @@ export function ChatPanel({
                             onCancel={onCancelAgentHosting}
                             onEnable={onEnableAgentHosting}
                             status={agentHostingStatus}
+                          />
+                        </div>
+                      ) : aiAssistantStatusVisible ? (
+                        <div
+                          className="absolute left-1/2 top-1 z-0 w-[calc(100%-2rem)] max-w-[860px] -translate-x-1/2 -translate-y-[42px]"
+                          data-testid="chat-ai-assistant-status-bar-anchor"
+                        >
+                          <ChatAIAssistantStatusBar
+                            customerName={activeConversation.customerName}
+                            label={resolvedAIAssistantStatusLabel}
+                            onApprove={
+                              aiAssistantDebugScenario
+                                ? () => {
+                                    setAIAssistantDebugScenario(
+                                      "thinking-cancellable",
+                                    );
+                                  }
+                                : onApproveAIAssistantSuggestion
+                            }
+                            onIgnore={() => {
+                              if (aiAssistantDebugScenario) {
+                                setAIAssistantDebugScenario("waiting");
+                              } else {
+                                setIsAIAssistantSuggestionIgnored(true);
+                                onIgnoreAIAssistantSuggestion?.();
+                              }
+                            }}
+                            status={resolvedAIAssistantStatus}
+                            thinkingActions={
+                              aiAssistantDebugView?.hasThinkingAction ? (
+                                <Button
+                                  className="h-7 rounded-[8px] px-3 text-xs text-muted-foreground shadow-none hover:bg-muted hover:text-foreground dark:text-white/70 dark:hover:bg-white/10 dark:hover:text-white"
+                                  onClick={() => {
+                                    setAIAssistantDebugScenario("waiting");
+                                  }}
+                                  size="sm"
+                                  type="button"
+                                  variant="ghost"
+                                >
+                                  停止
+                                </Button>
+                              ) : (
+                                aiAssistantThinkingActions
+                              )
+                            }
+                          />
+                          <ChatAIAssistantDebugMenu
+                            className="absolute left-[calc(100%+0.5rem)] top-[21px] -translate-y-1/2 max-[940px]:left-auto max-[940px]:right-1"
+                            onValueChange={setAIAssistantDebugScenario}
+                            value={
+                              aiAssistantDebugScenario ??
+                              resolvedAIAssistantStatus
+                            }
                           />
                         </div>
                       ) : null}

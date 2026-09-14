@@ -1029,6 +1029,134 @@ describe("ChatPanel", () => {
     expect(onCancelAgentHosting).toHaveBeenCalledTimes(1);
   });
 
+  it("shows the AI assistant bar only when smart reply is active without full agent mode", () => {
+    const assistantAccount = {
+      ...account,
+      seatAIAssistantEnabled: true,
+    };
+    const conversation = {
+      ...createConversation(),
+      bizStatus: 1,
+    };
+    const { rerender } = render(
+      createStatusBarPanel({
+        activeAccount: assistantAccount,
+        activeConversation: conversation,
+      }),
+    );
+
+    expect(screen.getByTestId("chat-ai-assistant-status-bar")).toBeInTheDocument();
+    expect(screen.getByText("等待 客户 消息")).toBeInTheDocument();
+    expect(screen.queryByTestId("chat-agent-hosting-status-bar")).not.toBeInTheDocument();
+
+    rerender(
+      createStatusBarPanel({
+        activeAccount: assistantAccount,
+        activeConversation: {
+          ...conversation,
+          agentHostingStatus: "thinking",
+          conversationAIHostingSwitch: true,
+        },
+        conversationAIHostingEnabled: true,
+      }),
+    );
+
+    expect(screen.getByTestId("chat-agent-hosting-status-bar")).toBeInTheDocument();
+    expect(screen.queryByTestId("chat-ai-assistant-status-bar")).not.toBeInTheDocument();
+  });
+
+  it("switches the AI assistant bar state from the development debug menu", async () => {
+    const user = userEvent.setup();
+    const assistantAccount = {
+      ...account,
+      seatAIAssistantEnabled: true,
+    };
+    const conversation = {
+      ...createConversation(),
+      bizStatus: 1,
+    };
+    const { rerender } = render(
+      createStatusBarPanel({
+        activeAccount: assistantAccount,
+        activeConversation: conversation,
+      }),
+    );
+
+    const openDebugMenu = () =>
+      user.click(
+        screen.getByRole("button", {
+          name: "切换 AI 辅助条调试状态",
+        }),
+      );
+    await openDebugMenu();
+    await user.click(
+      screen.getByRole("menuitemradio", { name: "思考中" }),
+    );
+    await screen.findByText("AI 正在思考");
+
+    await openDebugMenu();
+    await user.click(
+      screen.getByRole("menuitemradio", { name: "待确认 · 退款" }),
+    );
+    await screen.findByLabelText("确认退款 100 元");
+
+    await user.click(screen.getByRole("button", { name: "忽略" }));
+    await screen.findByText("等待 客户 消息");
+
+    await openDebugMenu();
+    await user.click(
+      screen.getByRole("menuitemradio", { name: "思考中 · 查询订单" }),
+    );
+    await screen.findByLabelText("正在查询订单信息");
+
+    await openDebugMenu();
+    await user.click(
+      screen.getByRole("menuitemradio", { name: "思考中 · 可取消" }),
+    );
+    await screen.findByLabelText("正在执行售后 SOP");
+    await user.click(screen.getByRole("button", { name: "停止" }));
+    await screen.findByText("等待 客户 消息");
+
+    rerender(
+      createStatusBarPanel({
+        activeAccount: assistantAccount,
+        activeConversation: {
+          ...conversation,
+          id: "conversation-2",
+        },
+      }),
+    );
+
+    await screen.findByText("等待 客户 消息");
+  });
+
+  it("returns the AI assistant bar to waiting after ignoring a confirmation", async () => {
+    const user = userEvent.setup();
+    const onIgnoreAIAssistantSuggestion = vi.fn();
+    const assistantAccount = {
+      ...account,
+      seatAIAssistantEnabled: true,
+    };
+
+    render(
+      createStatusBarPanel({
+        activeAccount: assistantAccount,
+        activeConversation: {
+          ...createConversation(),
+          bizStatus: 1,
+        },
+        aiAssistantStatus: "confirmation",
+        aiAssistantStatusLabel: "确认退款 100 元",
+        onIgnoreAIAssistantSuggestion,
+      }),
+    );
+
+    await user.click(screen.getByRole("button", { name: "忽略" }));
+
+    expect(onIgnoreAIAssistantSuggestion).toHaveBeenCalledTimes(1);
+    expect(await screen.findByText("等待 客户 消息")).toBeInTheDocument();
+  });
+
   it("hides agent hosting status bar for exited agent mode conversations", () => {
     render(
       <ChatPanel
@@ -2038,4 +2166,76 @@ function createConversation(): Conversation {
     unread: 0,
     updatedAt: "刚刚",
   };
+}
+
+function createStatusBarPanel({
+  activeAccount,
+  activeConversation,
+  aiAssistantStatus,
+  aiAssistantStatusLabel,
+  conversationAIHostingEnabled = false,
+  onIgnoreAIAssistantSuggestion,
+}: {
+  activeAccount: Account;
+  activeConversation: Conversation;
+  aiAssistantStatus?: "waiting" | "thinking" | "confirmation";
+  aiAssistantStatusLabel?: string;
+  conversationAIHostingEnabled?: boolean;
+  onIgnoreAIAssistantSuggestion?: () => void;
+}) {
+  return (
+    <ChatPanel
+      activeAccount={activeAccount}
+      activeConversation={activeConversation}
+      activeHistoryStatus="idle"
+      aiAssistantStatus={aiAssistantStatus}
+      aiAssistantStatusLabel={aiAssistantStatusLabel}
+      canSendMessage={!conversationAIHostingEnabled}
+      conversationAIHostingEnabled={conversationAIHostingEnabled}
+      composerPlaceholder="输入消息"
+      customerPanelWidth={375}
+      fileUploadQueue={[]}
+      groupMembers={[]}
+      hasMoreHistory={false}
+      historyPanel={{
+        activeHistoryFilters: { scope: "all" },
+        activeHistoryLoading: false,
+      }}
+      inputEnterBehavior="send"
+      isConversationLoading={false}
+      isEmojiPickerOpen={false}
+      isGroupMembersLoading={false}
+      isResizingCustomerPanel={false}
+      isSendingDraft={false}
+      messages={[]}
+      quotedMessage={null}
+      sidebarItems={[]}
+      composerRef={createRef()}
+      messageViewportRef={createRef()}
+      workbenchBodyRef={createRef()}
+      onCancelFileUpload={vi.fn()}
+      onClearQuotedMessage={vi.fn()}
+      onComposerSegmentsChange={vi.fn()}
+      onCustomerPanelResizeStart={vi.fn()}
+      onDismissScopeTransitionError={vi.fn()}
+      onDraftChange={vi.fn()}
+      onEmojiPickerOpenChange={vi.fn()}
+      onEnterBehaviorChange={vi.fn()}
+      onFileSelect={vi.fn()}
+      onHistoryClose={vi.fn()}
+      onHistoryLoadMoreNext={vi.fn()}
+      onHistoryLoadMorePrev={vi.fn()}
+      onHistoryRefresh={vi.fn()}
+      onHistorySetDay={vi.fn()}
+      onHistorySetScope={vi.fn()}
+      onHistorySetSenderId={vi.fn()}
+      onLoadOlderMessages={vi.fn()}
+      onMessageViewportScroll={vi.fn()}
+      onOpenHistory={vi.fn()}
+      onIgnoreAIAssistantSuggestion={onIgnoreAIAssistantSuggestion}
+      onRefreshGroupMembers={vi.fn()}
+      onRetryMessage={vi.fn()}
+      onSendDraft={vi.fn()}
+    />
+  );
 }

@@ -23,7 +23,7 @@ export const marketingMessageNodeDefinition: WorkflowNodeDefinition<"marketing-m
   ...base,
   createDefaultData: () => ({ ...base.createDefaultData(), status: "warning", wait: { mode: "none" } }),
   getOutputVariables: () => [{
-    description: "如设置了等待时间，到达设置的等待时间后，会查询一次触达是否成功，并输出真实触达结果；如未设置等待时间，则该值仅表示任务下发成功，不代表实际触达了用户。",
+    description: "设置等待时，到期后会自动查询并输出实际触达结果；未设置等待时，该值仅表示任务下发成功，不代表实际触达了用户",
     key: "pushSuccess",
     label: "触达结果",
     usages: ["variable"],
@@ -43,7 +43,7 @@ export const marketingMessageNodeDefinition: WorkflowNodeDefinition<"marketing-m
     const normalizedWait = normalizeMarketingMessageWait(wait);
     const waitValidationMessage = normalizedWait.mode === "fixed"
       ? `等待时长需为 ${WORKFLOW_MARKETING_MESSAGE_WAIT_MIN_BY_UNIT[normalizedWait.unit]}-${WORKFLOW_MARKETING_MESSAGE_WAIT_MAX_BY_UNIT[normalizedWait.unit]}`
-      : "执行方式无效";
+      : "等待策略配置异常";
     return [
       ...(!plan ? [{ code: "marketing-message-plan-required", message: "需选择触达任务", severity: "warning" as const, source: "config" as const }] : []),
       ...(!isMarketingMessageWait(wait)

@@ -173,7 +173,7 @@ describe("workflow Marketing Message node", () => {
       : [];
     expect(fields).toEqual([
       { id: "plan", label: "触达任务", value: { kind: "text", text: "双十一触达" } },
-      { id: "wait", label: "执行方式", value: { kind: "text", text: "30 分钟后查询" } },
+      { id: "wait", label: "等待策略", value: { kind: "text", text: "30 分钟后执行后续节点" } },
     ]);
   });
 });

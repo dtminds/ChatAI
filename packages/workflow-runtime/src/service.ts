@@ -972,6 +972,7 @@ export class WorkflowRuntimeService {
       await executeMarketingMessageOperation(this.capabilityTimeoutMs, signal => port.pushUser({
         bizId,
         externalUserId,
+        idempotencyKey: input.nodeExecutionKey,
         planId: config.plan.planId,
         signal,
         uid: input.run.uid,

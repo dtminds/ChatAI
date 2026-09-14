@@ -3,6 +3,7 @@ import type { WorkflowMarketingMessageExecutionConfig } from "@chatai/contracts"
 export type WorkflowMarketingMessagePushInput = {
   bizId: number;
   externalUserId: number;
+  idempotencyKey: string;
   planId: number;
   signal: AbortSignal;
   uid: number;

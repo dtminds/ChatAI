@@ -54,6 +54,7 @@ describe("Marketing Message runtime", () => {
     expect(harness.pushUser).toHaveBeenCalledWith({
       bizId: Number(harness.created.task.id),
       externalUserId: 3166,
+      idempotencyKey: `9:${harness.created.run.id}:marketing:1`,
       planId: 701,
       signal: expect.any(AbortSignal),
       uid: 9,

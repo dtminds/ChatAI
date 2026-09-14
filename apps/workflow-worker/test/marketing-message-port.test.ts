@@ -17,6 +17,7 @@ describe("Workflow Marketing Message Java port", () => {
     await expect(port.pushUser({
       bizId: 123,
       externalUserId: 3166,
+      idempotencyKey: "9:6985:marketing-message:1",
       planId: 701,
       signal: new AbortController().signal,
       uid: 272,
@@ -24,7 +25,9 @@ describe("Workflow Marketing Message Java port", () => {
 
     expect(fetchMock).toHaveBeenCalledOnce();
     const [url, init] = fetchMock.mock.calls[0]!;
-    expect(String(url)).toBe(`https://java.example.com${JAVA_MARKETING_MESSAGE_PUSH_PATH}`);
+    expect(String(url)).toBe(
+      `https://java.example.com${JAVA_MARKETING_MESSAGE_PUSH_PATH}?idempotentKey=9%3A6985%3Amarketing-message%3A1`,
+    );
     expect(init).toMatchObject({
       headers: {
         authorization: "Bearer internal-token",
@@ -82,6 +85,7 @@ describe("Workflow Marketing Message Java port", () => {
     await expect(port.pushUser({
       bizId: 123,
       externalUserId: 3166,
+      idempotencyKey: "9:6985:marketing-message:1",
       planId: 701,
       signal: new AbortController().signal,
       uid: 272,
@@ -95,6 +99,25 @@ describe("Workflow Marketing Message Java port", () => {
     await expect(port.pushUser({
       bizId: 0,
       externalUserId: 3166,
+      idempotencyKey: "9:6985:marketing-message:1",
+      planId: 701,
+      signal: new AbortController().signal,
+      uid: 272,
+    })).rejects.toMatchObject({
+      code: "WORKFLOW_MARKETING_MESSAGE_REQUEST_INVALID",
+      failureKind: "terminal",
+    });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("rejects a missing idempotency key before issuing a push request", async () => {
+    const fetchMock = vi.fn<typeof fetch>();
+    const port = createPort(fetchMock);
+
+    await expect(port.pushUser({
+      bizId: 123,
+      externalUserId: 3166,
+      idempotencyKey: "",
       planId: 701,
       signal: new AbortController().signal,
       uid: 272,

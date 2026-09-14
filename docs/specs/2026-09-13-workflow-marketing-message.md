@@ -39,7 +39,7 @@ Java 返回标准信封以及固定顶层分页字段 `count`、`hasNext`、`lis
 推送接口：
 
 ```http
-POST /third-internal/cdp-market-plan/push-user
+POST /third-internal/cdp-market-plan/push-user?idempotentKey=<nodeExecutionKey>
 ```
 
 ```json
@@ -77,7 +77,9 @@ POST /third-internal/cdp-market-plan/query-push-result
 
 `externalUserId` 使用 Workflow 统一身份准备结果。WeCom 联系人主体可直接使用数字 `subjectId`；ChatAI 联系人通过身份映射获取。映射不到正整数时，不调用推送接口并终止流程。
 
-`bizId` 使用当前 Workflow Task 的数字 ID。Java 必须按 `uid + bizId` 保证推送幂等：相同键和相同请求不得重复下发；相同键但请求内容不同应拒绝。这样可以覆盖推送成功后、Workflow 持久化执行标记前发生进程退出的恢复场景。
+`idempotentKey` 使用 Runtime 生成的稳定 Node Execution Key，并沿用其他 Action 节点的 Java 幂等协议：相同 Key 和相同请求不得重复下发，相同 Key 但请求内容不同应拒绝。超时或进程恢复后的重复推送复用同一个 Key。
+
+`bizId` 使用当前 Workflow Task 的数字 ID，只用于后续查询触达结果，不承担幂等职责。查询接口是只读操作，不携带 `idempotentKey`。
 
 等待模式下，Node 在推送成功后持久化 `bizId` 和 `dueAt`，到期恢复时不再次推送。查询接口由 Java 聚合短信和企业微信等渠道结果，只向 Workflow 返回一个 boolean `pushSuccess`。
 
@@ -85,9 +87,9 @@ POST /third-internal/cdp-market-plan/query-push-result
 
 两个执行接口都通过共享 `decodeJavaInternalApiEnvelope` 解码。`success: false`、非法信封、非法 JSON、非法业务字段、非 200 HTTP、网络异常及单次操作超时均为 terminal，流程停止；当前产品语义不对推送或到期查询执行 Runtime 自动重试。若后续要对传输故障增加重试，必须先重新确认“只查询一次”的用户语义和 Java 幂等边界。
 
-当前查询接口尚待 Java 实现和部署，Java 侧推送幂等也需要联调验收，因此节点 maturity 为 `draft-ready`：开发环境可以编辑、保存并执行 Node 子系统测试，生产发布与 Runtime 执行门禁不放行。升级为 `runtime-ready` 前必须完成：
+当前查询接口尚待 Java 实现和部署，Java 侧标准 `idempotentKey` 推送幂等也需要联调验收，因此节点 maturity 为 `draft-ready`：开发环境可以编辑、保存并执行 Node 子系统测试，生产发布与 Runtime 执行门禁不放行。升级为 `runtime-ready` 前必须完成：
 
 1. Java 查询接口在目标环境部署并通过真实响应联调。
-2. Java 按 `uid + bizId` 的推送幂等行为通过重复请求验证。
+2. Java 按 URL query 中 `idempotentKey` 的推送幂等行为通过重复请求验证。
 3. 等待中、触达成功和触达失败三种查询结果通过联调。
 4. Node Worker 的超时、错误诊断和恢复路径通过目标环境验收。

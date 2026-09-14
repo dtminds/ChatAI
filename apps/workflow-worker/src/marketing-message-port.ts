@@ -37,12 +37,19 @@ export class HttpWorkflowMarketingMessagePort implements WorkflowMarketingMessag
       planId: input.planId,
       uid: input.uid,
     });
+    if (!input.idempotencyKey) {
+      throw terminalError(
+        "WORKFLOW_MARKETING_MESSAGE_REQUEST_INVALID",
+        "执行所需数据不可用，流程已停止",
+        "Marketing Message push request requires an idempotency key",
+      );
+    }
     const body = await this.post(JAVA_MARKETING_MESSAGE_PUSH_PATH, {
       bizId: input.bizId,
       externalUserId: input.externalUserId,
       planId: input.planId,
       uid: input.uid,
-    }, input.signal, "push");
+    }, input.signal, "push", input.idempotencyKey);
     requireSuccessfulEnvelope(body, "push");
   }
 
@@ -66,11 +73,14 @@ export class HttpWorkflowMarketingMessagePort implements WorkflowMarketingMessag
     body: Record<string, number>,
     signal: AbortSignal,
     operation: "push" | "query",
+    idempotencyKey?: string,
   ) {
     throwIfAborted(signal);
+    const endpoint = new URL(path, `${this.options.baseUrl}/`);
+    if (idempotencyKey) endpoint.searchParams.set("idempotentKey", idempotencyKey);
     let response: Response;
     try {
-      response = await this.fetch(new URL(path, `${this.options.baseUrl}/`), {
+      response = await this.fetch(endpoint, {
         body: JSON.stringify(body),
         headers: {
           "content-type": "application/json",

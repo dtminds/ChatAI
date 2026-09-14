@@ -210,11 +210,10 @@ export function ChatMessagePanel({
           >
             <div
               aria-hidden={isConversationLoading ? "true" : undefined}
-              className={
-                isConversationLoading
-                  ? "pointer-events-none opacity-0"
-                  : undefined
-              }
+              className={cn(
+                "mx-auto w-full max-w-[860px]",
+                isConversationLoading && "pointer-events-none opacity-0",
+              )}
               data-testid="message-content"
             >
               {hasMoreHistory ? (

@@ -13,6 +13,7 @@ import {
 } from "@/pages/chat/lib/account-rail-width";
 import {
   MAX_CUSTOMER_PANEL_WIDTH,
+  MIN_CHAT_WORKBENCH_CONTENT_WIDTH,
   MIN_CUSTOMER_PANEL_WIDTH,
   MIN_WORKBENCH_CONTENT_WIDTH,
   clampCustomerPanelWidth,
@@ -76,6 +77,7 @@ describe("chat utility helpers", () => {
   });
 
   it("keeps a desktop workbench floor instead of reflowing into a phone layout", () => {
+    expect(MIN_CHAT_WORKBENCH_CONTENT_WIDTH).toBe(776);
     expect(MIN_WORKBENCH_CONTENT_WIDTH).toBe(1100);
   });
 

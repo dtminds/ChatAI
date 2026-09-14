@@ -231,6 +231,7 @@ describe("ChatPanel", () => {
   it("runs header actions for the active conversation and toggles the desktop sidebar", async () => {
     const user = userEvent.setup();
     const onPinConversation = vi.fn();
+    const onPersistentSidebarChange = vi.fn();
     const onQuickReplyActiveChange = vi.fn();
 
     const panel = (
@@ -279,6 +280,7 @@ describe("ChatPanel", () => {
         onLoadOlderMessages={vi.fn()}
         onMessageViewportScroll={vi.fn()}
         onOpenHistory={vi.fn()}
+        onPersistentSidebarChange={onPersistentSidebarChange}
         onPinConversation={onPinConversation}
         onQuickReplyActiveChange={onQuickReplyActiveChange}
         onRefreshGroupMembers={vi.fn()}
@@ -288,6 +290,8 @@ describe("ChatPanel", () => {
     );
     const { unmount } = render(panel);
 
+    expect(onPersistentSidebarChange).toHaveBeenLastCalledWith(true);
+
     await user.click(screen.getByRole("button", { name: "更多会话操作" }));
     await user.click(screen.getByRole("menuitem", { name: "置顶" }));
     expect(onPinConversation).toHaveBeenCalledWith("conversation-1");
@@ -295,6 +299,7 @@ describe("ChatPanel", () => {
     expect(screen.getByTestId("customer-side-panel-shell")).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "折叠侧边栏" }));
     expect(screen.queryByTestId("customer-side-panel-shell")).not.toBeInTheDocument();
+    expect(onPersistentSidebarChange).toHaveBeenLastCalledWith(false);
     expect(onQuickReplyActiveChange).toHaveBeenCalledWith(false);
     expect(
       window.localStorage.getItem("chatai.workbenchSidebarCollapsed"),
@@ -303,8 +308,10 @@ describe("ChatPanel", () => {
     expect(screen.queryByTestId("user-memory-reserved-rail")).not.toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "客户记忆" }));
     expect(screen.getByTestId("user-memory-reserved-rail")).toBeInTheDocument();
+    expect(onPersistentSidebarChange).toHaveBeenLastCalledWith(true);
     await user.click(screen.getByRole("button", { name: "客户记忆" }));
     expect(screen.queryByTestId("user-memory-reserved-rail")).not.toBeInTheDocument();
+    expect(onPersistentSidebarChange).toHaveBeenLastCalledWith(false);
 
     unmount();
     render(panel);
@@ -313,6 +320,7 @@ describe("ChatPanel", () => {
 
     await user.click(screen.getByRole("button", { name: "展开侧边栏" }));
     expect(screen.getByTestId("customer-side-panel-shell")).toBeInTheDocument();
+    expect(onPersistentSidebarChange).toHaveBeenLastCalledWith(true);
     expect(
       window.localStorage.getItem("chatai.workbenchSidebarCollapsed"),
     ).toBe("false");

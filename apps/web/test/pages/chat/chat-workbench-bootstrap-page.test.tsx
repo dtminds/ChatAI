@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { waitFor } from "@testing-library/react";
+import { screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import {
   createMockWorkbenchService,
   setWorkbenchService,
@@ -12,7 +13,18 @@ import {
 } from "./workbench-test-utils";
 
 vi.mock("@/pages/chat/components/chat-panel", () => ({
-  ChatPanel: () => <div data-testid="mock-chat-panel" />,
+  ChatPanel: (props: {
+    onPersistentSidebarChange?: (visible: boolean) => void;
+  }) => (
+    <div data-testid="mock-chat-panel">
+      <button
+        onClick={() => props.onPersistentSidebarChange?.(false)}
+        type="button"
+      >
+        收起固定侧栏
+      </button>
+    </div>
+  ),
 }));
 
 vi.mock("@/pages/chat/components/conversation-list-panel", () => ({
@@ -45,5 +57,22 @@ describe("ChatWorkbenchPage bootstrap", () => {
     });
 
     expect(getSeats).toHaveBeenCalledTimes(1);
+  });
+
+  it("reduces the desktop chat floor when the persistent sidebar is collapsed", async () => {
+    const user = userEvent.setup();
+
+    renderChatWorkbenchPage();
+
+    await waitFor(() => {
+      expect(useWorkbenchStore.getState().bootstrapStatus).toBe("ready");
+    });
+
+    const content = screen.getByTestId("chat-workbench-content");
+    expect(content).toHaveStyle({ minWidth: "1100px" });
+
+    await user.click(screen.getByRole("button", { name: "收起固定侧栏" }));
+
+    expect(content).toHaveStyle({ minWidth: "776px" });
   });
 });

@@ -1,6 +1,5 @@
 import {
   type AnimationEvent,
-  type ReactNode,
   useLayoutEffect,
   useState,
 } from "react";
@@ -18,6 +17,14 @@ export type ChatAIAssistantStatus =
   | "thinking"
   | "confirmation";
 
+export type ChatAIAssistantAction = {
+  disabled?: boolean;
+  id: string;
+  label: string;
+  onSelect?: () => void;
+  tone?: "primary" | "quiet";
+};
+
 type StatusBarView = {
   label: string;
   status: ChatAIAssistantStatus;
@@ -27,13 +34,13 @@ type OnStatusBarStatus = Exclude<ChatAIAssistantStatus, "waiting">;
 type BeamTheme = "light" | "dark";
 
 type OnStatusBarThemeStyles = {
-  approveButton: string;
   beamBrightness: number;
   beamColorVariant: "colorful" | "ocean";
   beamSaturation: number;
   content: string;
-  ignoreButton: string;
   orb?: string;
+  primaryActionButton: string;
+  quietActionButton: string;
   surface: string;
   text: string;
 };
@@ -43,25 +50,26 @@ const ON_STATUS_BAR_THEME_STYLES: Record<
   OnStatusBarThemeStyles
 > = {
   light: {
-    approveButton:
-      "bg-neutral-strong text-neutral-strong-foreground hover:bg-neutral-strong/90 hover:text-neutral-strong-foreground",
     beamBrightness: 2.1,
     beamColorVariant: "colorful",
     beamSaturation: 0.5,
     content: "text-muted-foreground",
-    ignoreButton:
-      "text-muted-foreground hover:bg-muted hover:text-foreground",
+    primaryActionButton:
+      "bg-neutral-strong text-neutral-strong-foreground hover:bg-neutral-strong/90 hover:text-neutral-strong-foreground",
+    quietActionButton:
+      "bg-transparent text-muted-foreground hover:bg-transparent hover:text-foreground active:bg-transparent",
     surface: "bg-muted/80 backdrop-blur-xs",
     text: "text-muted-foreground",
   },
   dark: {
-    approveButton: "bg-white text-neutral-900 hover:bg-white/90",
     beamBrightness: 1.2,
     beamColorVariant: "ocean",
     beamSaturation: 0.15,
     content: "text-white/90",
-    ignoreButton: "text-white/70 hover:bg-white/10 hover:text-white",
     orb: "opacity-85",
+    primaryActionButton: "bg-white text-neutral-900 hover:bg-white/90",
+    quietActionButton:
+      "bg-transparent text-white/70 hover:bg-transparent hover:text-white active:bg-transparent",
     surface: "bg-neutral-800",
     text: "text-white/90",
   },
@@ -82,7 +90,7 @@ export function ChatAIAssistantStatusBar({
   onApprove?: () => void;
   onIgnore?: () => void;
   status?: ChatAIAssistantStatus;
-  thinkingActions?: ReactNode;
+  thinkingActions?: readonly ChatAIAssistantAction[];
 }) {
   const targetLabel =
     label?.trim() || getDefaultStatusLabel(status, customerName);
@@ -202,7 +210,7 @@ function StatusBarSurface({
   customerName?: string;
   onApprove?: () => void;
   onIgnore?: () => void;
-  thinkingActions?: ReactNode;
+  thinkingActions?: readonly ChatAIAssistantAction[];
   view: StatusBarView;
 }) {
   if (view.status === "waiting") {
@@ -290,7 +298,7 @@ function OnStatusBarSurface({
   onApprove?: () => void;
   onIgnore?: () => void;
   status: OnStatusBarStatus;
-  thinkingActions?: ReactNode;
+  thinkingActions?: readonly ChatAIAssistantAction[];
 }) {
   const isThinking = status === "thinking";
   const themeStyles = ON_STATUS_BAR_THEME_STYLES[beamTheme];
@@ -370,39 +378,56 @@ function OnStatusBarActions({
   onIgnore?: () => void;
   status: OnStatusBarStatus;
   themeStyles: OnStatusBarThemeStyles;
-  thinkingActions?: ReactNode;
+  thinkingActions?: readonly ChatAIAssistantAction[];
 }) {
-  if (status === "thinking") {
-    return thinkingActions;
+  const actions: readonly ChatAIAssistantAction[] =
+    status === "thinking"
+      ? (thinkingActions ?? [])
+      : [
+          {
+            disabled: !onIgnore,
+            id: "ignore",
+            label: "忽略",
+            onSelect: onIgnore,
+            tone: "quiet",
+          },
+          {
+            disabled: !onApprove,
+            id: "approve",
+            label: "批准",
+            onSelect: onApprove,
+            tone: "primary",
+          },
+        ];
+
+  if (actions.length === 0) {
+    return null;
   }
 
   return (
     <div className="flex shrink-0 items-center gap-1.5">
-      <Button
-        className={cn(
-          "h-7 rounded-[8px] px-3 text-xs shadow-none",
-          themeStyles.ignoreButton,
-        )}
-        disabled={!onIgnore}
-        onClick={onIgnore}
-        size="sm"
-        type="button"
-        variant="ghost"
-      >
-        忽略
-      </Button>
-      <Button
-        className={cn(
-          "h-7 rounded-[8px] border-transparent px-3 text-xs shadow-none",
-          themeStyles.approveButton,
-        )}
-        disabled={!onApprove}
-        onClick={onApprove}
-        size="sm"
-        type="button"
-      >
-        批准
-      </Button>
+      {actions.map((action) => {
+        const tone = action.tone ?? "quiet";
+
+        return (
+          <Button
+            className={cn(
+              "h-7 rounded-[8px] border-transparent px-3 text-xs shadow-none",
+              tone === "primary"
+                ? themeStyles.primaryActionButton
+                : themeStyles.quietActionButton,
+            )}
+            disabled={action.disabled || !action.onSelect}
+            key={action.id}
+            onClick={action.onSelect}
+            size="sm"
+            type="button"
+            variant={tone === "primary" ? "default" : "ghost"}
+          >
+            {action.label}
+          </Button>
+        );
+      })}
     </div>
   );
 }

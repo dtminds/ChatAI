@@ -146,15 +146,27 @@ describe("ChatAIAssistantStatusBar", () => {
     ).toBeInTheDocument();
   });
 
-  it("renders an optional action area while thinking", () => {
+  it("renders structured actions while thinking", async () => {
+    const user = userEvent.setup();
+    const onStop = vi.fn();
+
     render(
       <ChatAIAssistantStatusBar
         status="thinking"
-        thinkingActions={<button type="button">停止</button>}
+        thinkingActions={[
+          {
+            id: "stop",
+            label: "停止",
+            onSelect: onStop,
+            tone: "quiet",
+          },
+        ]}
       />,
     );
 
-    expect(screen.getByRole("button", { name: "停止" })).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "停止" }));
+
+    expect(onStop).toHaveBeenCalledTimes(1);
   });
 
   it("uses the dark beam preset when the page theme is dark", () => {

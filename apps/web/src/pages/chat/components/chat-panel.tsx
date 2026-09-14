@@ -21,6 +21,7 @@ import {
 } from "@/pages/chat/components/chat-composer";
 import {
   ChatAIAssistantStatusBar,
+  type ChatAIAssistantAction,
   type ChatAIAssistantStatus,
 } from "@/pages/chat/components/chat-ai-assistant-status-bar";
 import {
@@ -88,7 +89,7 @@ type ChatPanelProps = {
   fullAutoDisplayStatus?: AgentHostingStatus;
   aiAssistantStatus?: ChatAIAssistantStatus;
   aiAssistantStatusLabel?: string;
-  aiAssistantThinkingActions?: ReactNode;
+  aiAssistantThinkingActions?: readonly ChatAIAssistantAction[];
   activeAccount?: Account;
   seatAIHostingEnabled?: boolean;
   conversationAIHostingConfigured?: boolean;
@@ -744,21 +745,18 @@ export function ChatPanel({
                             }}
                             status={resolvedAIAssistantStatus}
                             thinkingActions={
-                              aiAssistantDebugView?.hasThinkingAction ? (
-                                <Button
-                                  className="h-7 rounded-[8px] px-3 text-xs text-muted-foreground shadow-none hover:bg-muted hover:text-foreground dark:text-white/70 dark:hover:bg-white/10 dark:hover:text-white"
-                                  onClick={() => {
-                                    setAIAssistantDebugScenario("waiting");
-                                  }}
-                                  size="sm"
-                                  type="button"
-                                  variant="ghost"
-                                >
-                                  停止
-                                </Button>
-                              ) : (
-                                aiAssistantThinkingActions
-                              )
+                              aiAssistantDebugView?.hasThinkingAction
+                                ? [
+                                    {
+                                      id: "stop",
+                                      label: "停止",
+                                      onSelect: () => {
+                                        setAIAssistantDebugScenario("waiting");
+                                      },
+                                      tone: "quiet",
+                                    },
+                                  ]
+                                : aiAssistantThinkingActions
                             }
                           />
                           <ChatAIAssistantDebugMenu

@@ -4,7 +4,7 @@ import {
   type WorkflowMarketingPlanListItem,
   type WorkflowMarketingPlanSnapshot,
 } from "@chatai/contracts";
-import { ArrowDown01Icon, Search01Icon } from "@hugeicons/core-free-icons";
+import { Search01Icon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { useEffect, useRef, useState } from "react";
 import { Badge } from "@/components/ui/badge";
@@ -90,13 +90,7 @@ export function MarketingPlanSelector({ onChange, value }: {
       variant="outline"
     >
       <span className={cn("truncate", !value && "text-muted-foreground")}>{value?.planName ?? "请选择触达任务"}</span>
-      <HugeiconsIcon
-        aria-hidden="true"
-        className="shrink-0 text-muted-foreground"
-        icon={ArrowDown01Icon}
-        size={16}
-        strokeWidth={1.8}
-      />
+      <span aria-hidden="true" className="text-muted-foreground">选择</span>
     </Button>
     <Dialog onOpenChange={setDialogOpen} open={open}>
       <DialogContent className="flex max-h-[calc(100vh-2rem)] w-[min(720px,calc(100vw-2rem))] max-w-[720px] flex-col gap-0 overflow-hidden p-0">
@@ -116,7 +110,7 @@ export function MarketingPlanSelector({ onChange, value }: {
               <TableHeader><TableRow><TableHead className="w-12"><span className="sr-only">选择</span></TableHead><TableHead>任务名称</TableHead><TableHead className="w-40">触达渠道</TableHead><TableHead className="w-24">状态</TableHead></TableRow></TableHeader>
               <TableBody>
                 {loading || error || plans.length === 0 ? <TableState loading={loading} error={error} onRetry={() => setRetryKey(key => key + 1)} /> : plans.map(plan => <TableRow key={plan.planId}>
-                  <TableCell><RadioGroupItem aria-label={plan.name} value={String(plan.planId)} /></TableCell>
+                  <TableCell><RadioGroupItem className="translate-y-[2px]" aria-label={plan.name} value={String(plan.planId)} /></TableCell>
                   <TableCell className="max-w-0 truncate" title={plan.name}>{plan.name}</TableCell>
                   <TableCell><div className="flex gap-1">{plan.sendChannels.map(channel => <Badge className="rounded-md" key={channel} variant="secondary">{channel === 1 ? "短信" : "企业微信"}</Badge>)}</div></TableCell>
                   <TableCell className="text-muted-foreground">{statusLabel(plan.status)}</TableCell>

@@ -16,7 +16,7 @@
   },
   "dependencies": {
     "audio-decode": "^3.10.1",
-    "cos-nodejs-sdk-v5": "^2.15.4",
+    "cos-nodejs-sdk-v5": "^3.0.0",
     "silk-wasm": "^3.7.1"
   },
   "devDependencies": {

@@ -150,6 +150,7 @@ describe("workflow contracts", () => {
       "wait",
       "wait-event",
       "message",
+      "marketing-message",
       "message-query",
       "handoff",
       "agent",
@@ -197,6 +198,7 @@ describe("workflow contracts", () => {
       subjectType: "wecom_contact",
     });
     expect(getWorkflowCapabilityProfile("wecom_sop").allowedNodeKinds).not.toContain("message");
+    expect(getWorkflowCapabilityProfile("wecom_sop").allowedNodeKinds).not.toContain("llm");
     expect(getWorkflowCapabilityProfile("chatai_sop").variableCatalog).toEqual(expect.arrayContaining([
       "subject.id",
       "trigger.occurredAt",
@@ -460,7 +462,7 @@ describe("workflow contracts", () => {
       messageSendingWindow: { endTime: "20:00", startTime: "09:00" },
       triggers: [{ sourceIds: ["qr-code-1"], type: "contact.friend_added" }],
       workUserIds: [201],
-    })).toBe(false);
+    })).toBe(true);
     expect(Value.Check(WorkflowWaitConfigSchema, {
       duration: 15,
       mode: "duration",

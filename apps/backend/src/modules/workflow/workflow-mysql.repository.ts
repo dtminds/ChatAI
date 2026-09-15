@@ -638,7 +638,8 @@ async function findRemovedBlockingNodes(
   );
   const nextNodeIds = new Set(input.nextSpec.nodes.map(node => node.id));
   return previousSpec.nodes.filter(node =>
-    (node.kind === "wait" || node.kind === "wait-event" || node.kind === "ai-collect")
+    (node.kind === "wait" || node.kind === "wait-event" || node.kind === "ai-collect"
+      || node.kind === "marketing-message")
     && !nextNodeIds.has(node.id));
 }
 

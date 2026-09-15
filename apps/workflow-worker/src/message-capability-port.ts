@@ -1,4 +1,5 @@
 import {
+  DEFAULT_H5_COVER_URL,
   decodeJavaInternalApiEnvelope,
   WORKBENCH_MESSAGE_SOURCE,
   WorkflowMessageCommandSchema,
@@ -193,7 +194,7 @@ function buildWorkflowJavaAttachment(
     ]);
     const desc = readFirstContentString(attachment.content, ["desc", "description"]);
     return {
-      ...(coverUrl ? { coverUrl } : {}),
+      coverUrl: coverUrl || DEFAULT_H5_COVER_URL,
       ...(desc ? { desc } : {}),
       href: requireFirstContentString(attachment.content, ["href", "url", "linkUrl"]),
       msgtype: "link",
@@ -283,10 +284,11 @@ async function sendWorkflowJavaMessage(input: {
     );
   }
   if (envelope.kind === "rejected") {
+    const reason = envelope.errorMsg.trim();
     throw terminalError(
       "WORKFLOW_MESSAGE_SEND_REJECTED",
-      "执行所需数据不可用，流程已停止",
-      `Workflow Message Java endpoint rejected the request: ${envelope.error} ${envelope.errorMsg.trim()}`.trim(),
+      reason ? `消息发送失败：${reason}` : "消息发送失败，流程已停止",
+      `Workflow Message Java endpoint rejected the request: ${envelope.error} ${reason}`.trim(),
     );
   }
   const optNo = isRecord(envelope.payload.data) ? envelope.payload.data.optNo : undefined;

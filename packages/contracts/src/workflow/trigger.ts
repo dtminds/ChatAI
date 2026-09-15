@@ -175,6 +175,7 @@ export const WorkflowChatAiStartDraftConfigSchema = Type.Object({
 export const WorkflowWeComStartDraftConfigSchema = Type.Object({
   entryMode: Type.Optional(WorkflowStartEntryModeSchema),
   entryPolicy: WorkflowEntryPolicySchema,
+  messageSendingWindow: Type.Optional(WorkflowMessageSendingWindowSchema),
   triggers: Type.Array(WorkflowWeComStartDraftTriggerSchema, { maxItems: 1 }),
   workUserIds: Type.Array(Type.Integer({ maximum: Number.MAX_SAFE_INTEGER, minimum: 1 }), {
     maxItems: 100,
@@ -212,6 +213,7 @@ export const WorkflowChatAiStartConfigSchema = Type.Union([
 
 const WorkflowWeComStartExecutionFields = {
   entryPolicy: WorkflowEntryPolicySchema,
+  messageSendingWindow: Type.Optional(WorkflowMessageSendingWindowSchema),
   workUserIds: Type.Array(Type.Integer({ maximum: Number.MAX_SAFE_INTEGER, minimum: 1 }), {
     maxItems: 100,
     minItems: 1,

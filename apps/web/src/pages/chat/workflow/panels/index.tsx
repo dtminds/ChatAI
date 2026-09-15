@@ -24,6 +24,7 @@ export function NodeConfigPanel({
   resources,
   testContext,
   workflowId,
+  workflowType,
 }: {
   allowedEntryEventTypes: readonly WorkflowEntryEventType[];
   animateOnMount?: boolean;
@@ -37,6 +38,7 @@ export function NodeConfigPanel({
   resources?: NodeSettingsProps["resources"];
   testContext?: WorkflowNodeTestContext;
   workflowId?: string;
+  workflowType?: NodeSettingsProps["workflowType"];
 }) {
   if (!node) {
     return (
@@ -82,6 +84,7 @@ export function NodeConfigPanel({
               resources={resources}
               testContext={testContext}
               workflowId={workflowId}
+              workflowType={workflowType}
             />
             {!getNodeDefinition(node.data.kind).ownsOutputConfiguration
               ? <NodeOutputsSection node={node} />

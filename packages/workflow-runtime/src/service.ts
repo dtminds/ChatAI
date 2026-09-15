@@ -5,6 +5,7 @@ import type {
   WorkflowExecutionNode,
   WorkflowExecutionSpec,
   WorkflowJsonObject,
+  WorkflowMarketingMessageExecutionConfig,
   WorkflowNodeKind,
   WorkflowStartConfig,
   WorkflowSubjectType,
@@ -24,6 +25,7 @@ import {
   WorkflowMessageSchema,
   WORKFLOW_DIRECT_ENTRY_EVENT_TYPE,
   isWorkflowAiCollectExecutionConfigComplete,
+  isWorkflowNodeExecutionConfig,
 } from "@chatai/contracts";
 import {
   createCoreNodeExecutorRegistry,
@@ -41,7 +43,7 @@ import {
   type WorkflowCapabilityPort,
 } from "./capability-port.js";
 import {
-  createWorkflowChatAiRunContext,
+  createWorkflowRunContext,
   getNextWorkflowMessageExecutionAt,
 } from "./chatai-action-context.js";
 import { readWorkflowTriggerSeatId } from "./context-readers.js";
@@ -98,6 +100,10 @@ import {
   type WorkflowMessageQueryPort,
 } from "./message-query.js";
 import { fitWorkflowMessageOutput } from "./workflow-messages.js";
+import {
+  getWorkflowMarketingMessageDueAt,
+  type WorkflowMarketingMessagePort,
+} from "./marketing-message.js";
 import type {
   WorkflowCommitNodeResultInput,
   WorkflowAiCollectStateRecord,
@@ -143,6 +149,7 @@ export class WorkflowRuntimeService {
   private readonly contactCustomFieldPort?: WorkflowContactCustomFieldPort;
   private readonly capabilityBindings: Map<WorkflowNodeKind, WorkflowCapabilityExecutionBinding>;
   private readonly messageQueryPort?: WorkflowMessageQueryPort;
+  private readonly marketingMessagePort?: WorkflowMarketingMessagePort;
   private readonly aiCollectConversationPort?: WorkflowAiCollectConversationPort;
   private readonly conversationDirectivePort?: WorkflowConversationDirectivePort;
   private readonly onEntitlementDeactivated?: (
@@ -167,6 +174,7 @@ export class WorkflowRuntimeService {
       executors?: WorkflowNodeExecutorRegistry;
       maxTaskAttempts?: number;
       messageQueryPort?: WorkflowMessageQueryPort;
+      marketingMessagePort?: WorkflowMarketingMessagePort;
       onEntitlementDeactivated?: (
         observation: WorkflowEntitlementDeactivationObservation,
       ) => void;
@@ -190,6 +198,7 @@ export class WorkflowRuntimeService {
     this.contactCustomFieldPort = options.contactCustomFieldPort;
     this.capabilityBindings = createCapabilityBindingMap(options.capabilityBindings ?? []);
     this.messageQueryPort = options.messageQueryPort;
+    this.marketingMessagePort = options.marketingMessagePort;
     this.aiCollectConversationPort = options.aiCollectConversationPort;
     this.conversationDirectivePort = options.conversationDirectivePort;
     this.onEntitlementDeactivated = options.onEntitlementDeactivated;
@@ -215,6 +224,7 @@ export class WorkflowRuntimeService {
   assertRuntimeComposition() {
     const missingNodeKinds = WORKFLOW_RUNTIME_SUPPORTED_NODE_KINDS.filter((kind) => {
       if (kind === "message-query") return this.messageQueryPort === undefined;
+      if (kind === "marketing-message") return this.marketingMessagePort === undefined;
       if (kind === "ai-collect") {
         return this.aiCollectConversationPort === undefined
           || this.conversationDirectivePort === undefined;
@@ -403,7 +413,7 @@ export class WorkflowRuntimeService {
       context = {
         outputs: {},
         trigger: structuredClone(input.trigger),
-        workflow: createWorkflowChatAiRunContext(startConfig),
+        workflow: createWorkflowRunContext(startConfig),
       };
       assertWorkflowRuntimeValue(context, "run-context", WORKFLOW_RUN_CONTEXT_MAX_BYTES);
     } catch (error) {
@@ -552,9 +562,24 @@ export class WorkflowRuntimeService {
       }
       throw error;
     }
-    if (node.kind === "message" && isRecord(run.context.workflow)) {
+    const nodeExecutionKey = createWorkflowNodeExecutionKey({
+      nodeId: node.id,
+      runId: run.id,
+      sequence: task.sequence,
+      uid: String(input.uid),
+    });
+    let enforceMessageSendingWindow = node.kind === "message";
+    if (node.kind === "marketing-message") {
+      const existingExecution = await this.runtimeRepository.findNodeExecutionByExecutionKey(
+        input.uid,
+        nodeExecutionKey,
+      );
+      enforceMessageSendingWindow = existingExecution === null
+        || readMarketingMessageExecutionState(existingExecution.input).kind === "absent";
+    }
+    if (enforceMessageSendingWindow) {
       const nextExecutionAt = getNextWorkflowMessageExecutionAt(
-        run.context.workflow,
+        isRecord(run.context.workflow) ? run.context.workflow : {},
         input.now,
       );
       if (nextExecutionAt) {
@@ -602,12 +627,6 @@ export class WorkflowRuntimeService {
     }
     if (claimed.kind !== "success") throw staleTaskError();
 
-    const nodeExecutionKey = createWorkflowNodeExecutionKey({
-      nodeId: node.id,
-      runId: run.id,
-      sequence: claimed.task.sequence,
-      uid: String(input.uid),
-    });
     if (node.kind === "wait-event") {
       return this.executeWaitEventTask({
         nodeExecutionKey,
@@ -639,6 +658,8 @@ export class WorkflowRuntimeService {
     let nextContext: Record<string, unknown>;
     const recoveredSmartsheetAttempt = node.kind === "smartsheet-write"
       && nodeExecutionInput.smartsheetAttemptStarted === true;
+    const marketingMessageHasStoredState = node.kind === "marketing-message"
+      && readMarketingMessageExecutionState(nodeExecutionInput).kind !== "absent";
     const capabilityPort: WorkflowCapabilityPort | undefined = node.kind === "smartsheet-write" && this.capabilityPort
       ? {
           execute: async (definition, request) => {
@@ -668,7 +689,8 @@ export class WorkflowRuntimeService {
         nodeExecutionInput,
         contextRequirements.customFields,
       );
-      if (!recoveredSmartsheetAttempt && (contextRequirements.identities.length > 0
+      if (!recoveredSmartsheetAttempt && !marketingMessageHasStoredState
+        && (contextRequirements.identities.length > 0
         || contextRequirements.customFieldIds.length > 0)) {
         preparedContext = await prepareWorkflowExecutionContext({
           contactCustomFieldPort: this.contactCustomFieldPort,
@@ -706,14 +728,24 @@ export class WorkflowRuntimeService {
             type: "advance" as const,
           }
         : compositeNode
-          ? await this.executeAiCollectTask({
-              claimedTask: claimed.task,
-              input,
-              node,
-              nodeExecutionKey,
-              preparedContext,
-              run,
-            })
+          ? node.kind === "marketing-message"
+            ? await this.executeMarketingMessageTask({
+                claimedTask: claimed.task,
+                input,
+                node,
+                nodeExecutionInput,
+                nodeExecutionKey,
+                preparedContext,
+                run,
+              })
+            : await this.executeAiCollectTask({
+                claimedTask: claimed.task,
+                input,
+                node,
+                nodeExecutionKey,
+                preparedContext,
+                run,
+              })
         : inferenceNode
         ? await this.executeInferenceTask({
             claimedTask: claimed.task,
@@ -772,6 +804,7 @@ export class WorkflowRuntimeService {
           now: input.now,
           runId: run.id,
           taskId: task.id,
+          taskType: node.kind === "marketing-message" ? "marketing-message" : "wait",
           uid: input.uid,
         });
         if (waiting.kind === "already-processed") throw alreadyProcessedError();
@@ -881,6 +914,155 @@ export class WorkflowRuntimeService {
     if (committed.kind === "already-processed") throw alreadyProcessedError();
     if (committed.kind !== "success") throw staleTaskError();
     return committed;
+  }
+
+  private async executeMarketingMessageTask(input: {
+    claimedTask: WorkflowTaskRecord;
+    input: WorkflowExecuteTaskInput;
+    node: WorkflowExecutionNode;
+    nodeExecutionInput: Record<string, unknown>;
+    nodeExecutionKey: string;
+    preparedContext: WorkflowPreparedExecutionContext;
+    run: WorkflowRunRecord;
+  }): Promise<
+    | { dueAt: string; output: Record<string, unknown>; type: "wait" }
+    | { output: Record<string, unknown>; sourceOutletId: string; type: "advance" }
+  > {
+    if (input.node.kind !== "marketing-message"
+      || !isWorkflowNodeExecutionConfig("marketing-message", input.node.config)) {
+      throw new WorkflowCapabilityExecutionError(
+        "terminal",
+        "WORKFLOW_MARKETING_MESSAGE_CONFIG_INVALID",
+        "群发触达配置不可用，流程已停止",
+      );
+    }
+    const port = this.marketingMessagePort;
+    if (!port) {
+      throw new WorkflowCapabilityExecutionError(
+        "terminal",
+        "WORKFLOW_MARKETING_MESSAGE_PORT_UNAVAILABLE",
+        "群发触达服务不可用，流程已停止",
+      );
+    }
+    const config = input.node.config as WorkflowMarketingMessageExecutionConfig;
+    const bizId = Number(input.claimedTask.id);
+    if (!Number.isSafeInteger(bizId) || bizId <= 0) {
+      throw new WorkflowCapabilityExecutionError(
+        "terminal",
+        "WORKFLOW_MARKETING_MESSAGE_BIZ_ID_INVALID",
+        "执行所需数据不可用，流程已停止",
+      );
+    }
+
+    const storedState = readMarketingMessageExecutionState(input.nodeExecutionInput);
+    if (storedState.kind === "invalid") {
+      throw new WorkflowCapabilityExecutionError(
+        "terminal",
+        "WORKFLOW_MARKETING_MESSAGE_STATE_INVALID",
+        "流程数据异常，流程已停止",
+      );
+    }
+    if (storedState.kind === "absent" && input.claimedTask.taskType === "marketing-message") {
+      throw new WorkflowCapabilityExecutionError(
+        "terminal",
+        "WORKFLOW_MARKETING_MESSAGE_STATE_MISSING",
+        "流程数据异常，流程已停止",
+      );
+    }
+    let state = storedState.kind === "valid" ? storedState.value : null;
+    if (!state) {
+      const externalUserId = input.preparedContext.identities.externalUserId;
+      const workUserId = input.preparedContext.identities.workUserId;
+      if (!externalUserId || !workUserId) {
+        throw new WorkflowCapabilityExecutionError(
+          "terminal",
+          "WORKFLOW_MARKETING_MESSAGE_IDENTITY_INVALID",
+          "执行所需数据不可用，流程已停止",
+        );
+      }
+      await executeMarketingMessageOperation(this.capabilityTimeoutMs, signal => port.pushUser({
+        bizId,
+        externalUserId,
+        idempotencyKey: input.nodeExecutionKey,
+        planId: config.plan.planId,
+        signal,
+        uid: input.run.uid,
+        workUserId,
+      }));
+      const pushedAt = this.clock();
+      state = config.wait.mode === "fixed"
+        ? {
+            bizId,
+            dueAt: getWorkflowMarketingMessageDueAt(config, pushedAt).toISOString(),
+          }
+        : { bizId };
+      const updated = await this.runtimeRepository.updateCapabilityExecutionInput({
+        expectedRunLockVersion: input.run.lockVersion,
+        expectedTaskVersion: input.claimedTask.taskVersion,
+        executionKey: input.nodeExecutionKey,
+        input: {
+          ...structuredClone(input.nodeExecutionInput),
+          marketingMessage: state,
+        },
+        runId: input.run.id,
+        taskId: input.claimedTask.id,
+        uid: input.run.uid,
+      });
+      if (updated.kind !== "success") throw staleTaskError();
+    } else if (state.bizId !== bizId) {
+      throw new WorkflowCapabilityExecutionError(
+        "terminal",
+        "WORKFLOW_MARKETING_MESSAGE_STATE_INVALID",
+        "流程数据异常，流程已停止",
+      );
+    }
+
+    if (config.wait.mode === "none") {
+      if (state.dueAt !== undefined) {
+        throw new WorkflowCapabilityExecutionError(
+          "terminal",
+          "WORKFLOW_MARKETING_MESSAGE_STATE_INVALID",
+          "流程数据异常，流程已停止",
+        );
+      }
+      return {
+        output: { pushSuccess: true },
+        sourceOutletId: "default",
+        type: "advance",
+      };
+    }
+    if (state.dueAt === undefined) {
+      throw new WorkflowCapabilityExecutionError(
+        "terminal",
+        "WORKFLOW_MARKETING_MESSAGE_STATE_INVALID",
+        "流程数据异常，流程已停止",
+      );
+    }
+    const dueAt = new Date(state.dueAt);
+    if (input.claimedTask.taskType === "execute" && dueAt > input.input.now) {
+      return { dueAt: state.dueAt, output: {}, type: "wait" };
+    }
+    const result = await executeMarketingMessageOperation(
+      this.capabilityTimeoutMs,
+      signal => port.queryPushResult({
+        bizId,
+        planId: config.plan.planId,
+        signal,
+        uid: input.run.uid,
+      }),
+    );
+    if (!result || typeof result.pushSuccess !== "boolean") {
+      throw new WorkflowCapabilityExecutionError(
+        "terminal",
+        "WORKFLOW_MARKETING_MESSAGE_OUTPUT_INVALID",
+        "返回结果异常，流程已停止",
+      );
+    }
+    return {
+      output: { pushSuccess: result.pushSuccess },
+      sourceOutletId: "default",
+      type: "advance",
+    };
   }
 
   private async executeAiCollectTask(input: {
@@ -1923,6 +2105,35 @@ async function executeAiCollectOperation<T>(
     execute,
     timeoutMs,
   });
+}
+
+async function executeMarketingMessageOperation<T>(
+  timeoutMs: number,
+  execute: (signal: AbortSignal) => Promise<T>,
+) {
+  return raceWithWorkflowTimeout({
+    createError: () => new WorkflowCapabilityExecutionError(
+      "terminal",
+      "WORKFLOW_MARKETING_MESSAGE_OPERATION_TIMEOUT",
+      "群发触达操作超时，流程已停止",
+      { diagnosticMessage: `Marketing Message operation exceeded its ${timeoutMs}ms deadline` },
+    ),
+    execute,
+    timeoutMs,
+  });
+}
+
+function readMarketingMessageExecutionState(input: Record<string, unknown>) {
+  const value = input.marketingMessage;
+  if (value === undefined) return { kind: "absent" as const };
+  if (!isRecord(value)) return { kind: "invalid" as const };
+  const bizId = value.bizId;
+  const dueAt = value.dueAt;
+  if (typeof bizId !== "number" || !Number.isSafeInteger(bizId) || bizId <= 0
+    || (dueAt !== undefined && (typeof dueAt !== "string" || !Number.isFinite(Date.parse(dueAt))))) {
+    return { kind: "invalid" as const };
+  }
+  return { kind: "valid" as const, value: { bizId, ...(dueAt === undefined ? {} : { dueAt }) } };
 }
 
 function toCapabilityExecutionError(error: unknown) {

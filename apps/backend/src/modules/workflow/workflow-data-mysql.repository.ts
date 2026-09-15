@@ -699,6 +699,7 @@ function fallbackNodeTitle(kind: WorkflowEntryRecordStepNodeKind) {
     end: "结束",
     handoff: "转人工",
     llm: "大模型",
+    "marketing-message": "群发触达",
     message: "消息发送",
     "message-query": "消息查询",
     "order-bind": "关联订单",

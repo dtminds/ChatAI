@@ -9,8 +9,7 @@ import {
 
 const UTC_8_OFFSET_MS = 8 * 60 * 60 * 1_000;
 
-export function createWorkflowChatAiRunContext(startConfig: WorkflowStartConfig) {
-  if (!("seatIds" in startConfig)) return {};
+export function createWorkflowRunContext(startConfig: WorkflowStartConfig) {
   return {
     message: {
       sendingWindow: structuredClone(
@@ -25,6 +24,9 @@ export function readWorkflowMessageSendingWindow(
 ): WorkflowMessageSendingWindow | null {
   const message = isRecord(workflow.message) ? workflow.message : null;
   const sendingWindow = message?.sendingWindow;
+  if (sendingWindow === undefined) {
+    return structuredClone(DEFAULT_WORKFLOW_MESSAGE_SENDING_WINDOW);
+  }
   return isWorkflowMessageSendingWindowValid(sendingWindow)
     ? structuredClone(sendingWindow)
     : null;

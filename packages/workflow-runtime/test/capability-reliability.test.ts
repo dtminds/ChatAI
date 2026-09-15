@@ -595,6 +595,11 @@ describe("workflow capability reliability", () => {
     run.context = {
       outputs: { start: {} },
       trigger: { padding: "x".repeat(128 * 1024) },
+      workflow: {
+        message: {
+          sendingWindow: { endTime: "23:59", startTime: "00:00" },
+        },
+      },
     };
 
     await expect(service.executeTask({

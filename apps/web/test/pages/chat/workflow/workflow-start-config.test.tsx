@@ -52,6 +52,19 @@ describe("workflow start configuration", () => {
       seatIds: [],
       triggers: data.triggers,
     });
+
+    const weComData = createStartNodeData("wecom_sop");
+    expect(projectWorkflowNodeExecutionConfig({
+      data: weComData,
+      kind: "start",
+      workflowType: "wecom_sop",
+    })).toEqual({
+      entryMode: "event",
+      entryPolicy: { maxEntries: 1, mode: "lifetime_limit" },
+      messageSendingWindow: { endTime: "20:00", startTime: "09:00" },
+      triggers: [],
+      workUserIds: [],
+    });
   });
 
   it("accepts direct push without an entry event", () => {
@@ -97,6 +110,30 @@ describe("workflow start configuration", () => {
     await user.click(screen.getByRole("button", { name: "消息发送开始时间确认" }));
     expect(onNodeChange).toHaveBeenLastCalledWith(expect.objectContaining({
       messageSendingWindow: { endTime: "20:00", startTime: "10:00" },
+    }));
+  });
+
+  it("configures the same message sending window for WeCom workflows", async () => {
+    const user = userEvent.setup();
+    const onNodeChange = vi.fn();
+    render(
+      <StartConfig
+        allowedEntryEventTypes={["contact.friend_added"]}
+        edges={[]}
+        node={createStartNode(createStartNodeData("wecom_sop"))}
+        nodes={[]}
+        onNodeChange={onNodeChange}
+      />,
+    );
+
+    expect(screen.getByRole("button", { name: "消息发送开始时间" })).toHaveTextContent("09:00");
+    expect(screen.getByRole("button", { name: "消息发送结束时间" })).toHaveTextContent("20:00");
+
+    await user.click(screen.getByRole("button", { name: "消息发送结束时间" }));
+    await user.click(screen.getByRole("button", { name: "21时" }));
+    await user.click(screen.getByRole("button", { name: "消息发送结束时间确认" }));
+    expect(onNodeChange).toHaveBeenLastCalledWith(expect.objectContaining({
+      messageSendingWindow: { endTime: "21:00", startTime: "09:00" },
     }));
   });
 

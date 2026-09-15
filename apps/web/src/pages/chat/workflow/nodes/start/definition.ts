@@ -89,10 +89,9 @@ export const startNodeDefinition: WorkflowNodeDefinition<"start"> = {
         "消息触发未填写关键词",
       ));
     }
-    if (isChatAiStartNodeData(node.data)
-      && !isWorkflowMessageSendingWindowValid(
-        node.data.messageSendingWindow ?? DEFAULT_WORKFLOW_MESSAGE_SENDING_WINDOW,
-      )) {
+    if (!isWorkflowMessageSendingWindowValid(
+      node.data.messageSendingWindow ?? DEFAULT_WORKFLOW_MESSAGE_SENDING_WINDOW,
+    )) {
       issues.push(createCatalogIssue(
         "start-message-sending-window-invalid",
         "消息发送时段的结束时间需晚于开始时间",
@@ -135,21 +134,25 @@ export function createStartNodeData(
         messageSendingWindow: DEFAULT_WORKFLOW_MESSAGE_SENDING_WINDOW,
         seatIds: [],
       })
-    : createNodeData("start", { ...common, workUserIds: [] });
+    : createNodeData("start", {
+        ...common,
+        messageSendingWindow: DEFAULT_WORKFLOW_MESSAGE_SENDING_WINDOW,
+        workUserIds: [],
+      });
 }
 
 function sanitizeStartSource(data: StartNodeData): StartNodeData {
   if (isWeComStartNodeData(data)) {
     const {
-      messageSendingWindow: _messageSendingWindow,
       seatIds: _seatIds,
       ...weComData
     } = data as StartNodeData & {
-      messageSendingWindow?: unknown;
       seatIds?: unknown;
     };
     return {
       ...weComData,
+      messageSendingWindow:
+        data.messageSendingWindow ?? DEFAULT_WORKFLOW_MESSAGE_SENDING_WINDOW,
       workUserIds: sanitizePositiveIds(data.workUserIds),
     } as StartNodeData;
   }

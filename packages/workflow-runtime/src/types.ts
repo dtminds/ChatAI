@@ -574,7 +574,7 @@ export type WorkflowRevisionCleanupRecord = {
   leaseOwner: string | null;
   nextAttemptAt: Date;
   nodeId: string;
-  nodeKind: "ai-collect" | "wait" | "wait-event";
+  nodeKind: "ai-collect" | "marketing-message" | "wait" | "wait-event";
   revision: number;
   status: WorkflowRevisionCleanupStatus;
   uid: number;
@@ -699,6 +699,7 @@ export type WorkflowBeginFixedWaitInput = {
   now: Date;
   runId: string;
   taskId: string;
+  taskType?: "marketing-message" | "wait";
   uid: number;
 };
 
@@ -867,6 +868,10 @@ export type WorkflowRuntimeRepository = WorkflowInboxRepository
     taskId: string;
     uid: number;
   }): Promise<{ kind: "success"; run: WorkflowRunRecord; task: WorkflowTaskRecord } | WorkflowRuntimeFailure>;
+  findNodeExecutionByExecutionKey(
+    uid: number,
+    executionKey: string,
+  ): Promise<WorkflowNodeExecutionRecord | null>;
   findRun(uid: number, runId: string): Promise<WorkflowRunRecord | null>;
   findEventSubscriptionByTask(
     uid: number,

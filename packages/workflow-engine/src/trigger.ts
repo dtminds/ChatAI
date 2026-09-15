@@ -35,6 +35,8 @@ export function normalizeWorkflowStartConfig(config: WorkflowStartConfig): Workf
     : {
         entryMode,
         entryPolicy: normalizeWorkflowEntryPolicy(config.entryPolicy),
+        messageSendingWindow:
+          config.messageSendingWindow ?? DEFAULT_WORKFLOW_MESSAGE_SENDING_WINDOW,
         triggers,
         workUserIds: uniqueNumbers(config.workUserIds),
       } as WorkflowWeComStartConfig;

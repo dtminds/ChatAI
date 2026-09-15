@@ -42,6 +42,12 @@ describe("Workflow execution context prepare", () => {
       globalContext: false,
       identities: ["externalUserId"],
     });
+    expect(deriveWorkflowExecutionContextRequirements(node("marketing-message"))).toEqual({
+      customFieldIds: [],
+      customFields: [],
+      globalContext: false,
+      identities: ["externalUserId", "workUserId"],
+    });
     expect(deriveWorkflowExecutionContextRequirements(node("branch", {
       selector: ["subject", "customFields", "42"],
       duplicate: ["subject", "customFields", "42"],
@@ -219,6 +225,22 @@ describe("Workflow execution context prepare", () => {
         externalUserId: 101,
         thirdExternalUserId: "chatai-1",
       },
+    });
+    expect(getContactIdentity).not.toHaveBeenCalled();
+  });
+
+  it("reads Marketing Message workUserId from the entry projection", async () => {
+    const getContactIdentity = vi.fn();
+    await expect(prepareWorkflowExecutionContext({
+      contactIdentityPort: { getContactIdentity },
+      node: node("marketing-message"),
+      subjectId: "101",
+      subjectType: "wecom_contact",
+      trigger: { projection: { workUserId: 35954 } },
+      uid: 9,
+    })).resolves.toEqual({
+      customFields: {},
+      identities: { externalUserId: 101, workUserId: 35954 },
     });
     expect(getContactIdentity).not.toHaveBeenCalled();
   });

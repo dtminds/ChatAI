@@ -80,23 +80,26 @@ describe("workflow production availability", () => {
     })).toEqual({ available: true, blockers: [] });
   });
 
-  it("enforces workflow type policy without treating runtime progress as product policy", () => {
-    const draft = {
-      edges: [],
-      nodes: [draftNode("message", "message")],
-      viewport: { x: 0, y: 0, zoom: 1 },
-    };
+  it.each(["message", "llm"] as const)(
+    "disallows %s in WeCom without changing its global runtime support",
+    (nodeKind) => {
+      const draft = {
+        edges: [],
+        nodes: [draftNode(nodeKind, nodeKind)],
+        viewport: { x: 0, y: 0, zoom: 1 },
+      };
 
-    expect(validateWorkflowTypePolicy("chatai_sop", draft)).toEqual([]);
-    expect(validateWorkflowTypePolicy("wecom_sop", draft)).toEqual([{
-      code: "node-kind-not-allowed",
-      nodeId: "message",
-      nodeKind: "message",
-    }]);
-    expect(validateWorkflowTypePolicy("member_sop", draft)).toEqual([{
-      code: "workflow-type-unavailable",
-    }]);
-  });
+      expect(validateWorkflowTypePolicy("chatai_sop", draft)).toEqual([]);
+      expect(validateWorkflowTypePolicy("wecom_sop", draft)).toEqual([{
+        code: "node-kind-not-allowed",
+        nodeId: nodeKind,
+        nodeKind,
+      }]);
+      expect(validateWorkflowTypePolicy("member_sop", draft)).toEqual([{
+        code: "workflow-type-unavailable",
+      }]);
+    },
+  );
 
   it("rejects external push entry for WeCom Workflows", () => {
     const draft = {

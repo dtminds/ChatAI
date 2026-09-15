@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import {
-  createWorkflowChatAiRunContext,
+  createWorkflowRunContext,
   createWorkflowMessageCommand,
   executeWorkflowCapability,
   getNextWorkflowMessageExecutionAt,
@@ -59,7 +59,7 @@ describe("Workflow Message capability", () => {
       triggers: [{ sourceIds: ["qr-code-1"], type: "contact.friend_added" as const }],
     };
 
-    const runContext = createWorkflowChatAiRunContext(startConfig);
+    const runContext = createWorkflowRunContext(startConfig);
     startConfig.messageSendingWindow.startTime = "10:00";
 
     expect(runContext).toEqual({
@@ -70,7 +70,7 @@ describe("Workflow Message capability", () => {
   });
 
   it("defers Message execution to the next UTC+8 sending window", () => {
-    const workflow = createWorkflowChatAiRunContext({
+    const workflow = createWorkflowRunContext({
       entryPolicy: { mode: "never" },
       messageSendingWindow: { endTime: "20:00", startTime: "09:00" },
       seatIds: [101],
@@ -89,6 +89,13 @@ describe("Workflow Message capability", () => {
       workflow,
       new Date("2026-08-18T12:00:00.000Z"),
     )).toEqual(new Date("2026-08-19T01:00:00.000Z"));
+  });
+
+  it("uses the default sending window when a historical Run has no window snapshot", () => {
+    expect(getNextWorkflowMessageExecutionAt(
+      {},
+      new Date("2026-08-18T00:30:00.000Z"),
+    )).toEqual(new Date("2026-08-18T01:00:00.000Z"));
   });
 
   it("renders custom variables and attachment references into a typed command", () => {

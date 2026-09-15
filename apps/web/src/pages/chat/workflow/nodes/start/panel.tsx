@@ -74,7 +74,7 @@ export function StartConfig({
   const sourceIds = getStartNodeSourceIds(startData);
   const managedAccounts = resources?.managedAccounts;
   const wecomMembers = resources?.wecomMembers;
-  const messageSendingWindow = chatAiStartData?.messageSendingWindow
+  const messageSendingWindow = startData.messageSendingWindow
     ?? DEFAULT_WORKFLOW_MESSAGE_SENDING_WINDOW;
   const sourceOptions = isChatAi
     ? seats ?? managedAccounts?.options ?? getWorkflowStartFixtureSeats()
@@ -269,58 +269,53 @@ export function StartConfig({
         </div>
       </section>
 
-      {isChatAi ? (
-        <>
-          <section>
-            <div className="flex items-center gap-1.5 px-1 py-3">
-              <h3 className="text-[15px] font-semibold text-foreground">消息发送时段</h3>
-              <TooltipProvider>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button
-                      aria-label="查看消息发送时段说明"
-                      className="size-5 rounded-full p-0 text-muted-foreground"
-                      size="icon"
-                      type="button"
-                      variant="ghost"
-                    >
-                      <HugeiconsIcon icon={HelpCircleIcon} size={15} strokeWidth={1.8} />
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent className="max-w-80" side="top" sideOffset={6}>
-                    <ol className="list-decimal space-y-1 pl-4">
-                      <li>消息仅在每日设置的有效时段内发送，时段外不会立即触发</li>
-                      <li>若消息节点在时段外到达，系统会延迟到下一个允许发送的时间段再发送，降低打扰风险</li>
-                    </ol>
-                  </TooltipContent>
-                </Tooltip>
-              </TooltipProvider>
-            </div>
-            <div className="px-1 pb-3">
-              <div className="flex items-center gap-2">
-                <TimePicker
-                  aria-label="消息发送开始时间"
-                  className="min-w-0 flex-1"
-                  onValueChange={(startTime) => updateStartConfig({
-                    messageSendingWindow: { ...messageSendingWindow, startTime },
-                  })}
-                  value={messageSendingWindow.startTime}
-                />
-                <span className="shrink-0 text-[13px] text-muted-foreground">至</span>
-                <TimePicker
-                  aria-label="消息发送结束时间"
-                  className="min-w-0 flex-1"
-                  onValueChange={(endTime) => updateStartConfig({
-                    messageSendingWindow: { ...messageSendingWindow, endTime },
-                  })}
-                  value={messageSendingWindow.endTime}
-                />
-              </div>
-            </div>
-          </section>
-
-        </>
-      ) : null}
+      <section>
+        <div className="flex items-center gap-1.5 px-1 py-3">
+          <h3 className="text-[15px] font-semibold text-foreground">消息发送时段</h3>
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  aria-label="查看消息发送时段说明"
+                  className="size-5 rounded-full p-0 text-muted-foreground"
+                  size="icon"
+                  type="button"
+                  variant="ghost"
+                >
+                  <HugeiconsIcon icon={HelpCircleIcon} size={15} strokeWidth={1.8} />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent className="max-w-80" side="top" sideOffset={6}>
+                <ol className="list-decimal space-y-1 pl-4">
+                  <li>消息和触达任务仅在每日设置的有效时段内下发，时段外不会立即执行</li>
+                  <li>若节点在时段外到达，系统会延迟到下一个允许发送的时间段，降低打扰风险</li>
+                </ol>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+        </div>
+        <div className="px-1 pb-3">
+          <div className="flex items-center gap-2">
+            <TimePicker
+              aria-label="消息发送开始时间"
+              className="min-w-0 flex-1"
+              onValueChange={(startTime) => updateStartConfig({
+                messageSendingWindow: { ...messageSendingWindow, startTime },
+              })}
+              value={messageSendingWindow.startTime}
+            />
+            <span className="shrink-0 text-[13px] text-muted-foreground">至</span>
+            <TimePicker
+              aria-label="消息发送结束时间"
+              className="min-w-0 flex-1"
+              onValueChange={(endTime) => updateStartConfig({
+                messageSendingWindow: { ...messageSendingWindow, endTime },
+              })}
+              value={messageSendingWindow.endTime}
+            />
+          </div>
+        </div>
+      </section>
     </div>
   );
 }

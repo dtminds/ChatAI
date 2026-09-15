@@ -1754,6 +1754,7 @@ describe("WorkflowService", () => {
         "start",
         "wait",
         "message-query",
+        "marketing-message",
         "tag",
         "customer-update",
         "llm",

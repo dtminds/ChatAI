@@ -58,6 +58,7 @@ describe("Marketing Message runtime", () => {
       planId: 701,
       signal: expect.any(AbortSignal),
       uid: 9,
+      workUserId: 35954,
     });
     expect(harness.queryPushResult).not.toHaveBeenCalled();
 
@@ -99,11 +100,76 @@ describe("Marketing Message runtime", () => {
     await expect(harness.service.executeTask(taskInput(harness.created.task, ENTERED_AT)))
       .resolves.toMatchObject({ kind: "waiting" });
     expect(harness.getContactIdentity).not.toHaveBeenCalled();
-    expect(harness.pushUser).toHaveBeenCalledWith(expect.objectContaining({ externalUserId: 3166 }));
+    expect(harness.pushUser).toHaveBeenCalledWith(expect.objectContaining({
+      externalUserId: 3166,
+      workUserId: 35954,
+    }));
+  });
+
+  it("defers the initial push to the default sending window without claiming the task", async () => {
+    const harness = await createHarness();
+    const beforeWindow = new Date("2026-09-13T00:30:00.000Z");
+    harness.setNow(beforeWindow);
+
+    await expect(harness.service.executeTask(taskInput(harness.created.task, beforeWindow)))
+      .rejects.toMatchObject({ code: "WORKFLOW_MESSAGE_SENDING_WINDOW_DEFERRED" });
+
+    expect(harness.pushUser).not.toHaveBeenCalled();
+    await expect(harness.runtime.findTask(9, harness.created.task.id)).resolves.toMatchObject({
+      attempt: 0,
+      dueAt: new Date("2026-09-13T01:00:00.000Z"),
+      lastErrorCode: "WORKFLOW_MESSAGE_SENDING_WINDOW_DEFERRED",
+      status: "pending",
+    });
+
+    const waiting = await dispatchAndExecute(
+      harness,
+      new Date("2026-09-13T01:00:00.000Z"),
+    );
+    expect(waiting).toMatchObject({
+      kind: "waiting",
+      task: { dueAt: new Date("2026-09-13T01:30:00.000Z") },
+    });
+    expect(harness.pushUser).toHaveBeenCalledOnce();
+  });
+
+  it("queries an already pushed task outside the sending window", async () => {
+    const harness = await createHarness({
+      wait: { mode: "fixed", duration: 12, unit: "hour" },
+    });
+
+    await expect(harness.service.executeTask(taskInput(harness.created.task, ENTERED_AT)))
+      .resolves.toMatchObject({
+        kind: "waiting",
+        task: { dueAt: new Date("2026-09-13T13:00:00.000Z") },
+      });
+
+    await expect(dispatchAndExecute(
+      harness,
+      new Date("2026-09-13T13:00:00.000Z"),
+    )).resolves.toMatchObject({
+      kind: "success",
+      run: { context: { outputs: { marketing: { pushSuccess: true } } } },
+    });
+    expect(harness.pushUser).toHaveBeenCalledOnce();
+    expect(harness.queryPushResult).toHaveBeenCalledOnce();
   });
 
   it("terminates before push when externalUserId cannot be resolved", async () => {
     const harness = await createHarness({ identity: {} });
+
+    await expect(harness.service.executeTask(taskInput(harness.created.task, ENTERED_AT)))
+      .resolves.toMatchObject({
+        errorCode: "WORKFLOW_MARKETING_MESSAGE_IDENTITY_INVALID",
+        failureKind: "terminal",
+        kind: "failed",
+      });
+    expect(harness.pushUser).not.toHaveBeenCalled();
+    expect(harness.queryPushResult).not.toHaveBeenCalled();
+  });
+
+  it("terminates before push when workUserId is missing from the entry projection", async () => {
+    const harness = await createHarness({ workUserId: null });
 
     await expect(harness.service.executeTask(taskInput(harness.created.task, ENTERED_AT)))
       .resolves.toMatchObject({
@@ -138,17 +204,26 @@ describe("Marketing Message runtime", () => {
     const harness = await createHarness({ wait: { mode: "fixed", duration: 1, unit: "hour" } });
     vi.spyOn(harness.runtime, "beginFixedWait").mockRejectedValueOnce(new Error("worker crashed"));
 
-    await expect(harness.service.executeTask(taskInput(harness.created.task, ENTERED_AT)))
+    const pushedAt = new Date("2026-09-13T11:59:00.000Z");
+    harness.setNow(pushedAt);
+
+    await expect(harness.service.executeTask(taskInput(harness.created.task, pushedAt)))
       .rejects.toThrow("worker crashed");
     expect(harness.pushUser).toHaveBeenCalledOnce();
 
-    const recoveredAt = new Date("2026-09-13T01:03:00.000Z");
+    const recoveredAt = new Date("2026-09-13T12:01:00.000Z");
     await harness.runtime.recoverExpiredLeases({ limit: 10, maxAttempts: 3, now: recoveredAt });
     const recovered = await harness.runtime.findTask(9, harness.created.task.id);
     if (!recovered) throw new Error("Marketing Message task is missing");
 
     await expect(harness.service.executeTask(taskInput(recovered, recoveredAt)))
-      .resolves.toMatchObject({ kind: "waiting", task: { taskType: "marketing-message" } });
+      .resolves.toMatchObject({
+        kind: "waiting",
+        task: {
+          dueAt: new Date("2026-09-13T12:59:00.000Z"),
+          taskType: "marketing-message",
+        },
+      });
     expect(harness.pushUser).toHaveBeenCalledOnce();
     expect(harness.getContactIdentity).toHaveBeenCalledOnce();
   });
@@ -271,6 +346,7 @@ async function createHarness(options: {
   subjectId?: string;
   subjectType?: "chatai_contact" | "wecom_contact";
   wait?: { mode: "fixed"; duration: number; unit: "hour" | "minute" } | { mode: "none" };
+  workUserId?: number | null;
   workflowType?: "chatai_sop" | "wecom_sop";
 } = {}) {
   let now = ENTERED_AT;
@@ -298,7 +374,14 @@ async function createHarness(options: {
   });
   const created = await runtime.createRunWithInitialTask({
     activeRunLimit: 10_000,
-    context: { outputs: {}, trigger: {} },
+    context: {
+      outputs: {},
+      trigger: {
+        projection: options.workUserId === null
+          ? {}
+          : { workUserId: options.workUserId ?? 35954 },
+      },
+    },
     entryEventId: "entry-event-1",
     entryPolicy: { maxEntries: 10, mode: "lifetime_limit" },
     initialNodeId: "marketing",

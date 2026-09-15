@@ -36,6 +36,7 @@ export class HttpWorkflowMarketingMessagePort implements WorkflowMarketingMessag
       externalUserId: input.externalUserId,
       planId: input.planId,
       uid: input.uid,
+      workUserId: input.workUserId,
     });
     if (!input.idempotencyKey) {
       throw terminalError(
@@ -49,6 +50,7 @@ export class HttpWorkflowMarketingMessagePort implements WorkflowMarketingMessag
       externalUserId: input.externalUserId,
       planId: input.planId,
       uid: input.uid,
+      workUserId: input.workUserId,
     }, input.signal, "push", input.idempotencyKey);
     requireSuccessfulEnvelope(body, "push");
   }
@@ -119,10 +121,11 @@ function requireSuccessfulEnvelope(body: unknown, operation: "push" | "query") {
     throw invalidResponse(`Marketing Message ${operation} endpoint returned an invalid envelope: ${envelope.reason}`);
   }
   if (envelope.kind === "rejected") {
+    const reason = envelope.errorMsg.trim();
     throw terminalError(
       "WORKFLOW_MARKETING_MESSAGE_REJECTED",
-      "群发触达失败，流程已停止",
-      `Marketing Message ${operation} endpoint rejected the request: ${envelope.error} ${envelope.errorMsg.trim()}`.trim(),
+      reason ? `群发触达失败：${reason}` : "群发触达失败，流程已停止",
+      `Marketing Message ${operation} endpoint rejected the request: ${envelope.error} ${reason}`.trim(),
     );
   }
   return envelope.payload;

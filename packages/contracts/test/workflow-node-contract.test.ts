@@ -567,7 +567,7 @@ describe("workflow node contracts", () => {
       handoff: ["thirdExternalUserId"],
       llm: [],
       message: ["thirdExternalUserId"],
-      "marketing-message": ["externalUserId"],
+      "marketing-message": ["externalUserId", "workUserId"],
       "message-query": ["thirdExternalUserId"],
       "order-bind": ["externalUserId"],
       "order-query": [],
@@ -907,6 +907,15 @@ describe("workflow node contracts", () => {
 
     expect(isWorkflowNodeDraftConfig("start", config)).toBe(true);
     expect(isWorkflowNodeExecutionConfig("start", config)).toBe(false);
+  });
+
+  it("rejects an invalid WeCom message sending window at execution time", () => {
+    expect(isWorkflowNodeExecutionConfig("start", {
+      entryPolicy: { mode: "never" },
+      messageSendingWindow: { endTime: "09:00", startTime: "20:00" },
+      triggers: [{ sourceIds: ["qr-code-1"], type: "contact.friend_added" }],
+      workUserIds: [201],
+    })).toBe(false);
   });
 
   it("requires semantically complete LLM and AI Intent execution configs", () => {

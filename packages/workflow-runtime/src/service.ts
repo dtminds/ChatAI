@@ -43,7 +43,7 @@ import {
   type WorkflowCapabilityPort,
 } from "./capability-port.js";
 import {
-  createWorkflowChatAiRunContext,
+  createWorkflowRunContext,
   getNextWorkflowMessageExecutionAt,
 } from "./chatai-action-context.js";
 import { readWorkflowTriggerSeatId } from "./context-readers.js";
@@ -224,6 +224,7 @@ export class WorkflowRuntimeService {
   assertRuntimeComposition() {
     const missingNodeKinds = WORKFLOW_RUNTIME_SUPPORTED_NODE_KINDS.filter((kind) => {
       if (kind === "message-query") return this.messageQueryPort === undefined;
+      if (kind === "marketing-message") return this.marketingMessagePort === undefined;
       if (kind === "ai-collect") {
         return this.aiCollectConversationPort === undefined
           || this.conversationDirectivePort === undefined;
@@ -412,7 +413,7 @@ export class WorkflowRuntimeService {
       context = {
         outputs: {},
         trigger: structuredClone(input.trigger),
-        workflow: createWorkflowChatAiRunContext(startConfig),
+        workflow: createWorkflowRunContext(startConfig),
       };
       assertWorkflowRuntimeValue(context, "run-context", WORKFLOW_RUN_CONTEXT_MAX_BYTES);
     } catch (error) {
@@ -561,9 +562,24 @@ export class WorkflowRuntimeService {
       }
       throw error;
     }
-    if (node.kind === "message" && isRecord(run.context.workflow)) {
+    const nodeExecutionKey = createWorkflowNodeExecutionKey({
+      nodeId: node.id,
+      runId: run.id,
+      sequence: task.sequence,
+      uid: String(input.uid),
+    });
+    let enforceMessageSendingWindow = node.kind === "message";
+    if (node.kind === "marketing-message") {
+      const existingExecution = await this.runtimeRepository.findNodeExecutionByExecutionKey(
+        input.uid,
+        nodeExecutionKey,
+      );
+      enforceMessageSendingWindow = existingExecution === null
+        || readMarketingMessageExecutionState(existingExecution.input).kind === "absent";
+    }
+    if (enforceMessageSendingWindow) {
       const nextExecutionAt = getNextWorkflowMessageExecutionAt(
-        run.context.workflow,
+        isRecord(run.context.workflow) ? run.context.workflow : {},
         input.now,
       );
       if (nextExecutionAt) {
@@ -611,12 +627,6 @@ export class WorkflowRuntimeService {
     }
     if (claimed.kind !== "success") throw staleTaskError();
 
-    const nodeExecutionKey = createWorkflowNodeExecutionKey({
-      nodeId: node.id,
-      runId: run.id,
-      sequence: claimed.task.sequence,
-      uid: String(input.uid),
-    });
     if (node.kind === "wait-event") {
       return this.executeWaitEventTask({
         nodeExecutionKey,
@@ -962,7 +972,8 @@ export class WorkflowRuntimeService {
     let state = storedState.kind === "valid" ? storedState.value : null;
     if (!state) {
       const externalUserId = input.preparedContext.identities.externalUserId;
-      if (!externalUserId) {
+      const workUserId = input.preparedContext.identities.workUserId;
+      if (!externalUserId || !workUserId) {
         throw new WorkflowCapabilityExecutionError(
           "terminal",
           "WORKFLOW_MARKETING_MESSAGE_IDENTITY_INVALID",
@@ -976,6 +987,7 @@ export class WorkflowRuntimeService {
         planId: config.plan.planId,
         signal,
         uid: input.run.uid,
+        workUserId,
       }));
       const pushedAt = this.clock();
       state = config.wait.mode === "fixed"

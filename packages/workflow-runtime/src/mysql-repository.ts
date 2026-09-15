@@ -155,6 +155,14 @@ export class MysqlWorkflowRuntimeRepository implements
     } : null;
   }
 
+  async findNodeExecutionByExecutionKey(uid: number, executionKey: string) {
+    const row = await this.db.selectFrom(EXECUTION_TABLE).selectAll()
+      .where("uid", "=", uid)
+      .where("execution_key", "=", executionKey)
+      .executeTakeFirst();
+    return row ? mapNodeExecution(row) : null;
+  }
+
   async findRevision(uid: number, workflowId: string, revision: number) {
     const row = await this.db.selectFrom(REVISION_TABLE)
       .select(["execution_spec_json", "revision", "subject_type", "workflow_type"])

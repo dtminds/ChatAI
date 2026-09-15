@@ -21,6 +21,7 @@ describe("Workflow Marketing Message Java port", () => {
       planId: 701,
       signal: new AbortController().signal,
       uid: 272,
+      workUserId: 35954,
     })).resolves.toBeUndefined();
 
     expect(fetchMock).toHaveBeenCalledOnce();
@@ -40,6 +41,7 @@ describe("Workflow Marketing Message Java port", () => {
       externalUserId: 3166,
       planId: 701,
       uid: 272,
+      workUserId: 35954,
     });
   });
 
@@ -71,9 +73,22 @@ describe("Workflow Marketing Message Java port", () => {
   });
 
   it.each([
-    { body: { error: 40001, errorMsg: "任务不存在", success: false }, code: "WORKFLOW_MARKETING_MESSAGE_REJECTED" },
-    { body: { success: true }, code: "WORKFLOW_MARKETING_MESSAGE_RESPONSE_INVALID" },
-  ])("terminates on invalid Java result: $code", async ({ body, code }) => {
+    {
+      body: { error: 40001, errorMsg: "计划配置短信触达，但用户手机号为空", success: false },
+      code: "WORKFLOW_MARKETING_MESSAGE_REJECTED",
+      message: "群发触达失败：计划配置短信触达，但用户手机号为空",
+    },
+    {
+      body: { error: 40001, errorMsg: "", success: false },
+      code: "WORKFLOW_MARKETING_MESSAGE_REJECTED",
+      message: "群发触达失败，流程已停止",
+    },
+    {
+      body: { success: true },
+      code: "WORKFLOW_MARKETING_MESSAGE_RESPONSE_INVALID",
+      message: "返回结果异常，流程已停止",
+    },
+  ])("terminates on invalid Java result: $code", async ({ body, code, message }) => {
     const port = createPort(vi.fn<typeof fetch>(async () => javaResponse(body)));
 
     await expect(port.queryPushResult({
@@ -81,7 +96,7 @@ describe("Workflow Marketing Message Java port", () => {
       planId: 701,
       signal: new AbortController().signal,
       uid: 272,
-    })).rejects.toMatchObject({ code, failureKind: "terminal" });
+    })).rejects.toMatchObject({ code, failureKind: "terminal", message });
   });
 
   it.each([
@@ -97,6 +112,7 @@ describe("Workflow Marketing Message Java port", () => {
       planId: 701,
       signal: new AbortController().signal,
       uid: 272,
+      workUserId: 35954,
     })).rejects.toMatchObject({ failureKind: "terminal" });
   });
 
@@ -111,6 +127,7 @@ describe("Workflow Marketing Message Java port", () => {
       planId: 701,
       signal: new AbortController().signal,
       uid: 272,
+      workUserId: 35954,
     })).rejects.toMatchObject({
       code: "WORKFLOW_MARKETING_MESSAGE_REQUEST_INVALID",
       failureKind: "terminal",
@@ -129,6 +146,7 @@ describe("Workflow Marketing Message Java port", () => {
       planId: 701,
       signal: new AbortController().signal,
       uid: 272,
+      workUserId: 35954,
     })).rejects.toMatchObject({
       code: "WORKFLOW_MARKETING_MESSAGE_REQUEST_INVALID",
       failureKind: "terminal",

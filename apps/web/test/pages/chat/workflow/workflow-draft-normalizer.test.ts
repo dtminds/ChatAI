@@ -231,10 +231,10 @@ describe("workflow draft normalizer", () => {
 
     expect(draft.nodes[0]?.data).toEqual(expect.objectContaining({
       kind: "start",
+      messageSendingWindow: { endTime: "20:00", startTime: "09:00" },
       workUserIds: [201],
     }));
     expect(draft.nodes[0]?.data).not.toHaveProperty("seatIds");
-    expect(draft.nodes[0]?.data).not.toHaveProperty("messageSendingWindow");
     expect(isWorkflowNodeDraftConfig(
       "start",
       extractWorkflowNodeDraftConfig("start", draft.nodes[0]!.data),

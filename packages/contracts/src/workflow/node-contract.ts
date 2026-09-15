@@ -103,6 +103,7 @@ export const WorkflowIdentityFieldSchema = Type.Union([
   Type.Literal("externalUserId"),
   Type.Literal("mallUserId"),
   Type.Literal("thirdExternalUserId"),
+  Type.Literal("workUserId"),
   Type.Literal("xyId"),
 ]);
 
@@ -112,6 +113,7 @@ export type WorkflowContactIdentity = Partial<{
   externalUserId: number;
   mallUserId: number;
   thirdExternalUserId: string;
+  workUserId: number;
   xyId: number;
 }>;
 
@@ -744,7 +746,7 @@ export const workflowNodeContractRegistry = {
     1,
     WorkflowMarketingMessageDraftConfigSchema,
     WorkflowMarketingMessageExecutionConfigSchema,
-    ["externalUserId"],
+    ["externalUserId", "workUserId"],
   ),
   "message-query": runtimeReadyContract(
     "query",
@@ -1089,9 +1091,8 @@ export function isWorkflowDynamicTimeRangeProvablyInvalid(
 }
 
 function isWorkflowStartMessageSendingWindowValid(value: unknown) {
-  const config = value as { messageSendingWindow?: unknown; seatIds?: unknown };
-  return config.seatIds === undefined
-    || config.messageSendingWindow === undefined
+  const config = value as { messageSendingWindow?: unknown };
+  return config.messageSendingWindow === undefined
     || isWorkflowMessageSendingWindowValid(config.messageSendingWindow);
 }
 

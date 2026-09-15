@@ -87,9 +87,9 @@ export function MarketingMessageConfig({
         </div>
       </RadioGroup>
     </WorkflowSettingsSection>
-    <WorkflowSettingsSection title="消息发送时段">
+    <WorkflowSettingsSection title="配置须知">
       <p className="text-[13px] leading-5 text-muted-foreground">
-        任务下发时间和消息发送时段，以所选触达任务的配置为准
+        本节点仅下发任务，企微触达需成员在企业微信点击确认后发送
       </p>
     </WorkflowSettingsSection>
   </>;

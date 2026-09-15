@@ -11,6 +11,8 @@
 
 触达结果为 `false` 时节点正常完成，由用户通过输出决定后续流程。身份映射失败、推送接口失败或查询接口失败时终止流程。
 
+`chatai_sop` 和 `wecom_sop` 均由开始节点配置消息发送时段，默认 `09:00-20:00`。群发触达节点仅在允许时段内调用推送接口；时段外到达时延期至下一个允许发送时间。历史 Run 未保存时段时同样使用默认值。等待时长从任务成功下发后开始计算，已下发任务的到期结果查询不受发送时段限制。
+
 ## 资源列表
 
 Backend 代理以下 Java 接口，页码从 1 开始，单页固定 20 条：
@@ -47,7 +49,8 @@ POST /third-internal/cdp-market-plan/push-user?idempotentKey=<nodeExecutionKey>
   "bizId": 123,
   "externalUserId": 3166,
   "planId": 701,
-  "uid": 272
+  "uid": 272,
+  "workUserId": 35954
 }
 ```
 
@@ -76,7 +79,7 @@ POST /third-internal/cdp-market-plan/get-push-user-result
 }
 ```
 
-`externalUserId` 使用 Workflow 统一身份准备结果。WeCom 联系人主体可直接使用数字 `subjectId`；ChatAI 联系人通过身份映射获取。映射不到正整数时，不调用推送接口并终止流程。
+`externalUserId` 使用 Workflow 统一身份准备结果。WeCom 联系人主体可直接使用数字 `subjectId`；ChatAI 联系人通过身份映射获取。`workUserId` 使用 Entry 事件中的 `trigger.projection.workUserId`。任一字段映射不到正整数时，不调用推送接口并终止流程。
 
 `idempotentKey` 使用 Runtime 生成的稳定 Node Execution Key，并沿用其他 Action 节点的 Java 幂等协议：相同 Key 和相同请求不得重复下发，相同 Key 但请求内容不同应拒绝。超时或进程恢复后的重复推送复用同一个 Key。
 

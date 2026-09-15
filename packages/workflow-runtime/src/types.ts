@@ -868,6 +868,10 @@ export type WorkflowRuntimeRepository = WorkflowInboxRepository
     taskId: string;
     uid: number;
   }): Promise<{ kind: "success"; run: WorkflowRunRecord; task: WorkflowTaskRecord } | WorkflowRuntimeFailure>;
+  findNodeExecutionByExecutionKey(
+    uid: number,
+    executionKey: string,
+  ): Promise<WorkflowNodeExecutionRecord | null>;
   findRun(uid: number, runId: string): Promise<WorkflowRunRecord | null>;
   findEventSubscriptionByTask(
     uid: number,

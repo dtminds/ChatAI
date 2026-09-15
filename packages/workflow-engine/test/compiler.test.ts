@@ -52,16 +52,22 @@ describe("compileWorkflowDraft", () => {
     expect(spec.edges[0]).toMatchObject({ sourceOutletId: "default" });
   });
 
-  it("strips ChatAI start fields from WeCom drafts before contract checks", () => {
+  it("preserves the shared sending window while stripping ChatAI-only fields from WeCom drafts", () => {
     const draft = createDraft();
-    Object.assign(draft.nodes.find((item) => item.id === "start")!.data, {
+    const draftStartData = draft.nodes.find((item) => item.id === "start")!.data;
+    delete draftStartData.seatIds;
+    Object.assign(draftStartData, {
+      messageSendingWindow: { endTime: "21:00", startTime: "10:00" },
       workUserIds: [201],
     });
 
     const normalized = normalizeWorkflowDraft(draft);
     const startData = normalized.nodes.find((item) => item.id === "start")!.data;
 
-    expect(startData).not.toHaveProperty("messageSendingWindow");
+    expect(startData).toHaveProperty("messageSendingWindow", {
+      endTime: "21:00",
+      startTime: "10:00",
+    });
     expect(startData).not.toHaveProperty("seatIds");
     expect(startData).toEqual(expect.objectContaining({ workUserIds: [201] }));
     expect(isWorkflowNodeDraftConfig(

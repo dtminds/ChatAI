@@ -66,6 +66,8 @@ export function projectWorkflowNodeExecutionConfig({
       : {
           entryMode,
           entryPolicy: normalizeWorkflowEntryPolicy(draftConfig.entryPolicy),
+          messageSendingWindow:
+            draftConfig.messageSendingWindow ?? DEFAULT_WORKFLOW_MESSAGE_SENDING_WINDOW,
           triggers,
           workUserIds: draftConfig.workUserIds,
         });

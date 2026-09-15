@@ -744,6 +744,12 @@ export class InMemoryWorkflowRuntimeRepository implements WorkflowRuntimeReposit
     return run ? clone(run) : null;
   }
 
+  async findNodeExecutionByExecutionKey(uid: number, executionKey: string) {
+    const execution = this.nodeExecutions.find(item =>
+      item.uid === uid && item.executionKey === executionKey);
+    return execution ? clone(execution) : null;
+  }
+
   async findTask(uid: number, taskId: string) {
     const task = this.tasks.find((item) => item.uid === uid && item.id === taskId);
     return task ? clone(task) : null;

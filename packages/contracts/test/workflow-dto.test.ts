@@ -461,7 +461,7 @@ describe("workflow contracts", () => {
       messageSendingWindow: { endTime: "20:00", startTime: "09:00" },
       triggers: [{ sourceIds: ["qr-code-1"], type: "contact.friend_added" }],
       workUserIds: [201],
-    })).toBe(false);
+    })).toBe(true);
     expect(Value.Check(WorkflowWaitConfigSchema, {
       duration: 15,
       mode: "duration",

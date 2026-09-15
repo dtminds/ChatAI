@@ -82,6 +82,33 @@ describe("smart reply assistant turn", () => {
     });
   });
 
+  it("keeps an attachment-only suggestion visible while regenerating", () => {
+    const message = createMessage(1, "问题");
+
+    expect(
+      resolveSmartReplyAssistantTurn({
+        activeMessageKey: "1",
+        messages: [message],
+        pending: { "1": true },
+        suggestions: {
+          "1": {
+            assistantName: "智能助手",
+            content: "",
+            genAnswer:
+              '[{"fileUrl":"s5/msg/product.jpg","msgtype":"image"}]',
+            generateStatus: 2,
+            pollComplete: true,
+            status: "ready",
+          },
+        },
+      }),
+    ).toMatchObject({
+      isComposerEditable: false,
+      phase: "thinking",
+      showComposer: true,
+    });
+  });
+
   it("allows a newer customer message to continue semantic waiting", () => {
     const first = createMessage(1, "我要退款");
     const second = createMessage(2, "订单号 123");

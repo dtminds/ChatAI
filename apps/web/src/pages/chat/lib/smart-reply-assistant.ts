@@ -151,7 +151,7 @@ function resolveCandidateTurn({
     });
   }
 
-  const hasContent = Boolean(suggestion?.content.trim());
+  const hasSendableSuggestion = isSmartReplyReady(suggestion);
 
   if (isPending || isSmartReplyBusy(suggestion)) {
     return createTurn({
@@ -160,7 +160,7 @@ function resolveCandidateTurn({
       lookupKey,
       message,
       phase: "thinking",
-      showComposer: hasContent,
+      showComposer: hasSendableSuggestion,
       suggestion,
     });
   }

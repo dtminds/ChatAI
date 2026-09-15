@@ -830,7 +830,9 @@ export function ChatPanel({
                           multiSelectMode && "pointer-events-none",
                         )}
                         aria-hidden={showSmartReplySuggestionComposer || undefined}
-                        inert={multiSelectMode || undefined}
+                        inert={
+                          multiSelectMode || showSmartReplySuggestionComposer || undefined
+                        }
                       >
                         <ChatComposer
                           canConfigureSeatAIHosting={canConfigureSeatAIHosting}

@@ -7334,6 +7334,67 @@ describe("useWorkbenchStore", () => {
     );
   });
 
+  it("ends the active smart reply turn after another message is sent", async () => {
+    await useWorkbenchStore.getState().initializeWorkbench();
+    const conversationId = useWorkbenchStore.getState().activeConversationId;
+
+    useWorkbenchStore.setState((state) => ({
+      smartReplyActiveMessageKeyByConversationId: {
+        ...state.smartReplyActiveMessageKeyByConversationId,
+        [conversationId]: "9",
+      },
+    }));
+
+    await useWorkbenchStore.getState().sendAgentTextMessage("改为直接回复客户");
+
+    expect(
+      useWorkbenchStore.getState().smartReplyActiveMessageKeyByConversationId[
+        conversationId
+      ],
+    ).toBeUndefined();
+  });
+
+  it("does not clear a newer smart reply turn when an earlier send completes", async () => {
+    const baseService = createMockWorkbenchService();
+    const sendGate = createDeferred();
+
+    setWorkbenchService({
+      ...baseService,
+      async sendMessage(payload) {
+        await sendGate.promise;
+        return baseService.sendMessage(payload);
+      },
+    });
+
+    await useWorkbenchStore.getState().initializeWorkbench();
+    const conversationId = useWorkbenchStore.getState().activeConversationId;
+    useWorkbenchStore.setState((state) => ({
+      smartReplyActiveMessageKeyByConversationId: {
+        ...state.smartReplyActiveMessageKeyByConversationId,
+        [conversationId]: "9",
+      },
+    }));
+
+    const sendPromise = useWorkbenchStore
+      .getState()
+      .sendAgentTextMessage("回复当前问题");
+
+    useWorkbenchStore.setState((state) => ({
+      smartReplyActiveMessageKeyByConversationId: {
+        ...state.smartReplyActiveMessageKeyByConversationId,
+        [conversationId]: "10",
+      },
+    }));
+    sendGate.resolve();
+    await sendPromise;
+
+    expect(
+      useWorkbenchStore.getState().smartReplyActiveMessageKeyByConversationId[
+        conversationId
+      ],
+    ).toBe("10");
+  });
+
   it("sends member mention text as ordered Java placeholder tokens", async () => {
     const baseService = createMockWorkbenchService();
     const sendMessage = vi.fn(baseService.sendMessage);
@@ -11090,6 +11151,69 @@ describe("useWorkbenchStore", () => {
       ...beforeAccount,
       takenOverEmployeeId: "sub-user-001",
     });
+  });
+
+  it("activates the latest cached smart reply after taking over the account", async () => {
+    await useWorkbenchStore.getState().initializeWorkbench();
+    await useWorkbenchStore.getState().setActiveAccount("ndt");
+
+    const conversationId = useWorkbenchStore.getState().activeConversationId;
+    const message = {
+      author: "客户",
+      content: { text: "想了解活动", type: "text" },
+      conversationId,
+      isOwnMessage: false,
+      rawMsgtype: "text",
+      role: "customer",
+      sender: { id: "customer-1", name: "客户" },
+      sentAt: "2026-09-15 10:00:00",
+      seq: 99,
+      status: "sent",
+      uiMessageKey: "message-99",
+    } satisfies ChatMessage;
+
+    useWorkbenchStore.setState((state) => ({
+      accounts: state.accounts.map((account) =>
+        account.id === "ndt"
+          ? {
+              ...account,
+              seatAIAssistantEnabled: true,
+              semiAutoAuth: true,
+              semiAutoSwitch: true,
+            }
+          : account,
+      ),
+      messagesByConversationId: {
+        ...state.messagesByConversationId,
+        [conversationId]: [message],
+      },
+      smartReplyByMessageIdByConversationId: {
+        ...state.smartReplyByMessageIdByConversationId,
+        [conversationId]: {
+          "99": {
+            assistantName: "智能助手",
+            content: "当前活动如下",
+            generateStatus: 2,
+            pollComplete: true,
+            status: "ready",
+          },
+        },
+      },
+    }));
+
+    expect(
+      useWorkbenchStore.getState().smartReplyActiveMessageKeyByConversationId[
+        conversationId
+      ],
+    ).toBeUndefined();
+
+    await useWorkbenchStore.getState().takeOverAccount("ndt");
+
+    expect(
+      useWorkbenchStore.getState().smartReplyActiveMessageKeyByConversationId[
+        conversationId
+      ],
+    ).toBe("99");
   });
 
   it("returns the API error message when takeover fails", async () => {

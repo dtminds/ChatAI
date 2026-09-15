@@ -824,7 +824,9 @@ describe("message feed row actions", () => {
     expect(onTriggerSmartReply).not.toHaveBeenCalled();
   });
 
-  it("keeps ready smart replies out of the message row", () => {
+  it("lets an inactive ready smart reply be reopened from the message menu", async () => {
+    const user = userEvent.setup();
+
     render(
       <MessageRow
         message={{
@@ -852,6 +854,11 @@ describe("message feed row actions", () => {
     expect(
       screen.queryByTestId("smart-reply-inline-processing"),
     ).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "消息操作" }));
+    expect(
+      screen.getByRole("menuitem", { name: "话术推荐" }),
+    ).toBeInTheDocument();
   });
 
   it("disables smart reply on another message while a turn is active", async () => {

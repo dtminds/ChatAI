@@ -1264,7 +1264,9 @@ describe("ChatPanel", () => {
       await screen.findByRole("textbox", { name: "编辑话术建议" }),
     ).toHaveTextContent("建议先少量试用");
     expect(suggestionComposer).toBeVisible();
-    expect(regularComposer.closest('[aria-hidden="true"]')).not.toBeNull();
+    const hiddenRegularComposer = regularComposer.closest('[aria-hidden="true"]');
+    expect(hiddenRegularComposer).not.toBeNull();
+    expect(hiddenRegularComposer).toHaveAttribute("inert");
     expect(screen.getAllByTestId("chat-composer")).toHaveLength(2);
 
     vi.mocked(checkSmartReplyTextModeration).mockResolvedValue({
@@ -1283,6 +1285,7 @@ describe("ChatPanel", () => {
         screen.queryByTestId("smart-reply-suggestion-composer"),
       ).not.toBeInTheDocument();
       expect(regularComposer.closest('[aria-hidden="true"]')).toBeNull();
+      expect(regularComposer.closest("[inert]")).toBeNull();
       expect(regularComposer).toHaveTextContent("客服正在编辑的草稿");
     });
   });

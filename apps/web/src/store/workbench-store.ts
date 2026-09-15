@@ -6054,20 +6054,62 @@ export function createWorkbenchStore() {
             return { ok: true };
           }
 
-          set((currentState) => ({
-            accounts: currentState.accounts.map((item) =>
+          set((currentState) => {
+            const accounts = currentState.accounts.map((item) =>
               item.id === accountId
                 ? {
                     ...item,
                     takenOverEmployeeId: takeoverResult.hostSubUserId,
                   }
                 : item,
-            ),
-            takeoverStatusByAccountId: omitTakeoverStatus(
-              currentState.takeoverStatusByAccountId,
-              accountId,
-            ),
-          }));
+            );
+            const activeConversationId = currentState.activeConversationId;
+            const activeConversation = activeConversationId
+              ? getConversationById(currentState, activeConversationId)
+              : undefined;
+            const shouldActivateCachedSmartReply =
+              activeConversationId && activeConversation?.accountId === accountId;
+            const smartReplyActiveMessageKey = shouldActivateCachedSmartReply
+              ? getInitialSmartReplyActiveMessageKey({
+                  canActivate: canUseSmartReplyForConversation(
+                    { ...currentState, accounts },
+                    activeConversationId,
+                  ),
+                  hidden:
+                    currentState.smartReplyHiddenMessageKeysByConversationId[
+                      activeConversationId
+                    ] ?? {},
+                  messages:
+                    currentState.messagesByConversationId[activeConversationId] ?? [],
+                  pending:
+                    currentState.smartReplyPendingMessageKeysByConversationId[
+                      activeConversationId
+                    ] ?? {},
+                  suggestions:
+                    currentState.smartReplyByMessageIdByConversationId[
+                      activeConversationId
+                    ] ?? {},
+                })
+              : undefined;
+
+            return {
+              accounts,
+              ...(shouldActivateCachedSmartReply
+                ? {
+                    smartReplyActiveMessageKeyByConversationId:
+                      replaceSmartReplyActiveMessageKey(
+                        currentState.smartReplyActiveMessageKeyByConversationId,
+                        activeConversationId,
+                        smartReplyActiveMessageKey,
+                      ),
+                  }
+                : {}),
+              takeoverStatusByAccountId: omitTakeoverStatus(
+                currentState.takeoverStatusByAccountId,
+                accountId,
+              ),
+            };
+          });
           clearTakeoverRequest(accountId);
           return { ok: true };
         } catch (error) {
@@ -6891,6 +6933,8 @@ export function createWorkbenchStore() {
         };
       }
       const sendBatchStartedAt = Date.now();
+      const activeSmartReplyLookupKey =
+        state.smartReplyActiveMessageKeyByConversationId[activeConversationId];
       const shouldClearHandoffAfterSend = hasConversationHandoff(
         activeConversation.handoffMsgId,
       );
@@ -7031,12 +7075,30 @@ export function createWorkbenchStore() {
           );
         }
 
-        set((currentState) => ({
-          sendStatusByConversationId: {
-            ...currentState.sendStatusByConversationId,
-            [activeConversationId]: "idle",
-          },
-        }));
+        set((currentState) => {
+          const shouldClearSmartReplyTurn = Boolean(
+            activeSmartReplyLookupKey &&
+              currentState.smartReplyActiveMessageKeyByConversationId[
+                activeConversationId
+              ] === activeSmartReplyLookupKey,
+          );
+
+          return {
+            sendStatusByConversationId: {
+              ...currentState.sendStatusByConversationId,
+              [activeConversationId]: "idle",
+            },
+            ...(shouldClearSmartReplyTurn
+              ? {
+                  smartReplyActiveMessageKeyByConversationId:
+                    replaceSmartReplyActiveMessageKey(
+                      currentState.smartReplyActiveMessageKeyByConversationId,
+                      activeConversationId,
+                    ),
+                }
+              : {}),
+          };
+        });
 
         return { didConsumeQuote: hasSentQuote, ok: true, optNos };
       } catch (error) {

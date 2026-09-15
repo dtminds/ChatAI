@@ -698,7 +698,7 @@ describe("smart-reply-adapter", () => {
         generateStatus: 2,
         status: "ready",
       }),
-    ).toBe(false);
+    ).toBe(true);
     expect(
       shouldShowSmartReplyTriggerIcon(customerMessage, {
         assistantName: "护肤小助手",

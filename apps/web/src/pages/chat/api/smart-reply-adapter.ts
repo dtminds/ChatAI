@@ -356,6 +356,10 @@ export function shouldShowSmartReplyTriggerIcon(
     return true;
   }
 
+  if (isSmartReplyReady(suggestion)) {
+    return true;
+  }
+
   return !shouldShowSmartReplyCard(suggestion) && !getSmartReplyInlineState(suggestion);
 }
 

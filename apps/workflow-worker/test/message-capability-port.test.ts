@@ -64,6 +64,22 @@ describe("Workflow Message capability port", () => {
     ]);
   });
 
+  it("uses the default cover when an H5 attachment has no cover", () => {
+    expect(buildWorkflowJavaMessages(messageCommand({
+      attachments: [attachment("h5", {
+        description: "活动介绍",
+        title: "本周活动",
+        url: "https://example.com/campaign",
+      })],
+    }))).toEqual([{
+      coverUrl: "https://b5.bokr.com.cn/dist/default-cover.png",
+      desc: "活动介绍",
+      href: "https://example.com/campaign",
+      msgtype: "link",
+      title: "本周活动",
+    }]);
+  });
+
   it("uses the Run-frozen seat and sends ordered messages with stable child keys", async () => {
     const { database, queries } = createRecordingDatabase(() => ({
       rows: [seatRow(101, "work-user-1")],

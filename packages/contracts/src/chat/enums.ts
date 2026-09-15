@@ -31,6 +31,8 @@ export const WORKBENCH_MESSAGE_SOURCE = {
   WORKFLOW: 4,
 } as const;
 
+export const DEFAULT_H5_COVER_URL = "https://b5.bokr.com.cn/dist/default-cover.png";
+
 export const MATERIAL_COLLECTION_BIZ_TYPE = {
   EXPRESSION: 1,
   FILE: 2,

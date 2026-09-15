@@ -1,4 +1,5 @@
 import {
+  DEFAULT_H5_COVER_URL,
   decodeJavaInternalApiEnvelope,
   WORKBENCH_MESSAGE_SOURCE,
   WorkflowMessageCommandSchema,
@@ -193,7 +194,7 @@ function buildWorkflowJavaAttachment(
     ]);
     const desc = readFirstContentString(attachment.content, ["desc", "description"]);
     return {
-      ...(coverUrl ? { coverUrl } : {}),
+      coverUrl: coverUrl || DEFAULT_H5_COVER_URL,
       ...(desc ? { desc } : {}),
       href: requireFirstContentString(attachment.content, ["href", "url", "linkUrl"]),
       msgtype: "link",

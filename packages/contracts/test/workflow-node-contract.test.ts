@@ -197,9 +197,9 @@ describe("workflow node contracts", () => {
       .toEqual(["ratio-split"]);
 
     expect(entries.filter(([, contract]) => contract.maturity === "runtime-ready").map(([kind]) => kind))
-      .toEqual(["ai-collect", "ai-intent", "audience-filter", "branch", "ratio-split", "coupon", "customer-update", "end", "handoff", "llm", "message", "message-query", "order-bind", "order-query", "order-conversion", "start", "tag", "tag-query", "wait", "wait-event", "smartsheet-write", "ticket-create"]);
+      .toEqual(["ai-collect", "ai-intent", "audience-filter", "branch", "ratio-split", "coupon", "customer-update", "end", "handoff", "llm", "message", "marketing-message", "message-query", "order-bind", "order-query", "order-conversion", "start", "tag", "tag-query", "wait", "wait-event", "smartsheet-write", "ticket-create"]);
     expect(entries.filter(([, contract]) => contract.maturity === "draft-ready").map(([kind]) => kind))
-      .toEqual(["marketing-message"]);
+      .toEqual([]);
     expect(entries.filter(([, contract]) => contract.maturity === "placeholder").map(([kind]) => kind))
       .toEqual(["agent"]);
   });

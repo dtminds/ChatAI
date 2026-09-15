@@ -87,6 +87,11 @@ export function MarketingMessageConfig({
         </div>
       </RadioGroup>
     </WorkflowSettingsSection>
+    <WorkflowSettingsSection title="消息发送时段">
+      <p className="text-[13px] leading-5 text-muted-foreground">
+        任务下发时间和消息发送时段，以所选触达任务的配置为准
+      </p>
+    </WorkflowSettingsSection>
   </>;
 }
 

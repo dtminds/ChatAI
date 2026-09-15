@@ -88,7 +88,7 @@ POST /third-internal/cdp-market-plan/get-push-user-result
 
 两个执行接口都通过共享 `decodeJavaInternalApiEnvelope` 解码。`success: false`、非法信封、非法 JSON、非法业务字段、非 200 HTTP、网络异常及单次操作超时均为 terminal，流程停止；当前产品语义不对推送或到期查询执行 Runtime 自动重试。若后续要对传输故障增加重试，必须先重新确认“只查询一次”的用户语义和 Java 幂等边界。
 
-当前查询接口契约已确认，Java 侧标准 `idempotentKey` 推送幂等和查询结果仍需要联调验收，因此节点 maturity 为 `draft-ready`：开发环境可以编辑、保存并执行 Node 子系统测试，生产发布与 Runtime 执行门禁不放行。升级为 `runtime-ready` 前必须完成：
+当前查询接口契约和生产执行链路已接通，节点 maturity 为 `runtime-ready`，允许发布并进入真实 Runtime。正式发布前仍必须完成以下目标环境集成验收：
 
 1. Java 查询接口在目标环境部署并通过真实响应联调。
 2. Java 按 URL query 中 `idempotentKey` 的推送幂等行为通过重复请求验证。

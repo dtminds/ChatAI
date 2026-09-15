@@ -9,10 +9,10 @@ import {
 } from "../src/index.js";
 
 describe("Workflow Marketing Message contracts", () => {
-  it("stays draft-ready until Java integration is accepted", () => {
+  it("is runtime-ready for Java integration testing", () => {
     expect(getWorkflowNodeContract("marketing-message")).toMatchObject({
       executionClass: "composite",
-      maturity: "draft-ready",
+      maturity: "runtime-ready",
     });
   });
 

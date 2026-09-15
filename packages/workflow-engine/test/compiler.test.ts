@@ -706,7 +706,7 @@ describe("compileWorkflowDraft", () => {
     expectCompilationIssues(draft, ["unsupported-runtime-node"]);
   });
 
-  it("rejects Marketing Message until its Java integration is accepted", () => {
+  it("compiles Marketing Message into its runtime execution config", () => {
     const draft = createDraft();
     draft.nodes.splice(2, 0, node("marketing-message", "marketing-message", {
       plan: { planId: 701, planName: "双十一触达" },
@@ -717,7 +717,22 @@ describe("compileWorkflowDraft", () => {
       { id: "marketing-message-end", source: "marketing-message", target: "end" },
     );
 
-    expectCompilationIssues(draft, ["unsupported-runtime-node"]);
+    const spec = compileWorkflowDraft({
+      draft,
+      revision: 1,
+      workflowId: "42",
+      workflowType: "chatai_sop",
+    });
+
+    expect(spec.nodes.find(item => item.id === "marketing-message")).toEqual({
+      config: {
+        plan: { planId: 701, planName: "双十一触达" },
+        wait: { mode: "fixed", duration: 30, unit: "minute" },
+      },
+      id: "marketing-message",
+      kind: "marketing-message",
+      nodeSchemaVersion: 1,
+    });
   });
 
   it("compiles a selected coupon into one bounded issuance command", () => {

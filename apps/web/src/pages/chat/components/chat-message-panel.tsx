@@ -205,7 +205,7 @@ export function ChatMessagePanel({
           <div
             className={cn(
               "min-w-0 px-5 pt-5",
-              hasComposerStatusOverlay ? "pb-22" : "pb-17",
+              hasComposerStatusOverlay ? "pb-26" : "pb-17",
             )}
           >
             <div

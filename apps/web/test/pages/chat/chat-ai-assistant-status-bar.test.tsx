@@ -80,6 +80,32 @@ describe("ChatAIAssistantStatusBar", () => {
     );
   });
 
+  it("shows skipped reasons in a hover tooltip while waiting for the customer", async () => {
+    const user = userEvent.setup();
+
+    render(
+      <ChatAIAssistantStatusBar
+        customerName="客户甲"
+        label="已跳过话术推荐"
+        reason="客户提及营销计划，会话上下文信息不足"
+        status="waiting"
+        waitingForCustomer
+      />,
+    );
+
+    expect(screen.getByText(/已跳过话术推荐/)).toBeInTheDocument();
+    expect(screen.getByText("查看原因")).toBeInTheDocument();
+    expect(screen.getByRole("status")).toHaveTextContent(
+      "正在等待 客户甲 的消息",
+    );
+
+    await user.hover(screen.getByText("查看原因"));
+
+    expect(
+      await screen.findByText("客户提及营销计划，会话上下文信息不足"),
+    ).toBeInTheDocument();
+  });
+
   it("uses a pulsing border beam while thinking", () => {
     render(<ChatAIAssistantStatusBar status="thinking" />);
 
@@ -106,7 +132,7 @@ describe("ChatAIAssistantStatusBar", () => {
     );
     expect(
       document.querySelector('[data-slot="agent-thinking-orb"]'),
-    ).toHaveAttribute("data-orb-state", "breathing");
+    ).toHaveAttribute("data-orb-state", "connecting");
     expect(screen.getByText("0.0s")).toHaveAttribute(
       "data-slot",
       "elapsed-time",
@@ -182,8 +208,7 @@ describe("ChatAIAssistantStatusBar", () => {
 
     render(
       <ChatAIAssistantStatusBar
-        status="thinking"
-        thinkingActions={[
+        actions={[
           {
             id: "stop",
             label: "停止",
@@ -191,6 +216,7 @@ describe("ChatAIAssistantStatusBar", () => {
             tone: "quiet",
           },
         ]}
+        status="thinking"
       />,
     );
 
@@ -218,17 +244,26 @@ describe("ChatAIAssistantStatusBar", () => {
 
     render(
       <ChatAIAssistantStatusBar
+        actions={[
+          {
+            id: "ignore",
+            label: "忽略",
+            onSelect: onIgnore,
+            tone: "quiet",
+          },
+          {
+            id: "approve",
+            label: "批准",
+            onSelect: onApprove,
+            tone: "primary",
+          },
+        ]}
         label="确认退款 100 元"
-        onApprove={onApprove}
-        onIgnore={onIgnore}
         status="confirmation"
       />,
     );
 
-    expect(screen.getByLabelText("确认退款 100 元")).toHaveAttribute(
-      "data-slot",
-      "animated-text-switch",
-    );
+    expect(screen.getByText("确认退款 100 元")).toBeInTheDocument();
     expect(screen.getByTestId("ai-assistant-border-beam")).toHaveAttribute(
       "data-active",
       "true",
@@ -239,7 +274,7 @@ describe("ChatAIAssistantStatusBar", () => {
     );
     expect(
       document.querySelector('[data-slot="agent-thinking-orb"]'),
-    ).toHaveAttribute("data-orb-state", "searching");
+    ).toHaveAttribute("data-orb-state", "breathing");
 
     await user.click(screen.getByRole("button", { name: "忽略" }));
     await user.click(screen.getByRole("button", { name: "批准" }));

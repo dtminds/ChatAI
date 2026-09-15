@@ -1,10 +1,5 @@
 import { act, renderHook } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { LexicalEditor } from "lexical";
-import {
-  CLEAR_COMPOSER_COMMAND,
-  INSERT_COMPOSER_TEXT_COMMAND,
-} from "@/pages/chat/components/composer/lexical-commands";
 import { useSmartReplyState } from "@/pages/chat/hooks/use-smart-reply-state";
 import type { ChatMessage, Conversation } from "@/pages/chat/chat-types";
 import type { SmartReplySendPayload } from "@/pages/chat/api/smart-reply-adapter";
@@ -70,16 +65,6 @@ function createDeferred<T>() {
   };
 }
 
-function createEditorMock() {
-  return {
-    dispatchCommand: vi.fn(),
-    focus: vi.fn(),
-  } as unknown as LexicalEditor & {
-    dispatchCommand: ReturnType<typeof vi.fn>;
-    focus: ReturnType<typeof vi.fn>;
-  };
-}
-
 function getBooleanMockCalls(mock: ReturnType<typeof vi.fn>) {
   return mock.mock.calls.map(([value]) => value);
 }
@@ -90,16 +75,13 @@ function createDefaultHookOptions(
   return {
     activeConversation: singleConversation,
     canSendMessage: true,
-    composerRef: { current: null },
     dismissSmartReply: vi.fn(),
     isMountedRef: { current: true },
     isSendingDraftRef: { current: false },
-    onDraftChange: vi.fn(),
     onSendFailure: vi.fn(),
     onSent: vi.fn(),
     onSendingChange: vi.fn(),
     requestSmartReplyGeneralAnswer: vi.fn(),
-    requestSmartReplyMakeShorter: vi.fn(),
     sendSmartReply: vi.fn(),
     ...overrides,
   };
@@ -108,31 +90,6 @@ function createDefaultHookOptions(
 describe("useSmartReplyState", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-  });
-
-  it("fills the composer through Lexical commands without sending", () => {
-    const editor = createEditorMock();
-
-    const { result } = renderHook(() =>
-      useSmartReplyState(
-        createDefaultHookOptions({
-          composerRef: { current: editor },
-        }),
-      ),
-    );
-
-    result.current.handleFillSmartReplyComposer(customerMessage, "  推荐话术  ");
-
-    expect(editor.dispatchCommand).toHaveBeenCalledWith(
-      CLEAR_COMPOSER_COMMAND,
-      undefined,
-    );
-    expect(editor.dispatchCommand).toHaveBeenCalledWith(
-      INSERT_COMPOSER_TEXT_COMMAND,
-      "推荐话术",
-    );
-    expect(result.current.handleFillSmartReplyComposer).toBeDefined();
-    expect(editor.focus).toHaveBeenCalledTimes(1);
   });
 
   it("sends smart replies through the store action and reports failures", async () => {
@@ -301,30 +258,26 @@ describe("useSmartReplyState", () => {
     expect(getBooleanMockCalls(onSendingChange)).toEqual([false]);
   });
 
-  it("forwards trigger, dismiss, and make-shorter handlers", () => {
+  it("forwards trigger and dismiss handlers", () => {
     const dismissSmartReply = vi.fn();
     const requestSmartReplyGeneralAnswer = vi.fn(async () => undefined);
-    const requestSmartReplyMakeShorter = vi.fn(async () => undefined);
 
     const { result } = renderHook(() =>
       useSmartReplyState(
         createDefaultHookOptions({
           dismissSmartReply,
           requestSmartReplyGeneralAnswer,
-          requestSmartReplyMakeShorter,
         }),
       ),
     );
 
     result.current.handleTriggerSmartReply(customerMessage, { force: true });
     result.current.handleDismissSmartReply(customerMessage);
-    result.current.handleMakeShorterSmartReply(customerMessage);
 
     expect(requestSmartReplyGeneralAnswer).toHaveBeenCalledWith(
       customerMessage,
       { force: true },
     );
     expect(dismissSmartReply).toHaveBeenCalledWith(customerMessage);
-    expect(requestSmartReplyMakeShorter).toHaveBeenCalledWith(customerMessage);
   });
 });

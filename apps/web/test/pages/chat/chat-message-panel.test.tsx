@@ -1,5 +1,5 @@
 import { createRef } from "react";
-import { act, render, screen } from "@testing-library/react";
+import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ChatMessagePanel } from "@/pages/chat/components/chat-message-panel";
@@ -117,9 +117,15 @@ describe("ChatMessagePanel smart reply state", () => {
     useWorkbenchStore.setState(useWorkbenchStore.getInitialState(), true);
   });
 
-  it("shows visible smart replies for the current single conversation", () => {
+  it("keeps an active smart reply out of the message row and hides its duplicate trigger", async () => {
+    const user = userEvent.setup();
+    const onTriggerSmartReply = vi.fn();
     enableSmartReplyDisplayContext();
     useWorkbenchStore.setState((state) => ({
+      smartReplyActiveMessageKeyByConversationId: {
+        ...state.smartReplyActiveMessageKeyByConversationId,
+        "conv-001": "1",
+      },
       smartReplyByMessageIdByConversationId: {
         ...state.smartReplyByMessageIdByConversationId,
         "conv-001": {
@@ -134,227 +140,31 @@ describe("ChatMessagePanel smart reply state", () => {
       },
     }));
 
-    renderPanel();
-
-    expect(screen.getByTestId("smart-reply-card")).toBeInTheDocument();
-    expect(screen.getByText("可展示的话术")).toBeInTheDocument();
-  });
-
-  it("hides smart replies marked hidden for the current conversation", () => {
-    enableSmartReplyDisplayContext();
-    useWorkbenchStore.setState((state) => ({
-      smartReplyByMessageIdByConversationId: {
-        ...state.smartReplyByMessageIdByConversationId,
-        "conv-001": {
-          "1": {
-            assistantName: "智能助手",
-            content: "隐藏的话术",
-            generateStatus: 2,
-            pollComplete: true,
-            status: "ready",
-          },
-        },
-      },
-      smartReplyHiddenMessageKeysByConversationId: {
-        ...state.smartReplyHiddenMessageKeysByConversationId,
-        "conv-001": {
-          "1": true,
-        },
-      },
-    }));
-
-    renderPanel();
+    renderPanel({ onTriggerSmartReply });
 
     expect(screen.queryByTestId("smart-reply-card")).not.toBeInTheDocument();
-    expect(screen.queryByText("隐藏的话术")).not.toBeInTheDocument();
-  });
+    expect(screen.queryByText("可展示的话术")).not.toBeInTheDocument();
 
-  it("shows smart replies in group conversations when group script recommendation is enabled", () => {
-    enableSmartReplyDisplayContext({
-      enabled: false,
-      seatGroupAIAssistantEnabled: true,
-      mode: "group",
-    });
-    useWorkbenchStore.setState((state) => ({
-      smartReplyByMessageIdByConversationId: {
-        ...state.smartReplyByMessageIdByConversationId,
-        "conv-001": {
-          "1": {
-            assistantName: "智能助手",
-            content: "群聊可展示的话术",
-            generateStatus: 2,
-            pollComplete: true,
-            status: "ready",
-          },
-        },
-      },
-    }));
-
-    renderPanel({
-      conversationMode: "group",
-      messages: [
-        createCustomerMessage({
-          isGroupConversation: true,
-          senderDisplayName: "客户甲",
-        }),
-      ],
-    });
-
-    expect(screen.getByTestId("smart-reply-card")).toBeInTheDocument();
-    expect(screen.getByText("群聊可展示的话术")).toBeInTheDocument();
-  });
-
-  it("hides smart replies in group conversations when group script recommendation is disabled", () => {
-    enableSmartReplyDisplayContext({
-      enabled: true,
-      seatGroupAIAssistantEnabled: false,
-      mode: "group",
-    });
-    useWorkbenchStore.setState((state) => ({
-      smartReplyByMessageIdByConversationId: {
-        ...state.smartReplyByMessageIdByConversationId,
-        "conv-001": {
-          "1": {
-            assistantName: "智能助手",
-            content: "群聊不应展示的话术",
-            generateStatus: 2,
-            pollComplete: true,
-            status: "ready",
-          },
-        },
-      },
-    }));
-
-    renderPanel({
-      conversationMode: "group",
-      messages: [
-        createCustomerMessage({
-          isGroupConversation: true,
-          senderDisplayName: "客户甲",
-        }),
-      ],
-    });
-
-    expect(screen.queryByTestId("smart-reply-card")).not.toBeInTheDocument();
-    expect(screen.queryByText("群聊不应展示的话术")).not.toBeInTheDocument();
-  });
-
-  it("keeps group smart replies available when AI auto-reply is enabled", () => {
-    enableSmartReplyDisplayContext({
-      conversationAIHostingSwitch: true,
-      seatGroupAIHostingEnabled: true,
-      seatGroupAIAssistantEnabled: true,
-      mode: "group",
-    });
-    useWorkbenchStore.setState((state) => ({
-      smartReplyByMessageIdByConversationId: {
-        ...state.smartReplyByMessageIdByConversationId,
-        "conv-001": {
-          "1": {
-            assistantName: "智能助手",
-            content: "群聊自动回复开启时仍可推荐",
-            generateStatus: 2,
-            pollComplete: true,
-            status: "ready",
-          },
-        },
-      },
-    }));
-
-    renderPanel({
-      conversationMode: "group",
-      messages: [
-        createCustomerMessage({
-          isGroupConversation: true,
-          senderDisplayName: "客户甲",
-        }),
-      ],
-    });
-
-    expect(screen.getByTestId("smart-reply-card")).toBeInTheDocument();
-    expect(screen.getByText("群聊自动回复开启时仍可推荐")).toBeInTheDocument();
-  });
-
-  it("hides cached smart replies immediately after seat AI assistant is disabled", () => {
-    enableSmartReplyDisplayContext();
-    useWorkbenchStore.setState((state) => ({
-      smartReplyByMessageIdByConversationId: {
-        ...state.smartReplyByMessageIdByConversationId,
-        "conv-001": {
-          "1": {
-            assistantName: "智能助手",
-            content: "关闭后不展示的话术",
-            generateStatus: 2,
-            pollComplete: true,
-            status: "ready",
-          },
-        },
-      },
-    }));
-
-    renderPanel();
-
-    expect(screen.getByTestId("smart-reply-card")).toBeInTheDocument();
-    expect(screen.getByText("关闭后不展示的话术")).toBeInTheDocument();
-
-    act(() => {
-      useWorkbenchStore.setState((state) => ({
-        accounts: state.accounts.map((account) =>
-          account.id === "seat-001"
-            ? {
-                ...account,
-                seatAIAssistantEnabled: false,
-              }
-            : account,
-        ),
-      }));
-    });
-
-    expect(screen.queryByTestId("smart-reply-card")).not.toBeInTheDocument();
-    expect(screen.queryByText("关闭后不展示的话术")).not.toBeInTheDocument();
-  });
-
-  it("hides semantic-wait smart replies that are no longer for the latest customer message", () => {
-    enableSmartReplyDisplayContext();
-    useWorkbenchStore.setState((state) => ({
-      smartReplyByMessageIdByConversationId: {
-        ...state.smartReplyByMessageIdByConversationId,
-        "conv-001": {
-          "1": {
-            assistantName: "智能助手",
-            content: "",
-            createdAt: Date.now() - 1_000,
-            generateStatus: 5,
-            pollComplete: false,
-            status: "processing",
-          },
-        },
-      },
-    }));
-
-    renderPanel({
-      messages: [
-        createCustomerMessage(),
-        createCustomerMessage({
-          msgid: "msg-002",
-          seq: 2,
-          uiMessageKey: "2",
-        }),
-      ],
-    });
-
+    await user.click(screen.getByRole("button", { name: "消息操作" }));
     expect(
-      screen.queryByText("语义不完整，继续等待下一条消息"),
+      screen.queryByRole("menuitem", { name: "话术推荐" }),
     ).not.toBeInTheDocument();
+    expect(onTriggerSmartReply).not.toHaveBeenCalled();
   });
 
-  it("shows semantic-wait smart replies for the latest customer message", () => {
+  it("does not let a semantic-wait turn on an older message block a newer one", async () => {
+    const user = userEvent.setup();
+    const onTriggerSmartReply = vi.fn();
     enableSmartReplyDisplayContext();
     useWorkbenchStore.setState((state) => ({
+      smartReplyActiveMessageKeyByConversationId: {
+        ...state.smartReplyActiveMessageKeyByConversationId,
+        "conv-001": "1",
+      },
       smartReplyByMessageIdByConversationId: {
         ...state.smartReplyByMessageIdByConversationId,
         "conv-001": {
-          "2": {
+          "1": {
             assistantName: "智能助手",
             content: "",
             createdAt: Date.now() - 1_000,
@@ -365,56 +175,64 @@ describe("ChatMessagePanel smart reply state", () => {
         },
       },
     }));
-
-    renderPanel({
-      messages: [
-        createCustomerMessage(),
-        createCustomerMessage({
-          msgid: "msg-002",
-          seq: 2,
-          uiMessageKey: "2",
-        }),
-      ],
+    const latestMessage = createCustomerMessage({
+      msgid: "msg-002",
+      seq: 2,
+      uiMessageKey: "2",
     });
 
-    expect(
-      screen.getByText("语义不完整，继续等待下一条消息"),
-    ).toBeInTheDocument();
+    renderPanel({
+      messages: [createCustomerMessage(), latestMessage],
+      onTriggerSmartReply,
+    });
+
+    const actionButtons = screen.getAllByRole("button", { name: "消息操作" });
+    await user.click(actionButtons.at(-1)!);
+    const action = screen.getByRole("menuitem", { name: "话术推荐" });
+    expect(action).not.toHaveAttribute("data-disabled");
+    await user.click(action);
+    expect(onTriggerSmartReply).toHaveBeenCalledWith(latestMessage);
   });
 
-  it("ignores sparse message slots when finding the latest semantic-wait message", () => {
+  it("does not let a skipped recommendation block another message", async () => {
+    const user = userEvent.setup();
+    const onTriggerSmartReply = vi.fn();
     enableSmartReplyDisplayContext();
     useWorkbenchStore.setState((state) => ({
+      smartReplyActiveMessageKeyByConversationId: {
+        ...state.smartReplyActiveMessageKeyByConversationId,
+        "conv-001": "1",
+      },
       smartReplyByMessageIdByConversationId: {
         ...state.smartReplyByMessageIdByConversationId,
         "conv-001": {
-          "2": {
+          "1": {
             assistantName: "智能助手",
             content: "",
-            createdAt: Date.now() - 1_000,
-            generateStatus: 5,
-            pollComplete: false,
-            status: "processing",
+            failReason: "命中人工处理规则",
+            generateStatus: 4,
+            pollComplete: true,
           },
         },
       },
     }));
-
-    renderPanel({
-      messages: [
-        createCustomerMessage(),
-        createCustomerMessage({
-          msgid: "msg-002",
-          seq: 2,
-          uiMessageKey: "2",
-        }),
-        undefined,
-      ] as unknown as ChatMessage[],
+    const latestMessage = createCustomerMessage({
+      msgid: "msg-002",
+      seq: 2,
+      uiMessageKey: "2",
     });
 
-    expect(
-      screen.getByText("语义不完整，继续等待下一条消息"),
-    ).toBeInTheDocument();
+    renderPanel({
+      messages: [createCustomerMessage(), latestMessage],
+      onTriggerSmartReply,
+    });
+
+    const actionButtons = screen.getAllByRole("button", { name: "消息操作" });
+    await user.click(actionButtons.at(-1)!);
+    const action = screen.getByRole("menuitem", { name: "话术推荐" });
+    expect(action).not.toHaveAttribute("data-disabled");
+    await user.click(action);
+    expect(onTriggerSmartReply).toHaveBeenCalledWith(latestMessage);
   });
 
   it("disables the smart reply action when seat AI assistant is unavailable", async () => {

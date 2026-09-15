@@ -9,6 +9,12 @@ import { AgentThinkingOrb } from "@/components/ui/agent-thinking-orb";
 import { AnimatedTextSwitch } from "@/components/ui/animated-text-switch";
 import { Button } from "@/components/ui/button";
 import { ElapsedTime } from "@/components/ui/elapsed-time";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import { useAppearanceStore } from "@/store/appearance-store";
 
@@ -27,7 +33,9 @@ export type ChatAIAssistantAction = {
 
 type StatusBarView = {
   label: string;
+  reason?: string;
   status: ChatAIAssistantStatus;
+  waitingForCustomer: boolean;
 };
 
 type OnStatusBarStatus = Exclude<ChatAIAssistantStatus, "waiting">;
@@ -46,7 +54,6 @@ type OnStatusBarThemeStyles = {
   primaryActionButton: string;
   quietActionButton: string;
   surface: string;
-  text: string;
 };
 
 const ON_STATUS_BAR_THEME_STYLES: Record<
@@ -63,7 +70,6 @@ const ON_STATUS_BAR_THEME_STYLES: Record<
     quietActionButton:
       "bg-transparent text-muted-foreground hover:bg-transparent hover:text-foreground active:bg-transparent",
     surface: "bg-muted/80 backdrop-blur-xs",
-    text: "text-muted-foreground",
   },
   dark: {
     beamBrightness: 1.2,
@@ -75,32 +81,33 @@ const ON_STATUS_BAR_THEME_STYLES: Record<
     quietActionButton:
       "bg-transparent text-white/70 hover:bg-transparent hover:text-white active:bg-transparent",
     surface: "bg-muted/90 backdrop-blur-xs",
-    text: "text-white/90",
   },
 };
 
 export function ChatAIAssistantStatusBar({
+  actions,
   className,
   customerName,
   label,
-  onApprove,
-  onIgnore,
+  reason,
   status = "waiting",
-  thinkingActions,
+  waitingForCustomer = false,
 }: {
+  actions?: readonly ChatAIAssistantAction[];
   className?: string;
   customerName?: string;
   label?: string;
-  onApprove?: () => void;
-  onIgnore?: () => void;
+  reason?: string;
   status?: ChatAIAssistantStatus;
-  thinkingActions?: readonly ChatAIAssistantAction[];
+  waitingForCustomer?: boolean;
 }) {
   const targetLabel =
     label?.trim() || getDefaultStatusLabel(status, customerName);
   const [visibleView, setVisibleView] = useState<StatusBarView>(() => ({
     label: targetLabel,
+    reason,
     status,
+    waitingForCustomer,
   }));
   const [outgoingView, setOutgoingView] = useState<StatusBarView | null>(null);
   const [thinkingStartedAt, setThinkingStartedAt] = useState(() => Date.now());
@@ -112,34 +119,54 @@ export function ChatAIAssistantStatusBar({
       : "light",
   );
   useLayoutEffect(() => {
+    const nextView = {
+      label: targetLabel,
+      reason,
+      status,
+      waitingForCustomer,
+    };
+
     if (outgoingView) {
       if (outgoingView.status === status) {
         setOutgoingView(null);
-        setVisibleView({ label: targetLabel, status });
+        setVisibleView(nextView);
         return;
       }
 
-      if (visibleView.status !== status || visibleView.label !== targetLabel) {
-        setVisibleView({ label: targetLabel, status });
+      if (
+        visibleView.status !== status ||
+        visibleView.label !== targetLabel ||
+        visibleView.reason !== reason ||
+        visibleView.waitingForCustomer !== waitingForCustomer
+      ) {
+        setVisibleView(nextView);
       }
       return;
     }
 
     if (visibleView.status !== status) {
       setOutgoingView(visibleView);
-      setVisibleView({ label: targetLabel, status });
+      setVisibleView(nextView);
       return;
     }
 
-    if (visibleView.status !== status || visibleView.label !== targetLabel) {
-      setVisibleView({ label: targetLabel, status });
+    if (
+      visibleView.label !== targetLabel ||
+      visibleView.reason !== reason ||
+      visibleView.waitingForCustomer !== waitingForCustomer
+    ) {
+      setVisibleView(nextView);
     }
   }, [
+    reason,
     status,
     targetLabel,
+    waitingForCustomer,
     outgoingView,
     visibleView.label,
+    visibleView.reason,
     visibleView.status,
+    visibleView.waitingForCustomer,
   ]);
   useLayoutEffect(() => {
     if (
@@ -173,12 +200,10 @@ export function ChatAIAssistantStatusBar({
           key={`outgoing-${outgoingView.status}`}
         >
           <StatusBarSurface
+            actions={actions}
             beamTheme={beamTheme}
             customerName={customerName}
-            onApprove={onApprove}
-            onIgnore={onIgnore}
             thinkingStartedAt={thinkingStartedAt}
-            thinkingActions={thinkingActions}
             view={outgoingView}
           />
         </div>
@@ -201,14 +226,12 @@ export function ChatAIAssistantStatusBar({
             : undefined
         }
       >
-        <StatusBarSurface
-          beamTheme={beamTheme}
-          customerName={customerName}
-          onApprove={onApprove}
-          onIgnore={onIgnore}
-          thinkingStartedAt={thinkingStartedAt}
-          thinkingActions={thinkingActions}
-          view={visibleView}
+          <StatusBarSurface
+            actions={actions}
+            beamTheme={beamTheme}
+            customerName={customerName}
+            thinkingStartedAt={thinkingStartedAt}
+            view={visibleView}
         />
       </div>
     </div>
@@ -216,20 +239,16 @@ export function ChatAIAssistantStatusBar({
 }
 
 function StatusBarSurface({
+  actions,
   beamTheme,
   customerName,
-  onApprove,
-  onIgnore,
   thinkingStartedAt,
-  thinkingActions,
   view,
 }: {
+  actions?: readonly ChatAIAssistantAction[];
   beamTheme: BeamTheme;
   customerName?: string;
-  onApprove?: () => void;
-  onIgnore?: () => void;
   thinkingStartedAt: number;
-  thinkingActions?: readonly ChatAIAssistantAction[];
   view: StatusBarView;
 }) {
   if (view.status === "waiting") {
@@ -237,19 +256,19 @@ function StatusBarSurface({
       <WaitStatusBarSurface
         customerName={customerName}
         label={view.label}
+        reason={view.reason}
+        waitingForCustomer={view.waitingForCustomer}
       />
     );
   }
 
   return (
     <OnStatusBarSurface
+      actions={actions}
       beamTheme={beamTheme}
       label={view.label}
-      onApprove={onApprove}
-      onIgnore={onIgnore}
       status={view.status}
       thinkingStartedAt={thinkingStartedAt}
-      thinkingActions={thinkingActions}
     />
   );
 }
@@ -257,9 +276,13 @@ function StatusBarSurface({
 function WaitStatusBarSurface({
   customerName,
   label,
+  reason,
+  waitingForCustomer,
 }: {
   customerName?: string;
   label: string;
+  reason?: string;
+  waitingForCustomer: boolean;
 }) {
   const resolvedCustomerName = customerName?.trim();
   const shouldEmphasizeCustomerName =
@@ -267,58 +290,72 @@ function WaitStatusBarSurface({
     label === getDefaultStatusLabel("waiting", resolvedCustomerName);
 
   return (
-    <div
-      className="relative z-20 h-full rounded-full border border-success/18"
-      data-mode="wait"
-      data-status="waiting"
-      data-testid="chat-ai-assistant-status-bar"
-      role="status"
-    >
+    <TooltipProvider delayDuration={300}>
       <div
-        aria-hidden="true"
-        className="absolute inset-0 z-0 rounded-full bg-success-muted/60 backdrop-blur-xs"
-      />
-      <div className="relative z-10 flex h-full items-center justify-center gap-3 px-4 text-[13px] leading-4 font-medium text-foreground/80">
-        <div className="flex min-w-0 items-center gap-2">
-          <AgentThinkingOrb
-            speed={0.6}
-            state="connecting"
-          />
-          <span className="min-w-0 truncate">
-            {shouldEmphasizeCustomerName ? (
-              <>
-                正在等待{" "}
-                <strong className="font-semibold text-foreground">
-                  {resolvedCustomerName}
-                </strong>{" "}
-                的消息
-              </>
-            ) : (
-              label
-            )}
-          </span>
+        className="chat-ai-assistant-status-surface relative z-20 h-full rounded-full border border-transparent"
+        data-mode="wait"
+        data-status="waiting"
+        data-testid="chat-ai-assistant-status-bar"
+        role="status"
+      >
+        <div className="relative z-10 flex h-full items-center justify-center gap-3 px-4 text-[13px] leading-4 font-medium text-foreground/80">
+          <div className="flex min-w-0 items-center gap-2">
+            <AgentThinkingOrb speed={0.6} state="breathing" />
+            <span className="min-w-0 truncate">
+              {reason ? (
+                <>
+                  {label}：
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <span className="cursor-help underline decoration-dotted underline-offset-2">
+                        查看原因
+                      </span>
+                    </TooltipTrigger>
+                    <TooltipContent side="top" sideOffset={6}>
+                      {reason}
+                    </TooltipContent>
+                  </Tooltip>
+                </>
+              ) : shouldEmphasizeCustomerName && !waitingForCustomer ? (
+                <>
+                  正在等待{" "}
+                  <strong className="font-semibold text-foreground">
+                    {resolvedCustomerName}
+                  </strong>{" "}
+                  的消息
+                </>
+              ) : (
+                label
+              )}
+            </span>
+          </div>
+          {waitingForCustomer ? (
+            <span className="shrink-0 text-muted-foreground">
+              正在等待{" "}
+              <strong className="font-semibold text-foreground">
+                {resolvedCustomerName || "客户"}
+              </strong>{" "}
+              的消息
+            </span>
+          ) : null}
         </div>
       </div>
-    </div>
+    </TooltipProvider>
   );
 }
 
 function OnStatusBarSurface({
+  actions,
   beamTheme,
   label,
-  onApprove,
-  onIgnore,
   status,
   thinkingStartedAt,
-  thinkingActions,
 }: {
+  actions?: readonly ChatAIAssistantAction[];
   beamTheme: BeamTheme;
   label: string;
-  onApprove?: () => void;
-  onIgnore?: () => void;
   status: OnStatusBarStatus;
   thinkingStartedAt: number;
-  thinkingActions?: readonly ChatAIAssistantAction[];
 }) {
   const isThinking = status === "thinking";
   const themeStyles = ON_STATUS_BAR_THEME_STYLES[beamTheme];
@@ -360,18 +397,24 @@ function OnStatusBarSurface({
             <AgentThinkingOrb
               className={themeStyles.orb}
               speed={0.6}
-              state={isThinking ? "breathing" : "searching"}
+              state={isThinking ? "connecting" : "breathing"}
             />
-            <AnimatedTextSwitch
-              className={cn(
-                "min-w-0 text-[13px] font-medium",
-                isThinking ? "text-muted-foreground" : themeStyles.text,
-              )}
-              shiny={isThinking}
-              shinyDuration={getThinkingShinyDuration(label)}
-              staggerMs={12}
-              value={label}
-            />
+            {isThinking ? (
+              <AnimatedTextSwitch
+                className="min-w-0 text-[14px] font-medium text-muted-foreground"
+                shiny
+                shinyDuration={getThinkingShinyDuration(label)}
+                staggerMs={12}
+                value={label}
+              />
+            ) : (
+              <span
+                aria-label={label}
+                className="min-w-0 truncate text-[14px] leading-5 font-medium text-foreground"
+              >
+                {label}
+              </span>
+            )}
             {isThinking ? (
               <ElapsedTime
                 key={thinkingStartedAt}
@@ -381,11 +424,8 @@ function OnStatusBarSurface({
           </div>
           <div className="flex shrink-0 items-center gap-1.5">
             <OnStatusBarActions
-              onApprove={onApprove}
-              onIgnore={onIgnore}
-              status={status}
+              actions={actions}
               themeStyles={themeStyles}
-              thinkingActions={thinkingActions}
             />
           </div>
         </div>
@@ -395,38 +435,12 @@ function OnStatusBarSurface({
 }
 
 function OnStatusBarActions({
-  onApprove,
-  onIgnore,
-  status,
+  actions = [],
   themeStyles,
-  thinkingActions,
 }: {
-  onApprove?: () => void;
-  onIgnore?: () => void;
-  status: OnStatusBarStatus;
+  actions?: readonly ChatAIAssistantAction[];
   themeStyles: OnStatusBarThemeStyles;
-  thinkingActions?: readonly ChatAIAssistantAction[];
 }) {
-  const actions: readonly ChatAIAssistantAction[] =
-    status === "thinking"
-      ? (thinkingActions ?? [])
-      : [
-          {
-            disabled: !onIgnore,
-            id: "ignore",
-            label: "忽略",
-            onSelect: onIgnore,
-            tone: "quiet",
-          },
-          {
-            disabled: !onApprove,
-            id: "approve",
-            label: "批准",
-            onSelect: onApprove,
-            tone: "primary",
-          },
-        ];
-
   if (actions.length === 0) {
     return null;
   }

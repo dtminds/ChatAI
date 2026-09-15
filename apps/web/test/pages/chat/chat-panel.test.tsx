@@ -1,14 +1,27 @@
 import { createRef, useState } from "react";
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   CONTROLLED_TEXT_INSERTION_COMMAND,
   type LexicalEditor,
 } from "lexical";
 import { ChatPanel } from "@/pages/chat/components/chat-panel";
+import type { ChatAIAssistantAction } from "@/pages/chat/components/chat-ai-assistant-status-bar";
 import { INSERT_COMPOSER_TEXT_COMMAND } from "@/pages/chat/components/composer/lexical-commands";
-import type { Account, Conversation } from "@/pages/chat/chat-types";
+import { checkSmartReplyTextModeration } from "@/pages/chat/api/workbench-gateway";
+import type { Account, ChatMessage, Conversation } from "@/pages/chat/chat-types";
+import { useWorkbenchStore } from "@/store/workbench-store";
+
+vi.mock("@/pages/chat/api/workbench-gateway", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("@/pages/chat/api/workbench-gateway")>();
+
+  return {
+    ...actual,
+    checkSmartReplyTextModeration: vi.fn(),
+  };
+});
 
 vi.mock("@/pages/chat/ai-hosting/api/user-memory-service", () => ({
   createUserMemoryItem: vi.fn(),
@@ -48,6 +61,12 @@ const account: Account = {
 describe("ChatPanel", () => {
   beforeEach(() => {
     window.localStorage.clear();
+    useWorkbenchStore.setState(useWorkbenchStore.getInitialState(), true);
+  });
+
+  afterEach(() => {
+    vi.mocked(checkSmartReplyTextModeration).mockReset();
+    vi.useRealTimers();
   });
 
   it("truncates typed, IME, and dropped composer text to the remaining space", async () => {
@@ -1055,6 +1074,16 @@ describe("ChatPanel", () => {
     rerender(
       createStatusBarPanel({
         activeAccount: assistantAccount,
+        activeConversation: conversation,
+        canSendMessage: false,
+      }),
+    );
+
+    expect(screen.queryByTestId("chat-ai-assistant-status-bar")).not.toBeInTheDocument();
+
+    rerender(
+      createStatusBarPanel({
+        activeAccount: assistantAccount,
         activeConversation: {
           ...conversation,
           agentHostingStatus: "thinking",
@@ -1133,9 +1162,9 @@ describe("ChatPanel", () => {
     await screen.findByText("客户", { selector: "strong" });
   });
 
-  it("returns the AI assistant bar to waiting after ignoring a confirmation", async () => {
+  it("runs externally supplied AI assistant actions", async () => {
     const user = userEvent.setup();
-    const onIgnoreAIAssistantSuggestion = vi.fn();
+    const onIgnore = vi.fn();
     const assistantAccount = {
       ...account,
       seatAIAssistantEnabled: true,
@@ -1148,18 +1177,182 @@ describe("ChatPanel", () => {
           ...createConversation(),
           bizStatus: 1,
         },
+        aiAssistantActions: [
+          {
+            id: "ignore",
+            label: "忽略",
+            onSelect: onIgnore,
+            tone: "quiet",
+          },
+        ],
         aiAssistantStatus: "confirmation",
         aiAssistantStatusLabel: "确认退款 100 元",
-        onIgnoreAIAssistantSuggestion,
       }),
     );
 
     await user.click(screen.getByRole("button", { name: "忽略" }));
 
-    expect(onIgnoreAIAssistantSuggestion).toHaveBeenCalledTimes(1);
+    expect(onIgnore).toHaveBeenCalledTimes(1);
+  });
+
+  it("restores the existing composer draft after ignoring a smart reply suggestion", async () => {
+    const user = userEvent.setup();
+    const assistantAccount = {
+      ...account,
+      seatAIAssistantEnabled: true,
+    };
+    const conversation = {
+      ...createConversation(),
+      bizStatus: 1,
+    };
+    const customerMessage = {
+      author: "客户",
+      content: { text: "这个产品适合敏感肌吗", type: "text" },
+      conversationId: conversation.id,
+      isOwnMessage: false,
+      rawMsgtype: "text",
+      role: "customer",
+      sender: { id: "customer-1", name: "客户" },
+      sentAt: "2026-09-15T10:00:00+08:00",
+      seq: 12,
+      status: "sent",
+      uiMessageKey: "message-12",
+    } satisfies ChatMessage;
+
+    render(
+      createStatusBarPanel({
+        activeAccount: assistantAccount,
+        activeConversation: conversation,
+        messages: [customerMessage],
+        onDismissSmartReply: (message) => {
+          useWorkbenchStore.getState().dismissSmartReply(message);
+        },
+      }),
+    );
+
+    const regularComposer = screen.getByRole("textbox", { name: "输入消息" });
+    await user.click(regularComposer);
+    await user.paste("客服正在编辑的草稿");
+    expect(regularComposer).toHaveTextContent("客服正在编辑的草稿");
+
+    act(() => {
+      useWorkbenchStore.setState((state) => ({
+        smartReplyActiveMessageKeyByConversationId: {
+          ...state.smartReplyActiveMessageKeyByConversationId,
+          [conversation.id]: "12",
+        },
+        smartReplyByMessageIdByConversationId: {
+          ...state.smartReplyByMessageIdByConversationId,
+          [conversation.id]: {
+            "12": {
+              assistantName: "智能助手",
+              content: "建议先少量试用",
+              generateStatus: 2,
+              pollComplete: true,
+              recordId: "record-12",
+              status: "ready",
+            },
+          },
+        },
+      }));
+    });
+
+    const suggestionComposer = await screen.findByTestId(
+      "smart-reply-suggestion-composer",
+    );
     expect(
-      await screen.findByText("客户", { selector: "strong" }),
-    ).toBeInTheDocument();
+      await screen.findByRole("textbox", { name: "编辑话术建议" }),
+    ).toHaveTextContent("建议先少量试用");
+    expect(suggestionComposer).toBeVisible();
+    expect(regularComposer.closest('[aria-hidden="true"]')).not.toBeNull();
+    expect(screen.getAllByTestId("chat-composer")).toHaveLength(2);
+
+    vi.mocked(checkSmartReplyTextModeration).mockResolvedValue({
+      result: {
+        categoryLabel: "广告法",
+        words: ["绝对安全"],
+      },
+    });
+    await user.click(screen.getByRole("button", { name: "违规词检测" }));
+    expect(await screen.findByText("发现违规词：绝对安全")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "忽略" }));
+
+    await waitFor(() => {
+      expect(
+        screen.queryByTestId("smart-reply-suggestion-composer"),
+      ).not.toBeInTheDocument();
+      expect(regularComposer.closest('[aria-hidden="true"]')).toBeNull();
+      expect(regularComposer).toHaveTextContent("客服正在编辑的草稿");
+    });
+  });
+
+  it("keeps a skipped smart reply visible with its reason until dismissed", async () => {
+    vi.useFakeTimers();
+    const assistantAccount = {
+      ...account,
+      seatAIAssistantEnabled: true,
+    };
+    const conversation = {
+      ...createConversation(),
+      bizStatus: 1,
+    };
+    const customerMessage = {
+      author: "客户",
+      content: { text: "我要转人工", type: "text" },
+      conversationId: conversation.id,
+      isOwnMessage: false,
+      rawMsgtype: "text",
+      role: "customer",
+      sender: { id: "customer-1", name: "客户" },
+      sentAt: "2026-09-15T10:00:00+08:00",
+      seq: 12,
+      status: "sent",
+      uiMessageKey: "message-12",
+    } satisfies ChatMessage;
+    const onDismissSmartReply = vi.fn();
+
+    useWorkbenchStore.setState((state) => ({
+      smartReplyActiveMessageKeyByConversationId: {
+        ...state.smartReplyActiveMessageKeyByConversationId,
+        [conversation.id]: "12",
+      },
+      smartReplyByMessageIdByConversationId: {
+        ...state.smartReplyByMessageIdByConversationId,
+        [conversation.id]: {
+          "12": {
+            assistantName: "智能助手",
+            content: "",
+            failReason: "命中人工处理规则",
+            generateStatus: 4,
+            pollComplete: true,
+          },
+        },
+      },
+    }));
+
+    const view = render(
+      createStatusBarPanel({
+        activeAccount: assistantAccount,
+        activeConversation: conversation,
+        messages: [customerMessage],
+        onDismissSmartReply,
+      }),
+    );
+
+    expect(screen.getByText(/已跳过话术推荐/)).toBeInTheDocument();
+    expect(screen.getByText("查看原因")).toBeInTheDocument();
+    expect(screen.getByRole("status")).toHaveTextContent(
+      "正在等待 客户 的消息",
+    );
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(3000);
+    });
+
+    expect(onDismissSmartReply).not.toHaveBeenCalled();
+
+    view.unmount();
   });
 
   it("hides agent hosting status bar for exited agent mode conversations", () => {
@@ -2178,24 +2371,31 @@ function createStatusBarPanel({
   activeConversation,
   aiAssistantStatus,
   aiAssistantStatusLabel,
+  aiAssistantActions,
+  canSendMessage = true,
   conversationAIHostingEnabled = false,
-  onIgnoreAIAssistantSuggestion,
+  messages = [],
+  onDismissSmartReply,
 }: {
   activeAccount: Account;
   activeConversation: Conversation;
+  aiAssistantActions?: readonly ChatAIAssistantAction[];
   aiAssistantStatus?: "waiting" | "thinking" | "confirmation";
   aiAssistantStatusLabel?: string;
+  canSendMessage?: boolean;
   conversationAIHostingEnabled?: boolean;
-  onIgnoreAIAssistantSuggestion?: () => void;
+  messages?: ChatMessage[];
+  onDismissSmartReply?: (message: ChatMessage) => void;
 }) {
   return (
     <ChatPanel
       activeAccount={activeAccount}
       activeConversation={activeConversation}
       activeHistoryStatus="idle"
+      aiAssistantActions={aiAssistantActions}
       aiAssistantStatus={aiAssistantStatus}
       aiAssistantStatusLabel={aiAssistantStatusLabel}
-      canSendMessage={!conversationAIHostingEnabled}
+      canSendMessage={canSendMessage && !conversationAIHostingEnabled}
       conversationAIHostingEnabled={conversationAIHostingEnabled}
       composerPlaceholder="输入消息"
       customerPanelWidth={375}
@@ -2212,7 +2412,7 @@ function createStatusBarPanel({
       isGroupMembersLoading={false}
       isResizingCustomerPanel={false}
       isSendingDraft={false}
-      messages={[]}
+      messages={messages}
       quotedMessage={null}
       sidebarItems={[]}
       composerRef={createRef()}
@@ -2237,7 +2437,7 @@ function createStatusBarPanel({
       onLoadOlderMessages={vi.fn()}
       onMessageViewportScroll={vi.fn()}
       onOpenHistory={vi.fn()}
-      onIgnoreAIAssistantSuggestion={onIgnoreAIAssistantSuggestion}
+      onDismissSmartReply={onDismissSmartReply}
       onRefreshGroupMembers={vi.fn()}
       onRetryMessage={vi.fn()}
       onSendDraft={vi.fn()}

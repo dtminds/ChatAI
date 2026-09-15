@@ -11,12 +11,15 @@ import {
   getSmartReplyLookupKey,
   isSmartReplyEligibleMessage,
   isSmartReplySemanticWait,
-  type SmartReplySendPayload,
 } from "@/pages/chat/api/smart-reply-adapter";
 import type { SmartReplySuggestion } from "@/pages/chat/lib/smart-reply-types";
 import type { ChatMessage, Message } from "@/pages/chat/chat-types";
 import type { ChatMode } from "@/pages/chat/chat-types";
 import { isValidMessageSeq } from "@/pages/chat/lib/message-seq";
+import {
+  isSmartReplyAssistantTurnBlocking,
+  resolveSmartReplyAssistantTurn,
+} from "@/pages/chat/lib/smart-reply-assistant";
 import {
   canDisplaySmartReplyForConversation,
   useWorkbenchStore,
@@ -50,10 +53,6 @@ type ChatMessagePanelProps = {
   onMessageViewportScroll: () => void;
   onRetryMessage: (uiMessageKey: string) => void | Promise<void>;
   onLoadSendFailReason?: (uiMessageKey: string) => Promise<string | undefined>;
-  onSendSmartReply?: (message: ChatMessage, payload: SmartReplySendPayload) => void;
-  onFillSmartReplyComposer?: (message: ChatMessage, content: string) => void;
-  onDismissSmartReply?: (message: ChatMessage) => void;
-  onMakeShorterSmartReply?: (message: ChatMessage) => void;
   onTriggerSmartReply?: (
     message: ChatMessage,
     options?: { force?: boolean },
@@ -95,10 +94,6 @@ export function ChatMessagePanel({
   onMessageViewportScroll,
   onRetryMessage,
   onLoadSendFailReason,
-  onSendSmartReply,
-  onFillSmartReplyComposer,
-  onDismissSmartReply,
-  onMakeShorterSmartReply,
   onTriggerSmartReply,
   onToggleMessageSelection,
   onVoicePlaybackReady,
@@ -107,6 +102,7 @@ export function ChatMessagePanel({
   messageViewportRef,
 }: ChatMessagePanelProps) {
   const {
+    smartReplyActiveMessageKey,
     smartReplyAutoPendingByMessageId,
     smartReplyCanDisplay,
     smartReplyHiddenMessageKeys,
@@ -115,6 +111,8 @@ export function ChatMessagePanel({
     refreshInitializingMessage,
   } = useWorkbenchStore(
     useShallow((state) => ({
+      smartReplyActiveMessageKey:
+        state.smartReplyActiveMessageKeyByConversationId[conversationId],
       smartReplyAutoPendingByMessageId:
         state.smartReplyAutoPendingMessageKeysByConversationId[conversationId],
       smartReplyCanDisplay: canDisplaySmartReplyForConversation(
@@ -184,6 +182,21 @@ export function ChatMessagePanel({
     supportsSmartReplyUi,
   ]) satisfies Record<string, SmartReplySuggestion>;
   const canUseSmartReplyActions = supportsSmartReplyUi;
+  const activeSmartReplyTurn = supportsSmartReplyUi
+    ? resolveSmartReplyAssistantTurn({
+        activeMessageKey: smartReplyActiveMessageKey,
+        autoPending: smartReplyAutoPendingByMessageId,
+        hidden: smartReplyHiddenMessageKeys,
+        messages,
+        pending: smartReplyPendingByMessageId,
+        suggestions: smartReplySuggestionsByMessageId,
+      })
+    : undefined;
+  const blockingSmartReplyLookupKey = isSmartReplyAssistantTurnBlocking(
+    activeSmartReplyTurn,
+  )
+    ? activeSmartReplyTurn?.lookupKey
+    : undefined;
 
   return (
     <section className="relative min-h-0 flex-1 bg-surface">
@@ -231,6 +244,7 @@ export function ChatMessagePanel({
                 </div>
               ) : null}
               <ChatMessageList
+                activeSmartReplyLookupKey={blockingSmartReplyLookupKey}
                 canCollectMaterialActions={canCollectMaterialActions}
                 canUseMessageActions={canUseMessageActions}
                 canUseMessageForward={canUseMessageForward}
@@ -247,10 +261,6 @@ export function ChatMessagePanel({
                 onOpenQuotedMessage={onOpenQuotedMessage}
                 onQuoteMessage={onQuoteMessage}
                 onRefreshInitializingMessage={handleRefreshInitializingMessage}
-                onSendSmartReply={onSendSmartReply}
-                onFillSmartReplyComposer={onFillSmartReplyComposer}
-                onDismissSmartReply={onDismissSmartReply}
-                onMakeShorterSmartReply={onMakeShorterSmartReply}
                 onTriggerSmartReply={
                   canUseSmartReplyActions ? onTriggerSmartReply : undefined
                 }
@@ -265,15 +275,7 @@ export function ChatMessagePanel({
                 }}
                 onLoadSendFailReason={onLoadSendFailReason}
                 retryingMessageIds={retryingMessageIds}
-                smartReplyAutoPendingByMessageId={
-                  smartReplyCanDisplay
-                    ? smartReplyAutoPendingByMessageId
-                    : undefined
-                }
                 smartReplyByMessageId={smartReplyByMessageId}
-                smartReplyPendingByMessageId={
-                  smartReplyCanDisplay ? smartReplyPendingByMessageId : undefined
-                }
               />
             </div>
           </div>

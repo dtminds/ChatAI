@@ -206,14 +206,14 @@ describe("Workflow Message capability port", () => {
       ...baseInput,
       fetch: vi.fn(async () => javaResponse({
         data: null,
-        error: 40001,
-        errorMsg: "客户关系不可用",
+        error: 999,
+        errorMsg: "无效的发送内容",
         success: false,
       })) as typeof fetch,
     })).rejects.toMatchObject({
       code: "WORKFLOW_MESSAGE_SEND_REJECTED",
       failureKind: "terminal",
-      message: "执行所需数据不可用，流程已停止",
+      message: "消息发送失败：无效的发送内容",
     });
 
     await expect(executeWorkflowMessage(database, {
@@ -226,6 +226,7 @@ describe("Workflow Message capability port", () => {
     })).rejects.toMatchObject({
       code: "WORKFLOW_MESSAGE_SEND_REJECTED",
       failureKind: "terminal",
+      message: "消息发送失败，流程已停止",
     });
 
     await expect(executeWorkflowMessage(database, {

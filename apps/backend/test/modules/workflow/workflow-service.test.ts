@@ -1754,14 +1754,13 @@ describe("WorkflowService", () => {
         "start",
         "wait",
         "message-query",
+        "marketing-message",
         "tag",
         "customer-update",
         "llm",
         "ai-intent",
         "end",
       ]));
-    expect(created.capabilitySummary.runtimeSupportedNodeKinds)
-      .not.toContain("marketing-message");
     await expect(service.submitReview(operator, created.id, {
       expectedDraftVersion: created.draftVersion,
     })).resolves.toMatchObject({ status: "pending" });

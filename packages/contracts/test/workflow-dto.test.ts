@@ -198,6 +198,7 @@ describe("workflow contracts", () => {
       subjectType: "wecom_contact",
     });
     expect(getWorkflowCapabilityProfile("wecom_sop").allowedNodeKinds).not.toContain("message");
+    expect(getWorkflowCapabilityProfile("wecom_sop").allowedNodeKinds).not.toContain("llm");
     expect(getWorkflowCapabilityProfile("chatai_sop").variableCatalog).toEqual(expect.arrayContaining([
       "subject.id",
       "trigger.occurredAt",

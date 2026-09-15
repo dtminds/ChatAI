@@ -100,7 +100,6 @@ const WECOM_NODE_KINDS = [
   "wait",
   "branch",
   "ratio-split",
-  "llm",
   "marketing-message",
   "order-query",
   "audience-filter",

@@ -1,5 +1,6 @@
 import {
   type AnimationEvent,
+  useEffect,
   useLayoutEffect,
   useRef,
   useState,
@@ -44,6 +45,7 @@ type BeamTheme = "light" | "dark";
 const THINKING_SHINY_MIN_DURATION_SECONDS = 1.4;
 const THINKING_SHINY_MAX_DURATION_SECONDS = 4;
 const THINKING_SHINY_SECONDS_PER_CHARACTER = 0.12;
+const STATUS_TRANSITION_FALLBACK_MS = 800;
 
 type OnStatusBarThemeStyles = {
   beamBrightness: number;
@@ -177,6 +179,17 @@ export function ChatAIAssistantStatusBar({
     }
     previousStatusRef.current = status;
   }, [status]);
+  useEffect(() => {
+    if (!outgoingView) {
+      return;
+    }
+
+    const timeoutId = window.setTimeout(() => {
+      setOutgoingView(null);
+    }, STATUS_TRANSITION_FALLBACK_MS);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [outgoingView]);
 
   const handleEntranceAnimationEnd = (
     event: AnimationEvent<HTMLDivElement>,

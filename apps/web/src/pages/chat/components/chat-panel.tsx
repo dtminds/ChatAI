@@ -804,13 +804,13 @@ export function ChatPanel({
                           <ChatAIAssistantStatusBar
                             actions={resolvedAIAssistantActions}
                             customerName={activeConversation.customerName}
+                            key={activeConversation.id}
                             label={resolvedAIAssistantStatusLabel}
                             reason={smartReplyTurn?.reason}
                             status={resolvedAIAssistantStatus}
                             waitingForCustomer={Boolean(
                               smartReplyTurn &&
-                                (smartReplyTurn.phase === "waiting_for_customer" ||
-                                  smartReplyTurn.phase === "skipped"),
+                                smartReplyTurn.phase === "skipped",
                             )}
                           />
                           <ChatAIAssistantDebugMenu
@@ -928,60 +928,67 @@ export function ChatPanel({
                         />
                       </div>
                       {showSmartReplySuggestionComposer && smartReplyTurn ? (
-                        <SmartReplySuggestionComposer
-                          composerProps={{
-                            accountAvatarUrl:
-                              activeAccount?.avatarUrl ?? accountAvatarUrl,
-                            accountName: activeAccount?.name ?? accountName,
-                            canConfigureSeatAIHosting,
-                            canConfigureSeatSemiAuto,
-                            canToggleConversationAIHosting,
-                            collectedExpressions,
-                            conversationAIHostingConfigured,
-                            conversationId: activeConversation.id,
-                            currentSeatThirdUserId: activeConversation.thirdUserId,
-                            fullAutoActionPending,
-                            fullAutoSwitch:
-                              activeAccount?.fullAutoSwitch === true,
-                            groupMembers,
-                            hasActiveFileUpload,
-                            hasMoreCollectedExpressions,
-                            inputEnterBehavior,
-                            isCollectedExpressionLoadingMore,
-                            isEmojiPickerOpen,
-                            isGroupConversation:
-                              activeConversation.mode === "group",
-                            isMobileLayout,
-                            onChangeFullAuto:
-                              onChangeFullAuto ?? noopChangeFullAuto,
-                            onChangeSeatAgentMode:
-                              onChangeSeatAgentMode ?? noopChangeSeatAgentMode,
-                            onClearQuotedMessage,
-                            onDeleteCollectedExpression,
-                            onEmojiPickerOpenChange,
-                            onEnterBehaviorChange,
-                            onFileSelect,
-                            onLoadMoreCollectedExpressions,
-                            onOpenCollectedExpressions,
-                            onOpenMaterialLibrary:
-                              onOpenMaterialLibrary ?? noop,
-                            onSelectCollectedExpression,
-                            onTopCollectedExpression,
-                            seatAIHostingAuth:
-                              activeAccount?.seatAIHostingAuth === true,
-                            seatAgentModeActionPending,
-                            seatSemiAutoAuth:
-                              activeAccount?.semiAutoAuth === true,
-                            semiAutoSwitch:
-                              activeAccount?.semiAutoSwitch === true,
-                            sendingCollectedExpressionId,
-                            shouldShowConversationAIHostingControl,
-                          }}
-                          conversationMessages={messages}
-                          isSending={isSendingDraft}
-                          onSend={onSendSmartReply}
-                          turn={smartReplyTurn}
-                        />
+                        <div
+                          className={cn(
+                            multiSelectMode && "pointer-events-none",
+                          )}
+                          inert={multiSelectMode || undefined}
+                        >
+                          <SmartReplySuggestionComposer
+                            composerProps={{
+                              accountAvatarUrl:
+                                activeAccount?.avatarUrl ?? accountAvatarUrl,
+                              accountName: activeAccount?.name ?? accountName,
+                              canConfigureSeatAIHosting,
+                              canConfigureSeatSemiAuto,
+                              canToggleConversationAIHosting,
+                              collectedExpressions,
+                              conversationAIHostingConfigured,
+                              conversationId: activeConversation.id,
+                              currentSeatThirdUserId: activeConversation.thirdUserId,
+                              fullAutoActionPending,
+                              fullAutoSwitch:
+                                activeAccount?.fullAutoSwitch === true,
+                              groupMembers,
+                              hasActiveFileUpload,
+                              hasMoreCollectedExpressions,
+                              inputEnterBehavior,
+                              isCollectedExpressionLoadingMore,
+                              isEmojiPickerOpen,
+                              isGroupConversation:
+                                activeConversation.mode === "group",
+                              isMobileLayout,
+                              onChangeFullAuto:
+                                onChangeFullAuto ?? noopChangeFullAuto,
+                              onChangeSeatAgentMode:
+                                onChangeSeatAgentMode ?? noopChangeSeatAgentMode,
+                              onClearQuotedMessage,
+                              onDeleteCollectedExpression,
+                              onEmojiPickerOpenChange,
+                              onEnterBehaviorChange,
+                              onFileSelect,
+                              onLoadMoreCollectedExpressions,
+                              onOpenCollectedExpressions,
+                              onOpenMaterialLibrary:
+                                onOpenMaterialLibrary ?? noop,
+                              onSelectCollectedExpression,
+                              onTopCollectedExpression,
+                              seatAIHostingAuth:
+                                activeAccount?.seatAIHostingAuth === true,
+                              seatAgentModeActionPending,
+                              seatSemiAutoAuth:
+                                activeAccount?.semiAutoAuth === true,
+                              semiAutoSwitch:
+                                activeAccount?.semiAutoSwitch === true,
+                              sendingCollectedExpressionId,
+                              shouldShowConversationAIHostingControl,
+                            }}
+                            conversationMessages={messages}
+                            isSending={isSendingDraft}
+                            onSend={onSendSmartReply}
+                            turn={smartReplyTurn}
+                          />
+                        </div>
                       ) : null}
                       {multiSelectMode && multiSelectToolbar ? (
                         <div

@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { act, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ChatAIAssistantStatusBar } from "@/pages/chat/components/chat-ai-assistant-status-bar";
@@ -313,6 +313,46 @@ describe("ChatAIAssistantStatusBar", () => {
     expect(beams[0]).toHaveAttribute("data-size", "pulse-inner");
     expect(beams[1]).toHaveAttribute("data-active", "true");
     expect(beams[1]).toHaveAttribute("data-size", "line");
+  });
+
+  it("finishes a status transition when the animation end event is lost", () => {
+    vi.useFakeTimers();
+    const onApprove = vi.fn();
+    const { rerender } = render(
+      <ChatAIAssistantStatusBar
+        label="正在核对退款条件"
+        status="thinking"
+      />,
+    );
+
+    rerender(
+      <ChatAIAssistantStatusBar
+        actions={[
+          {
+            id: "approve",
+            label: "批准",
+            onSelect: onApprove,
+            tone: "primary",
+          },
+        ]}
+        label="确认退款 100 元"
+        status="confirmation"
+      />,
+    );
+
+    expect(
+      screen.getByTestId("chat-ai-assistant-status-outgoing-layer"),
+    ).toBeInTheDocument();
+
+    act(() => {
+      vi.advanceTimersByTime(800);
+    });
+
+    expect(
+      screen.queryByTestId("chat-ai-assistant-status-outgoing-layer"),
+    ).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "批准" }));
+    expect(onApprove).toHaveBeenCalledTimes(1);
   });
 
   it("mounts the incoming tone hidden before its delayed entrance", () => {

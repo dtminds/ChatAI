@@ -1,4 +1,4 @@
-import { createRef, useState } from "react";
+import { createRef, type ReactNode, useState } from "react";
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -1097,6 +1097,44 @@ describe("ChatPanel", () => {
     expect(screen.queryByTestId("chat-ai-assistant-status-bar")).not.toBeInTheDocument();
   });
 
+  it("restarts the thinking timer when the active conversation changes", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-09-15T10:00:00+08:00"));
+    const assistantAccount = {
+      ...account,
+      seatAIAssistantEnabled: true,
+    };
+    const conversation = {
+      ...createConversation(),
+      bizStatus: 1,
+    };
+    const { rerender } = render(
+      createStatusBarPanel({
+        activeAccount: assistantAccount,
+        activeConversation: conversation,
+        aiAssistantStatus: "thinking",
+      }),
+    );
+
+    act(() => {
+      vi.advanceTimersByTime(1_200);
+    });
+    expect(screen.getByText("1.2s")).toBeInTheDocument();
+
+    rerender(
+      createStatusBarPanel({
+        activeAccount: assistantAccount,
+        activeConversation: {
+          ...conversation,
+          id: "conversation-2",
+        },
+        aiAssistantStatus: "thinking",
+      }),
+    );
+
+    expect(screen.getByText("0.0s")).toBeInTheDocument();
+  });
+
   it("switches the AI assistant bar state from the development debug menu", async () => {
     const user = userEvent.setup();
     const assistantAccount = {
@@ -1356,6 +1394,124 @@ describe("ChatPanel", () => {
     expect(onDismissSmartReply).not.toHaveBeenCalled();
 
     view.unmount();
+  });
+
+  it("shows semantic waiting as a single centered status message", () => {
+    const assistantAccount = {
+      ...account,
+      seatAIAssistantEnabled: true,
+    };
+    const conversation = {
+      ...createConversation(),
+      bizStatus: 1,
+    };
+    const customerMessage = {
+      author: "客户",
+      content: { text: "我想问一下", type: "text" },
+      conversationId: conversation.id,
+      isOwnMessage: false,
+      rawMsgtype: "text",
+      role: "customer",
+      sender: { id: "customer-1", name: "客户" },
+      sentAt: "2026-09-15T10:00:00+08:00",
+      seq: 12,
+      status: "sent",
+      uiMessageKey: "message-12",
+    } satisfies ChatMessage;
+
+    useWorkbenchStore.setState((state) => ({
+      smartReplyActiveMessageKeyByConversationId: {
+        ...state.smartReplyActiveMessageKeyByConversationId,
+        [conversation.id]: "12",
+      },
+      smartReplyByMessageIdByConversationId: {
+        ...state.smartReplyByMessageIdByConversationId,
+        [conversation.id]: {
+          "12": {
+            assistantName: "智能助手",
+            content: "",
+            createdAt: Date.now(),
+            generateStatus: 5,
+          },
+        },
+      },
+    }));
+
+    render(
+      createStatusBarPanel({
+        activeAccount: assistantAccount,
+        activeConversation: conversation,
+        messages: [customerMessage],
+      }),
+    );
+
+    const statusBar = screen.getByTestId("chat-ai-assistant-status-bar");
+    expect(statusBar).toHaveTextContent("语义不完整，继续等待下一条消息");
+    expect(statusBar).not.toHaveTextContent("正在等待 客户 的消息");
+  });
+
+  it("makes the suggestion composer inert during message multi-select", () => {
+    const assistantAccount = {
+      ...account,
+      seatAIAssistantEnabled: true,
+    };
+    const conversation = {
+      ...createConversation(),
+      bizStatus: 1,
+    };
+    const customerMessage = {
+      author: "客户",
+      content: { text: "这个产品适合敏感肌吗", type: "text" },
+      conversationId: conversation.id,
+      isOwnMessage: false,
+      rawMsgtype: "text",
+      role: "customer",
+      sender: { id: "customer-1", name: "客户" },
+      sentAt: "2026-09-15T10:00:00+08:00",
+      seq: 12,
+      status: "sent",
+      uiMessageKey: "message-12",
+    } satisfies ChatMessage;
+
+    useWorkbenchStore.setState((state) => ({
+      smartReplyActiveMessageKeyByConversationId: {
+        ...state.smartReplyActiveMessageKeyByConversationId,
+        [conversation.id]: "12",
+      },
+      smartReplyByMessageIdByConversationId: {
+        ...state.smartReplyByMessageIdByConversationId,
+        [conversation.id]: {
+          "12": {
+            assistantName: "智能助手",
+            content: "建议先少量试用",
+            generateStatus: 2,
+            pollComplete: true,
+            recordId: "record-12",
+            status: "ready",
+          },
+        },
+      },
+    }));
+
+    render(
+      createStatusBarPanel({
+        activeAccount: assistantAccount,
+        activeConversation: conversation,
+        messages: [customerMessage],
+        multiSelectMode: true,
+        multiSelectToolbar: <button type="button">转发所选消息</button>,
+      }),
+    );
+
+    const suggestionComposer = screen.getByTestId(
+      "smart-reply-suggestion-composer",
+    );
+    expect(suggestionComposer.closest("[inert]")).not.toBeNull();
+    expect(
+      screen.getByTestId("message-multi-select-composer-overlay"),
+    ).toContainElement(
+      screen.getByRole("button", { name: "转发所选消息" }),
+    );
   });
 
   it("hides agent hosting status bar for exited agent mode conversations", () => {
@@ -2378,6 +2534,8 @@ function createStatusBarPanel({
   canSendMessage = true,
   conversationAIHostingEnabled = false,
   messages = [],
+  multiSelectMode = false,
+  multiSelectToolbar,
   onDismissSmartReply,
 }: {
   activeAccount: Account;
@@ -2388,6 +2546,8 @@ function createStatusBarPanel({
   canSendMessage?: boolean;
   conversationAIHostingEnabled?: boolean;
   messages?: ChatMessage[];
+  multiSelectMode?: boolean;
+  multiSelectToolbar?: ReactNode;
   onDismissSmartReply?: (message: ChatMessage) => void;
 }) {
   return (
@@ -2416,6 +2576,8 @@ function createStatusBarPanel({
       isResizingCustomerPanel={false}
       isSendingDraft={false}
       messages={messages}
+      multiSelectMode={multiSelectMode}
+      multiSelectToolbar={multiSelectToolbar}
       quotedMessage={null}
       sidebarItems={[]}
       composerRef={createRef()}

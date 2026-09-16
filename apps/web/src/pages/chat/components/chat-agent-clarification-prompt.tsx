@@ -80,8 +80,12 @@ export function ChatAgentClarificationPrompt({
                   aria-label={suggestion.label}
                   aria-pressed={isSelected}
                   className={cn(
-                    "flex min-h-14 w-full items-center gap-2.5 rounded-[10px] px-2.5 py-2 text-left outline-none transition-colors focus-visible:ring-4 focus-visible:ring-ring/20",
-                    isSelected ? "bg-foreground/[0.055]" : "bg-transparent",
+                    "flex min-h-14 w-full items-center gap-2.5 rounded-[10px] border px-2.5 py-2 text-left outline-none transition-colors focus-visible:ring-4 focus-visible:ring-ring/20",
+                    isSelected
+                      ? beamTheme === "dark"
+                        ? "border-ai-accent/50 bg-ai-accent/20"
+                        : "border-ai-accent/15 bg-ai-accent/5"
+                      : "border-transparent bg-transparent",
                   )}
                   disabled={disabled}
                   key={suggestion.id}
@@ -91,7 +95,16 @@ export function ChatAgentClarificationPrompt({
                   }}
                   type="button"
                 >
-                  <span className="flex size-7 shrink-0 items-center justify-center rounded-full border border-divider bg-background/40 text-xs text-muted-foreground">
+                  <span
+                    className={cn(
+                      "flex size-7 shrink-0 items-center justify-center rounded-full border bg-background/40 text-xs transition-colors",
+                      isSelected
+                        ? beamTheme === "dark"
+                          ? "border-ai-accent/60 bg-ai-accent/25 text-white"
+                          : "border-ai-accent/25 text-ai-accent"
+                        : "border-divider text-muted-foreground",
+                    )}
+                  >
                     {index + 1}
                   </span>
                   <span className="min-w-0 flex-1">
@@ -110,11 +123,24 @@ export function ChatAgentClarificationPrompt({
 
         <label
           className={cn(
-            "mt-0.5 flex min-h-14 w-full cursor-text items-center gap-2.5 rounded-[10px] px-2.5 py-2 transition-colors",
-            selectedSuggestionId ? "bg-transparent" : "bg-foreground/[0.055]",
+            "mt-0.5 flex min-h-14 w-full cursor-text items-center gap-2.5 rounded-[10px] border px-2.5 py-2 transition-colors",
+            selectedSuggestionId
+              ? "border-transparent bg-transparent"
+              : beamTheme === "dark"
+                ? "border-ai-accent/50 bg-ai-accent/20"
+                : "border-ai-accent/15 bg-ai-accent/5",
           )}
         >
-          <span className="flex size-7 shrink-0 items-center justify-center rounded-full border border-divider bg-background/40 text-muted-foreground">
+          <span
+            className={cn(
+              "flex size-7 shrink-0 items-center justify-center rounded-full border bg-background/40 transition-colors",
+              selectedSuggestionId
+                ? "border-divider text-muted-foreground"
+                : beamTheme === "dark"
+                  ? "border-ai-accent/60 bg-ai-accent/25 text-white"
+                  : "border-ai-accent/25 text-ai-accent",
+            )}
+          >
             <HugeiconsIcon
               aria-hidden="true"
               icon={Edit03Icon}

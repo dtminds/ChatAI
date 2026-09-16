@@ -6167,6 +6167,18 @@ export function createWorkbenchStore() {
       const requestId = getScopeRequestId();
 
       try {
+        if (
+          import.meta.env.DEV &&
+          typeof localStorage !== "undefined" &&
+          localStorage.getItem("chatai.debug.forceWorkbenchCursorInvalidate") === "1"
+        ) {
+          throw {
+            code: "WORKBENCH_CURSOR_INVALIDATED",
+            message: "DEBUG: Forced cursor invalidation for testing",
+            status: 409,
+          };
+        }
+
         const activeConversationId = state.activeConversationId || undefined;
         const request = {
           ...(activeConversationId

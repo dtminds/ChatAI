@@ -9360,6 +9360,45 @@ describe("useWorkbenchStore", () => {
     expect(state.pollState.recoveryAttempts).toBe(4);
   });
 
+  it("forces cursor invalidation in DEV when debug localStorage flag is set", async () => {
+    const originalEnv = import.meta.env.DEV;
+    const baseService = createMockWorkbenchService();
+
+    try {
+      Object.defineProperty(import.meta.env, "DEV", {
+        configurable: true,
+        value: true,
+      });
+
+      const localStorageMock: Record<string, string> = {};
+      global.localStorage = {
+        getItem: vi.fn((key: string) => localStorageMock[key] ?? null),
+        setItem: vi.fn((key: string, value: string) => {
+          localStorageMock[key] = value;
+        }),
+        removeItem: vi.fn((key: string) => {
+          delete localStorageMock[key];
+        }),
+      } as any;
+
+      setWorkbenchService(baseService);
+      await useWorkbenchStore.getState().initializeWorkbench();
+
+      localStorageMock["chatai.debug.forceWorkbenchCursorInvalidate"] = "1";
+
+      await useWorkbenchStore.getState().pollWorkbench();
+
+      const state = useWorkbenchStore.getState();
+      expect(state.pollState.status).toBe("idle");
+      expect(state.pollState.recoveryAttempts).toBe(1);
+    } finally {
+      Object.defineProperty(import.meta.env, "DEV", {
+        configurable: true,
+        value: originalEnv,
+      });
+    }
+  });
+
   it("allows manual recovery via recoverFromCursorInvalidation when auto-recovery fails", async () => {
     const baseService = createMockWorkbenchService();
     let shouldFail = true;

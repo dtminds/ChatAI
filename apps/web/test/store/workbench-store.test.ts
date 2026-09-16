@@ -9270,6 +9270,7 @@ describe("useWorkbenchStore", () => {
       pollState: {
         ...state.pollState,
         pauseReason: "cursor-invalidated",
+        recoveryAttempts: 3,
         status: "paused",
       },
     }));
@@ -9278,6 +9279,131 @@ describe("useWorkbenchStore", () => {
 
     expect(result).toBe(false);
     expect(poll).not.toHaveBeenCalled();
+  });
+
+  it("automatically recovers from cursor invalidation and resumes polling", async () => {
+    const baseService = createMockWorkbenchService();
+    let pollCallCount = 0;
+
+    setWorkbenchService({
+      ...baseService,
+      async poll(request) {
+        pollCallCount += 1;
+
+        if (pollCallCount === 1) {
+          throw {
+            code: "WORKBENCH_CURSOR_INVALIDATED",
+            message: "cursor invalidated",
+            status: 409,
+          };
+        }
+
+        return baseService.poll(request);
+      },
+    });
+
+    await useWorkbenchStore.getState().initializeWorkbench();
+
+    const composerDraft = {
+      draft: "Draft message",
+      quotedMessage: null,
+      segments: [{ text: "Draft message", type: "text" as const }],
+    };
+    useWorkbenchStore.getState().saveComposerDraft("conv-001", composerDraft);
+
+    await useWorkbenchStore.getState().pollWorkbench();
+
+    const state = useWorkbenchStore.getState();
+
+    expect(state.pollState.status).toBe("idle");
+    expect(state.pollState.pauseReason).toBeUndefined();
+    expect(state.pollState.recoveryAttempts).toBe(1);
+    expect(state.activeConversationId).toBe("conv-001");
+    expect(state.composerDraftsByConversationId["conv-001"]).toEqual({
+      segments: [composerDraft],
+    });
+  });
+
+  it("pauses polling after max recovery attempts", async () => {
+    const baseService = createMockWorkbenchService();
+
+    setWorkbenchService({
+      ...baseService,
+      async poll() {
+        throw {
+          code: "WORKBENCH_CURSOR_INVALIDATED",
+          message: "cursor invalidated",
+          status: 409,
+        };
+      },
+    });
+
+    await useWorkbenchStore.getState().initializeWorkbench();
+
+    await useWorkbenchStore.getState().pollWorkbench();
+    expect(useWorkbenchStore.getState().pollState.recoveryAttempts).toBe(1);
+    expect(useWorkbenchStore.getState().pollState.status).toBe("idle");
+
+    await useWorkbenchStore.getState().pollWorkbench();
+    expect(useWorkbenchStore.getState().pollState.recoveryAttempts).toBe(2);
+    expect(useWorkbenchStore.getState().pollState.status).toBe("idle");
+
+    await useWorkbenchStore.getState().pollWorkbench();
+    expect(useWorkbenchStore.getState().pollState.recoveryAttempts).toBe(3);
+    expect(useWorkbenchStore.getState().pollState.status).toBe("idle");
+
+    await useWorkbenchStore.getState().pollWorkbench();
+    const state = useWorkbenchStore.getState();
+
+    expect(state.pollState.status).toBe("paused");
+    expect(state.pollState.pauseReason).toBe("cursor-invalidated");
+    expect(state.pollState.recoveryAttempts).toBe(4);
+  });
+
+  it("allows manual recovery via recoverFromCursorInvalidation when auto-recovery fails", async () => {
+    const baseService = createMockWorkbenchService();
+    let shouldFail = true;
+
+    setWorkbenchService({
+      ...baseService,
+      async poll(request) {
+        if (shouldFail) {
+          throw {
+            code: "WORKBENCH_CURSOR_INVALIDATED",
+            message: "cursor invalidated",
+            status: 409,
+          };
+        }
+
+        return baseService.poll(request);
+      },
+    });
+
+    await useWorkbenchStore.getState().initializeWorkbench();
+
+    for (let i = 0; i < 4; i++) {
+      await useWorkbenchStore.getState().pollWorkbench();
+    }
+
+    expect(useWorkbenchStore.getState().pollState.status).toBe("paused");
+    expect(useWorkbenchStore.getState().pollState.pauseReason).toBe("cursor-invalidated");
+
+    useWorkbenchStore.setState((state) => ({
+      pollState: {
+        ...state.pollState,
+        status: "recovering",
+      },
+    }));
+
+    shouldFail = false;
+
+    const recovered = await useWorkbenchStore.getState().recoverFromCursorInvalidation();
+
+    expect(recovered).toBe(true);
+
+    const state = useWorkbenchStore.getState();
+    expect(state.pollState.status).toBe("idle");
+    expect(state.pollState.pauseReason).toBeUndefined();
   });
 
   it("does not clear a paused poll state after an in-flight poll succeeds", async () => {

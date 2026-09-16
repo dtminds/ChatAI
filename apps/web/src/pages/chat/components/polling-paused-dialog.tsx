@@ -13,12 +13,12 @@ import {
 } from "@/pages/chat/lib/polling-pause";
 
 type PollingPausedDialogProps = {
-  onRefresh: () => void;
+  onAction: () => void;
   reason: PollingPauseReason | null;
 };
 
 export function PollingPausedDialog({
-  onRefresh,
+  onAction,
   reason,
 }: PollingPausedDialogProps) {
   const copy = getPollingPausedDialogCopy(reason);
@@ -43,7 +43,7 @@ export function PollingPausedDialog({
             src="https://b5.bokr.com.cn/dist/pause_poll.png"
           />
           <AlertDialogFooter className="absolute bottom-10 right-10 z-10">
-            <AlertDialogAction onClick={onRefresh}>刷新页面</AlertDialogAction>
+            <AlertDialogAction onClick={onAction}>{copy.actionText}</AlertDialogAction>
           </AlertDialogFooter>
         </div>
       </AlertDialogContent>

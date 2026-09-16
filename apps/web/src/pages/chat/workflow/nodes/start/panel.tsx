@@ -10,7 +10,7 @@ import {
 } from "@chatai/contracts";
 import { Copy01Icon, HelpCircleIcon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -31,6 +31,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import type { NodeSettingsProps } from "../../panels/types";
+import type { WorkflowDraftSaveStatus } from "../../workflow-repository-types";
 import {
   getStartNodeSourceIds,
   isChatAiStartNodeData,
@@ -59,6 +60,7 @@ export function StartConfig({
   onNodeChange,
   resources,
   seats,
+  testContext,
   workflowId,
   workUsers = getWorkflowStartFixtureWorkUsers(),
 }: NodeSettingsProps<"start"> & {
@@ -233,7 +235,10 @@ export function StartConfig({
             </div>
           </section>
         ) : isChatAi ? (
-          <DirectEntryEndpoint workflowId={workflowId} />
+          <DirectEntryEndpoint
+            saveState={testContext?.saveState ?? "saved"}
+            workflowId={workflowId}
+          />
         ) : null}
       </div>
 
@@ -322,50 +327,44 @@ export function StartConfig({
   );
 }
 
-function DirectEntryEndpoint({ workflowId }: { workflowId?: string }) {
+function DirectEntryEndpoint({ saveState, workflowId }: {
+  saveState: WorkflowDraftSaveStatus;
+  workflowId?: string;
+}) {
   const surface = useWorkflowSurface();
+  const loadedWorkflowIdRef = useRef<string | null>(null);
   const [requestVersion, setRequestVersion] = useState(0);
   const [state, setState] = useState<
     | { kind: "error" }
     | { kind: "loading" }
-    | { endpointUrl: string; kind: "ready" }
+    | { endpointUrl: string; kind: "ready"; workflowId: string }
   >({ kind: "loading" });
 
   useEffect(() => {
-    if (!workflowId) return;
+    if (!workflowId || saveState !== "saved" || loadedWorkflowIdRef.current === workflowId) return;
     let active = true;
     setState({ kind: "loading" });
     void getWorkflowDirectEntryEndpoint(workflowId, surface.apiBasePath).then(({ endpointKey }) => {
       if (!active) return;
       const endpointUrl = new URL("/workflow/endpoint", window.location.origin);
       endpointUrl.searchParams.set("key", endpointKey);
-      setState({ endpointUrl: endpointUrl.toString(), kind: "ready" });
+      loadedWorkflowIdRef.current = workflowId;
+      setState({ endpointUrl: endpointUrl.toString(), kind: "ready", workflowId });
     }).catch(() => {
       if (active) setState({ kind: "error" });
     });
     return () => {
       active = false;
     };
-  }, [requestVersion, surface.apiBasePath, workflowId]);
+  }, [requestVersion, saveState, surface.apiBasePath, workflowId]);
 
   if (!workflowId) return null;
+  const endpointReady = state.kind === "ready" && state.workflowId === workflowId;
   return (
     <section className="pb-3">
       <div className="space-y-2.5 rounded-[8px] border bg-card p-3">
         <p className="text-[13px] font-medium text-foreground">推送地址</p>
-        {state.kind === "loading" ? (
-          <div className="flex h-9 items-center gap-2 text-[13px] text-muted-foreground" role="status">
-            <Spinner size={14} variant="classic" />
-            <span>正在加载</span>
-          </div>
-        ) : state.kind === "error" ? (
-          <div className="flex h-9 items-center justify-between gap-3">
-            <span className="text-[13px] text-destructive">加载失败</span>
-            <Button onClick={() => setRequestVersion(version => version + 1)} size="sm" type="button" variant="outline">
-              重试
-            </Button>
-          </div>
-        ) : (
+        {endpointReady ? (
           <div className="flex min-w-0 items-center gap-2">
             <Input aria-label="推送地址" className="min-w-0 flex-1" readOnly value={state.endpointUrl} />
             <Button
@@ -380,7 +379,26 @@ function DirectEntryEndpoint({ workflowId }: { workflowId?: string }) {
               <HugeiconsIcon icon={Copy01Icon} size={16} strokeWidth={1.8} />
             </Button>
           </div>
-        )}
+        ) : saveState === "dirty" || saveState === "saving" ? (
+          <div className="flex h-9 items-center gap-2 text-[13px] text-muted-foreground" role="status">
+            <Spinner size={14} variant="classic" />
+            <span>正在保存</span>
+          </div>
+        ) : saveState === "error" ? (
+          <div className="flex h-9 items-center text-[13px] text-destructive">保存失败</div>
+        ) : state.kind === "loading" ? (
+          <div className="flex h-9 items-center gap-2 text-[13px] text-muted-foreground" role="status">
+            <Spinner size={14} variant="classic" />
+            <span>正在加载</span>
+          </div>
+        ) : state.kind === "error" ? (
+          <div className="flex h-9 items-center justify-between gap-3">
+            <span className="text-[13px] text-destructive">加载失败</span>
+            <Button onClick={() => setRequestVersion(version => version + 1)} size="sm" type="button" variant="outline">
+              重试
+            </Button>
+          </div>
+        ) : null}
       </div>
     </section>
   );

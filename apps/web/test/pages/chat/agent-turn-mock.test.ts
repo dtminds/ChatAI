@@ -1,20 +1,92 @@
 // @vitest-environment node
 
 import { describe, expect, it } from "vitest";
-import type { AgentTurnEvent } from "@chatai/contracts";
+import type { AgentTurnEvent, AgentTurnEventEnvelope } from "@chatai/contracts";
 import {
+  reduceAgentTurnMockEnvelope,
   reduceAgentTurnMockState,
   type AgentTurnMockState,
 } from "@/pages/chat/components/use-agent-turn-mock";
 
 const initialState: AgentTurnMockState = {
+  events: [],
   phase: "running",
+  stepStartedAt: 0,
   toolCalls: {},
   toolSummaries: {},
   turnId: "turn-1",
 };
 
 describe("agent turn mock reducer", () => {
+  it("restarts the current-step timer for new work and human-decision resumes", () => {
+    const reduceEnvelope = (
+      state: AgentTurnMockState,
+      sequence: number,
+      occurredAt: string,
+      event: AgentTurnEvent,
+    ) =>
+      reduceAgentTurnMockEnvelope(state, {
+        event,
+        eventId: `turn-1:${sequence}`,
+        occurredAt,
+        sequence,
+        turnId: "turn-1",
+      } satisfies AgentTurnEventEnvelope);
+
+    const thinking = reduceEnvelope(
+      initialState,
+      1,
+      "2026-09-16T10:00:01.000Z",
+      {
+        activity: {
+          id: "thinking-1",
+          kind: "thinking",
+          status: "running",
+          summary: "正在核对订单",
+        },
+        type: "activity.updated",
+      },
+    );
+    expect(thinking.stepStartedAt).toBe(
+      Date.parse("2026-09-16T10:00:01.000Z"),
+    );
+
+    const updatedThinking = reduceEnvelope(
+      thinking,
+      2,
+      "2026-09-16T10:00:03.000Z",
+      {
+        activity: {
+          id: "thinking-1",
+          kind: "thinking",
+          status: "running",
+          summary: "正在进一步核对订单",
+        },
+        type: "activity.updated",
+      },
+    );
+    expect(updatedThinking.stepStartedAt).toBe(thinking.stepStartedAt);
+
+    const waiting = reduceEnvelope(
+      {
+        ...updatedThinking,
+        pendingDecision: { callId: "call-1", decisionId: "decision-1" },
+        phase: "awaiting_decision",
+      },
+      3,
+      "2026-09-16T10:00:04.000Z",
+      {
+        action: "approve",
+        callId: "call-1",
+        decisionId: "decision-1",
+        type: "decision.resolved",
+      },
+    );
+    expect(waiting.stepStartedAt).toBe(
+      Date.parse("2026-09-16T10:00:04.000Z"),
+    );
+  });
+
   it("projects a human-approved tool call into confirmation", () => {
     const toolCall: AgentTurnEvent = {
       approvalMode: "human",

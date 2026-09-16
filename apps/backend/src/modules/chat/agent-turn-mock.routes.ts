@@ -18,6 +18,10 @@ const AgentTurnParamsSchema = Type.Object({
   turnId: Type.String({ minLength: 1 }),
 });
 
+const AgentTurnConversationParamsSchema = Type.Object({
+  conversationId: Type.String({ minLength: 1 }),
+});
+
 const AgentTurnDecisionParamsSchema = Type.Object({
   decisionId: Type.String({ minLength: 1 }),
   turnId: Type.String({ minLength: 1 }),
@@ -33,6 +37,9 @@ const AgentTurnEventsQuerySchema = Type.Object({
 });
 
 type AgentTurnParams = Static<typeof AgentTurnParamsSchema>;
+type AgentTurnConversationParams = Static<
+  typeof AgentTurnConversationParamsSchema
+>;
 type AgentTurnDecisionParams = Static<typeof AgentTurnDecisionParamsSchema>;
 type AgentTurnToolCallParams = Static<typeof AgentTurnToolCallParamsSchema>;
 type AgentTurnEventsQuery = Static<typeof AgentTurnEventsQuerySchema>;
@@ -57,6 +64,20 @@ export async function registerAgentTurnMockRoutes(
         request.body.conversationId,
       );
       return service.start(subUserId, request.body);
+    },
+  );
+
+  app.get<{ Params: AgentTurnConversationParams }>(
+    "/api/server/conversations/:conversationId/agent-turns/latest",
+    {
+      preHandler: app.authenticate,
+      schema: { params: AgentTurnConversationParamsSchema },
+    },
+    async (request) => {
+      return service.getLatest(
+        getSubUserId(request),
+        request.params.conversationId,
+      );
     },
   );
 

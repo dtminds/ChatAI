@@ -1,12 +1,19 @@
 import type {
   AgentTurnEventEnvelope,
   AgentTurnMockScenario,
+  LatestAgentTurnResponse,
   ResolveAgentTurnDecisionRequest,
   ResolveAgentTurnKfClarificationRequest,
   StartAgentTurnRequest,
   StartAgentTurnResponse,
 } from "@chatai/contracts";
 import { http } from "@/lib/request";
+
+export function getLatestAgentTurnMock(conversationId: string) {
+  return http.get<LatestAgentTurnResponse>(
+    `/server/conversations/${encodeURIComponent(conversationId)}/agent-turns/latest`,
+  );
+}
 
 export function startAgentTurnMock(input: {
   conversationId: string;

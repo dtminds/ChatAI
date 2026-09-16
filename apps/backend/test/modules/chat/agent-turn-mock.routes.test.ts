@@ -47,6 +47,19 @@ describe("agent turn mock routes", () => {
         .map((line) => JSON.parse(line.slice(6)) as { event: { type: string } });
       expect(events[0]?.event.type).toBe("turn.started");
       expect(events.at(-1)?.event.type).toBe("turn.completed");
+
+      const latest = await app.inject({
+        method: "GET",
+        url: "/api/server/conversations/144/agent-turns/latest",
+      });
+      expect(latest.statusCode).toBe(200);
+      expect(latest.json()).toMatchObject({
+        status: "completed",
+        turnId,
+      });
+      expect(latest.json<{ events: unknown[] }>().events).toHaveLength(
+        events.length,
+      );
     } finally {
       await app.close();
     }

@@ -5,6 +5,7 @@ import type {
   AgentTurnFinishInput,
   AgentTurnKfClarificationInput,
   AgentTurnMockScenario,
+  LatestAgentTurnResponse,
   ResolveAgentTurnDecisionRequest,
   ResolveAgentTurnKfClarificationRequest,
   StartAgentTurnRequest,
@@ -100,6 +101,31 @@ export type AgentTurnSubscription = {
 
 export class AgentTurnMockService {
   private readonly turns = new Map<string, TurnRecord>();
+
+  getLatest(
+    ownerSubUserId: string,
+    conversationId: string,
+  ): LatestAgentTurnResponse {
+    this.pruneExpiredTurns();
+
+    let latest: TurnRecord | undefined;
+    for (const record of this.turns.values()) {
+      if (
+        record.ownerSubUserId === ownerSubUserId &&
+        record.conversationId === conversationId
+      ) {
+        latest = record;
+      }
+    }
+
+    if (!latest) return null;
+
+    return {
+      events: [...latest.events],
+      status: toSnapshotStatus(latest.status),
+      turnId: latest.id,
+    };
+  }
 
   start(
     ownerSubUserId: string,
@@ -533,6 +559,14 @@ export class AgentTurnMockService {
 
 function isTerminalStatus(status: TurnStatus) {
   return status === "completed" || status === "cancelled" || status === "failed";
+}
+
+function toSnapshotStatus(status: TurnStatus) {
+  if (status === "awaiting_decision" || status === "awaiting_clarification") {
+    return "waiting_for_human" as const;
+  }
+
+  return status;
 }
 
 function pickRandomScenario(): AgentTurnMockScenario {

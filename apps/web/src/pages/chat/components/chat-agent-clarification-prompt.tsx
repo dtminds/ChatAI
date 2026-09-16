@@ -60,7 +60,7 @@ export function ChatAgentClarificationPrompt({
   return (
     <form
       aria-label="客服澄清"
-      className="chat-agent-clarification-surface chat-composer-surface relative z-20 rounded-[18px] border p-3 text-foreground"
+      className="chat-agent-interaction-enter chat-agent-clarification-surface chat-composer-surface relative z-20 rounded-[18px] border p-3 text-foreground"
       data-composer-mode="suggestion"
       data-testid="chat-agent-clarification-prompt"
       onSubmit={handleSubmit}

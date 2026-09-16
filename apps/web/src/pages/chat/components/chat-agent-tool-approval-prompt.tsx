@@ -86,7 +86,7 @@ export function ChatAgentToolApprovalPrompt({
   return (
     <section
       aria-label={`${title}工具审批`}
-      className="chat-agent-tool-approval-surface chat-composer-surface relative z-20 rounded-[18px] border p-3 text-foreground"
+      className="chat-agent-interaction-enter chat-agent-tool-approval-surface chat-composer-surface relative z-20 rounded-[18px] border p-3 text-foreground"
       data-composer-mode="suggestion"
       data-testid="chat-agent-tool-approval-prompt"
     >

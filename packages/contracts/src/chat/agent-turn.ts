@@ -181,3 +181,16 @@ export type AgentTurnEventEnvelope = {
   sequence: number;
   turnId: string;
 };
+
+export type AgentTurnSnapshotStatus =
+  | "running"
+  | "waiting_for_human"
+  | "completed"
+  | "cancelled"
+  | "failed";
+
+export type LatestAgentTurnResponse = {
+  events: AgentTurnEventEnvelope[];
+  status: AgentTurnSnapshotStatus;
+  turnId: string;
+} | null;

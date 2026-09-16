@@ -5,6 +5,8 @@ import {
   useRef,
   useState,
 } from "react";
+import { ArrowUp01Icon } from "@hugeicons/core-free-icons";
+import { HugeiconsIcon } from "@hugeicons/react";
 import { BorderBeam } from "border-beam";
 import { AgentThinkingOrb } from "@/components/ui/agent-thinking-orb";
 import { AnimatedTextSwitch } from "@/components/ui/animated-text-switch";
@@ -30,6 +32,11 @@ export type ChatAIAssistantAction = {
   label: string;
   onSelect?: () => void;
   tone?: "primary" | "quiet";
+};
+
+export type ChatAIAssistantProcessControl = {
+  disabled?: boolean;
+  onExpand?: () => void;
 };
 
 type StatusBarView = {
@@ -92,8 +99,10 @@ export function ChatAIAssistantStatusBar({
   customerName,
   delayTransitionMs = 0,
   label,
+  processControl,
   reason,
   status = "waiting",
+  thinkingStartedAt,
   waitingForCustomer = false,
 }: {
   actions?: readonly ChatAIAssistantAction[];
@@ -101,8 +110,10 @@ export function ChatAIAssistantStatusBar({
   customerName?: string;
   delayTransitionMs?: number;
   label?: string;
+  processControl?: ChatAIAssistantProcessControl;
   reason?: string;
   status?: ChatAIAssistantStatus;
+  thinkingStartedAt?: number;
   waitingForCustomer?: boolean;
 }) {
   const targetLabel =
@@ -114,7 +125,9 @@ export function ChatAIAssistantStatusBar({
     waitingForCustomer,
   }));
   const [outgoingView, setOutgoingView] = useState<StatusBarView | null>(null);
-  const [thinkingStartedAt, setThinkingStartedAt] = useState(() => Date.now());
+  const [internalThinkingStartedAt, setInternalThinkingStartedAt] = useState(
+    () => Date.now(),
+  );
   const previousStatusRef = useRef(status);
   const delayTimerRef = useRef<number | null>(null);
   const nextViewRef = useRef<StatusBarView | null>(null);
@@ -222,7 +235,7 @@ export function ChatAIAssistantStatusBar({
       status === "thinking" &&
       previousStatusRef.current !== "thinking"
     ) {
-      setThinkingStartedAt(Date.now());
+      setInternalThinkingStartedAt(Date.now());
     }
     previousStatusRef.current = status;
   }, [status]);
@@ -263,7 +276,10 @@ export function ChatAIAssistantStatusBar({
             actions={actions}
             beamTheme={beamTheme}
             customerName={customerName}
-            thinkingStartedAt={thinkingStartedAt}
+            processControl={undefined}
+            thinkingStartedAt={
+              thinkingStartedAt ?? internalThinkingStartedAt
+            }
             view={outgoingView}
           />
         </div>
@@ -286,12 +302,13 @@ export function ChatAIAssistantStatusBar({
             : undefined
         }
       >
-          <StatusBarSurface
-            actions={actions}
-            beamTheme={beamTheme}
-            customerName={customerName}
-            thinkingStartedAt={thinkingStartedAt}
-            view={visibleView}
+        <StatusBarSurface
+          actions={actions}
+          beamTheme={beamTheme}
+          customerName={customerName}
+          processControl={processControl}
+          thinkingStartedAt={thinkingStartedAt ?? internalThinkingStartedAt}
+          view={visibleView}
         />
       </div>
     </div>
@@ -302,12 +319,14 @@ function StatusBarSurface({
   actions,
   beamTheme,
   customerName,
+  processControl,
   thinkingStartedAt,
   view,
 }: {
   actions?: readonly ChatAIAssistantAction[];
   beamTheme: BeamTheme;
   customerName?: string;
+  processControl?: ChatAIAssistantProcessControl;
   thinkingStartedAt: number;
   view: StatusBarView;
 }) {
@@ -316,6 +335,7 @@ function StatusBarSurface({
       <WaitStatusBarSurface
         customerName={customerName}
         label={view.label}
+        processControl={processControl}
         reason={view.reason}
         waitingForCustomer={view.waitingForCustomer}
       />
@@ -327,6 +347,7 @@ function StatusBarSurface({
       actions={actions}
       beamTheme={beamTheme}
       label={view.label}
+      processControl={processControl}
       status={view.status}
       thinkingStartedAt={thinkingStartedAt}
     />
@@ -336,11 +357,13 @@ function StatusBarSurface({
 function WaitStatusBarSurface({
   customerName,
   label,
+  processControl,
   reason,
   waitingForCustomer,
 }: {
   customerName?: string;
   label: string;
+  processControl?: ChatAIAssistantProcessControl;
   reason?: string;
   waitingForCustomer: boolean;
 }) {
@@ -399,6 +422,12 @@ function WaitStatusBarSurface({
             </span>
           ) : null}
         </div>
+        {processControl ? (
+          <ProcessControlButton
+            className="absolute right-2 top-1/2 z-20 -translate-y-1/2"
+            control={processControl}
+          />
+        ) : null}
       </div>
     </TooltipProvider>
   );
@@ -410,10 +439,12 @@ function OnStatusBarSurface({
   label,
   status,
   thinkingStartedAt,
+  processControl,
 }: {
   actions?: readonly ChatAIAssistantAction[];
   beamTheme: BeamTheme;
   label: string;
+  processControl?: ChatAIAssistantProcessControl;
   status: OnStatusBarStatus;
   thinkingStartedAt: number;
 }) {
@@ -487,6 +518,9 @@ function OnStatusBarSurface({
               actions={actions}
               themeStyles={themeStyles}
             />
+            {processControl ? (
+              <ProcessControlButton control={processControl} />
+            ) : null}
           </div>
         </div>
       </div>
@@ -527,6 +561,45 @@ function OnStatusBarActions({
       </Button>
     );
   });
+}
+
+function ProcessControlButton({
+  className,
+  control,
+}: {
+  className?: string;
+  control: ChatAIAssistantProcessControl;
+}) {
+  return (
+    <TooltipProvider delayDuration={300}>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Button
+            aria-label="查看思考过程"
+            className={cn(
+              "size-7 rounded-[8px] border-transparent bg-transparent p-0 text-muted-foreground shadow-none hover:bg-transparent hover:text-foreground active:bg-transparent",
+              className,
+            )}
+            disabled={control.disabled || !control.onExpand}
+            onClick={control.onExpand}
+            size="icon"
+            type="button"
+            variant="ghost"
+          >
+            <HugeiconsIcon
+              aria-hidden="true"
+              icon={ArrowUp01Icon}
+              size={15}
+              strokeWidth={1.8}
+            />
+          </Button>
+        </TooltipTrigger>
+        <TooltipContent side="top" sideOffset={6}>
+          查看思考过程
+        </TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
+  );
 }
 
 function getThinkingShinyDuration(label: string) {

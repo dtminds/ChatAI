@@ -33,6 +33,7 @@ import {
 import { ChatAgentHostingStatusBar } from "@/pages/chat/components/chat-agent-hosting-status-bar";
 import { ChatAgentClarificationPrompt } from "@/pages/chat/components/chat-agent-clarification-prompt";
 import { ChatAgentToolApprovalPrompt } from "@/pages/chat/components/chat-agent-tool-approval-prompt";
+import { ChatAgentTurnTimeline } from "@/pages/chat/components/chat-agent-turn-timeline";
 import { ChatHandoffStatusBar } from "@/pages/chat/components/chat-handoff-status-bar";
 import { useSmartReplyComposer } from "@/pages/chat/components/use-smart-reply-composer";
 import { useAgentTurnMock } from "@/pages/chat/components/use-agent-turn-mock";
@@ -84,6 +85,8 @@ import { useShallow } from "zustand/react/shallow";
 
 const WORKBENCH_SIDEBAR_COLLAPSED_STORAGE_KEY =
   "chatai.workbenchSidebarCollapsed";
+
+type AgentTurnTimelineState = "hidden" | "visible" | "exiting";
 
 export type ChatAuxiliaryPanel = "history" | "tickets" | null;
 
@@ -381,6 +384,96 @@ export function ChatPanel({
     conversationId: activeConversationId,
     messageId: latestCustomerMessageId,
   });
+  const [agentTurnTimelineState, setAgentTurnTimelineState] =
+    useState<AgentTurnTimelineState>("hidden");
+  const [isAgentTurnHistoryExpanded, setIsAgentTurnHistoryExpanded] =
+    useState(false);
+  const [isAgentTurnTerminalSettled, setIsAgentTurnTerminalSettled] =
+    useState(true);
+  const hasBlockingAgentInteraction = Boolean(
+    agentTurnMock.approval || agentTurnMock.clarification,
+  );
+
+  useLayoutEffect(() => {
+    setAgentTurnTimelineState("hidden");
+    setIsAgentTurnHistoryExpanded(false);
+    setIsAgentTurnTerminalSettled(false);
+  }, [activeConversationId, agentTurnMock.turnId]);
+
+  useLayoutEffect(() => {
+    if (hasBlockingAgentInteraction) {
+      setAgentTurnTimelineState("hidden");
+      setIsAgentTurnHistoryExpanded(false);
+      setIsAgentTurnTerminalSettled(false);
+      return;
+    }
+
+    if (agentTurnMock.isRunning) {
+      setAgentTurnTimelineState(
+        agentTurnMock.hasActivities ? "visible" : "hidden",
+      );
+      setIsAgentTurnHistoryExpanded(false);
+      setIsAgentTurnTerminalSettled(false);
+      return;
+    }
+
+    if (agentTurnMock.isTerminal) {
+      if (
+        agentTurnTimelineState === "visible" &&
+        !isAgentTurnHistoryExpanded
+      ) {
+        setAgentTurnTimelineState("exiting");
+      } else if (agentTurnTimelineState === "hidden") {
+        setIsAgentTurnTerminalSettled(true);
+      }
+      return;
+    }
+
+    if (!agentTurnMock.isActive) {
+      setAgentTurnTimelineState("hidden");
+      setIsAgentTurnHistoryExpanded(false);
+      setIsAgentTurnTerminalSettled(true);
+    }
+  }, [
+    agentTurnMock.hasActivities,
+    agentTurnMock.isActive,
+    agentTurnMock.isRunning,
+    agentTurnMock.isTerminal,
+    agentTurnTimelineState,
+    hasBlockingAgentInteraction,
+    isAgentTurnHistoryExpanded,
+  ]);
+
+  const showAgentTurnTimeline = Boolean(
+    agentTurnTimelineState !== "hidden" &&
+      agentTurnMock.hasActivities &&
+      !hasBlockingAgentInteraction,
+  );
+  const isAgentTurnTerminalTransitioning = Boolean(
+    agentTurnMock.isTerminal && !isAgentTurnTerminalSettled,
+  );
+  const canExpandAgentTurnHistory = Boolean(
+    agentTurnMock.hasActivities &&
+      !agentTurnMock.isRunning &&
+      !hasBlockingAgentInteraction &&
+      !isAgentTurnTerminalTransitioning,
+  );
+  const handleExpandAgentTurnHistory = () => {
+    if (!canExpandAgentTurnHistory) return;
+    setIsAgentTurnHistoryExpanded(true);
+    setAgentTurnTimelineState("visible");
+  };
+  const handleCollapseAgentTurnHistory = () => {
+    if (!isAgentTurnHistoryExpanded) return;
+    setAgentTurnTimelineState("exiting");
+  };
+  const handleAgentTurnTimelineExitComplete = () => {
+    setAgentTurnTimelineState("hidden");
+    setIsAgentTurnHistoryExpanded(false);
+    if (agentTurnMock.isTerminal) {
+      setIsAgentTurnTerminalSettled(true);
+    }
+  };
   const smartReplyState = useWorkbenchStore(
     useShallow((state) => ({
       activeMessageKey: activeConversationId
@@ -483,7 +576,14 @@ export function ChatPanel({
   const staticAIAssistantDebugView = aiAssistantDebugScenario
     ? getChatAIAssistantDebugScenarioView(aiAssistantDebugScenario)
     : null;
-  const aiAssistantDebugView = agentTurnMock.view ?? staticAIAssistantDebugView;
+  const presentedAgentTurnView = isAgentTurnTerminalTransitioning
+    ? {
+        label: "思考中",
+        status: "thinking" as const,
+      }
+    : agentTurnMock.view;
+  const aiAssistantDebugView =
+    presentedAgentTurnView ?? staticAIAssistantDebugView;
   const isAwaitingSuggestionApply = Boolean(
     sourceSmartReplyTurn &&
       sourceSmartReplyTurn.phase === "confirmation" &&
@@ -772,8 +872,10 @@ export function ChatPanel({
     });
   };
   const resolvedAIAssistantActions: readonly ChatAIAssistantAction[] =
-    agentTurnMock.view
-      ? agentTurnMock.actions
+    presentedAgentTurnView
+      ? isAgentTurnTerminalTransitioning
+        ? []
+        : agentTurnMock.actions
       : aiAssistantDebugScenario === "thinking-cancellable"
       ? [
           {
@@ -851,6 +953,14 @@ export function ChatPanel({
         disabled: true,
       }))
     : resolvedAIAssistantActions;
+  const agentTurnProcessControl = canExpandAgentTurnHistory
+    ? {
+        disabled:
+          isAgentTurnHistoryExpanded ||
+          agentTurnTimelineState !== "hidden",
+        onExpand: handleExpandAgentTurnHistory,
+      }
+    : undefined;
 
   return (
     <section className="flex h-full min-h-0 min-w-0 flex-col bg-surface">
@@ -1014,7 +1124,8 @@ export function ChatPanel({
                         <div
                           className={cn(
                             "absolute left-1/2 top-1 z-0 w-[calc(100%-2rem)] max-w-[860px] -translate-x-1/2",
-                            agentTurnMock.approval || agentTurnMock.clarification
+                            showAgentTurnTimeline ||
+                              hasBlockingAgentInteraction
                               ? "-translate-y-full"
                               : "-translate-y-[42px]",
                             multiSelectMode && "pointer-events-none",
@@ -1022,66 +1133,101 @@ export function ChatPanel({
                           data-testid="chat-ai-assistant-status-bar-anchor"
                           inert={multiSelectMode || undefined}
                         >
-                          {agentTurnMock.approval ? (
-                            <ChatAgentToolApprovalPrompt
-                              approval={agentTurnMock.approval}
-                              disabled={agentTurnMock.isResolvingApproval}
-                              onApprove={() =>
-                                void agentTurnMock.resolveApproval({
-                                  action: "approve",
-                                })
-                              }
-                              onRedirect={(instruction) =>
-                                void agentTurnMock.resolveApproval({
-                                  action: "redirect",
-                                  instruction,
-                                })
-                              }
-                              onReject={() =>
-                                void agentTurnMock.resolveApproval({
-                                  action: "reject",
-                                })
-                              }
-                            />
-                          ) : agentTurnMock.clarification ? (
-                            <ChatAgentClarificationPrompt
-                              disabled={agentTurnMock.isResolvingClarification}
-                              input={agentTurnMock.clarification}
-                              onRespond={(response) =>
-                                void agentTurnMock.resolveClarification(response)
-                              }
-                              onTerminate={() =>
-                                void agentTurnMock.terminate()
-                              }
-                            />
-                          ) : (
-                            <ChatAIAssistantStatusBar
-                              actions={displayedAIAssistantActions}
-                              customerName={activeConversation.customerName}
-                              delayTransitionMs={delayStatusBarTransitionMs}
-                              key={activeConversation.id}
-                              label={resolvedAIAssistantStatusLabel}
-                              reason={
-                                agentTurnMock.view?.reason ?? smartReplyTurn?.reason
-                              }
-                              status={resolvedAIAssistantStatus}
-                              waitingForCustomer={Boolean(
-                                agentTurnMock.view?.waitingForCustomer ||
-                                  (smartReplyTurn &&
-                                    smartReplyTurn.phase === "skipped"),
+                          <div className="flex flex-col">
+                            <div className="relative z-10 order-2">
+                              {agentTurnMock.approval ? (
+                                <ChatAgentToolApprovalPrompt
+                                  approval={agentTurnMock.approval}
+                                  disabled={agentTurnMock.isResolvingApproval}
+                                  onApprove={() =>
+                                    void agentTurnMock.resolveApproval({
+                                      action: "approve",
+                                    })
+                                  }
+                                  onRedirect={(instruction) =>
+                                    void agentTurnMock.resolveApproval({
+                                      action: "redirect",
+                                      instruction,
+                                    })
+                                  }
+                                  onReject={() =>
+                                    void agentTurnMock.resolveApproval({
+                                      action: "reject",
+                                    })
+                                  }
+                                />
+                              ) : agentTurnMock.clarification ? (
+                                <ChatAgentClarificationPrompt
+                                  disabled={agentTurnMock.isResolvingClarification}
+                                  input={agentTurnMock.clarification}
+                                  onRespond={(response) =>
+                                    void agentTurnMock.resolveClarification(
+                                      response,
+                                    )
+                                  }
+                                  onTerminate={() =>
+                                    void agentTurnMock.terminate()
+                                  }
+                                />
+                              ) : (
+                                <ChatAIAssistantStatusBar
+                                  actions={displayedAIAssistantActions}
+                                  customerName={activeConversation.customerName}
+                                  delayTransitionMs={delayStatusBarTransitionMs}
+                                  key={activeConversation.id}
+                                  label={resolvedAIAssistantStatusLabel}
+                                  processControl={agentTurnProcessControl}
+                                  reason={
+                                    presentedAgentTurnView?.reason ??
+                                    smartReplyTurn?.reason
+                                  }
+                                  status={resolvedAIAssistantStatus}
+                                  thinkingStartedAt={
+                                    agentTurnMock.isActive
+                                      ? agentTurnMock.stepStartedAt
+                                      : undefined
+                                  }
+                                  waitingForCustomer={Boolean(
+                                    presentedAgentTurnView?.waitingForCustomer ||
+                                      (smartReplyTurn &&
+                                        smartReplyTurn.phase === "skipped"),
+                                  )}
+                                />
                               )}
-                            />
-                          )}
-                          <ChatAIAssistantDebugMenu
-                            className="absolute left-[calc(100%+0.5rem)] top-[21px] -translate-y-1/2 max-[940px]:left-auto max-[940px]:right-1"
-                            mockScenario={agentTurnMock.activeScenario}
-                            onMockScenarioSelect={handleAgentTurnMockScenarioSelect}
-                            onValueChange={handleAIAssistantDebugStatusChange}
-                            value={
-                              aiAssistantDebugScenario ??
-                              resolvedAIAssistantStatus
-                            }
-                          />
+                              <ChatAIAssistantDebugMenu
+                                className="absolute left-[calc(100%+0.5rem)] top-[21px] -translate-y-1/2 max-[940px]:left-auto max-[940px]:right-1"
+                                mockScenario={agentTurnMock.activeScenario}
+                                onMockScenarioSelect={
+                                  handleAgentTurnMockScenarioSelect
+                                }
+                                onValueChange={handleAIAssistantDebugStatusChange}
+                                value={
+                                  aiAssistantDebugScenario ??
+                                  resolvedAIAssistantStatus
+                                }
+                              />
+                            </div>
+                            {showAgentTurnTimeline ? (
+                              <div className="relative z-0 order-1 mx-5 -mb-4">
+                                <ChatAgentTurnTimeline
+                                  events={agentTurnMock.events}
+                                  motion={
+                                    agentTurnTimelineState === "exiting"
+                                      ? "exit"
+                                      : "enter"
+                                  }
+                                  onCollapse={
+                                    isAgentTurnHistoryExpanded
+                                      ? handleCollapseAgentTurnHistory
+                                      : undefined
+                                  }
+                                  onExitComplete={
+                                    handleAgentTurnTimelineExitComplete
+                                  }
+                                />
+                              </div>
+                            ) : null}
+                          </div>
                         </div>
                       ) : null}
                       <div

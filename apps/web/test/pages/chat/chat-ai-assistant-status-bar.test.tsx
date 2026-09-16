@@ -226,6 +226,49 @@ describe("ChatAIAssistantStatusBar", () => {
     expect(screen.getByText("0.0s")).toBeInTheDocument();
   });
 
+  it("keeps the process control separate from status actions", async () => {
+    const user = userEvent.setup();
+    const onExpand = vi.fn();
+
+    const { rerender } = render(
+      <ChatAIAssistantStatusBar
+        label="已起草回复"
+        processControl={{ onExpand }}
+        status="confirmation"
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "查看思考过程" }));
+    expect(onExpand).toHaveBeenCalledOnce();
+
+    rerender(
+      <ChatAIAssistantStatusBar
+        label="已起草回复"
+        processControl={{ disabled: true, onExpand }}
+        status="confirmation"
+      />,
+    );
+
+    expect(
+      screen.getByRole("button", { name: "查看思考过程" }),
+    ).toBeDisabled();
+  });
+
+  it("uses an externally supplied start time for the active Agent step", () => {
+    vi.useFakeTimers();
+    const now = new Date("2026-09-16T10:00:05+08:00");
+    vi.setSystemTime(now);
+
+    render(
+      <ChatAIAssistantStatusBar
+        status="thinking"
+        thinkingStartedAt={now.getTime() - 2_500}
+      />,
+    );
+
+    expect(screen.getByText("2.5s")).toBeInTheDocument();
+  });
+
   it("uses the dark beam preset when the page theme is dark", () => {
     useAppearanceStore.setState({ themePreference: "dark" });
 

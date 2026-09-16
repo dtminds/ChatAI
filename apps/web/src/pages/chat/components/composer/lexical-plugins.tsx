@@ -10,6 +10,8 @@ import {
   COMMAND_PRIORITY_HIGH,
   COMMAND_PRIORITY_LOW,
   CONTROLLED_TEXT_INSERTION_COMMAND,
+  HISTORY_MERGE_TAG,
+  HISTORY_PUSH_TAG,
   KEY_ARROW_DOWN_COMMAND,
   KEY_ARROW_UP_COMMAND,
   KEY_ENTER_COMMAND,
@@ -34,7 +36,9 @@ import {
   INSERT_COMPOSER_EMOJI_COMMAND,
   INSERT_COMPOSER_IMAGE_COMMAND,
   INSERT_COMPOSER_MENTION_COMMAND,
+  INSERT_COMPOSER_SEGMENTS_COMMAND,
   INSERT_COMPOSER_TEXT_COMMAND,
+  REPLACE_COMPOSER_COMMAND,
   RESTORE_COMPOSER_COMMAND,
   UPDATE_COMPOSER_IMAGE_COMMAND,
 } from "@/pages/chat/components/composer/lexical-commands";
@@ -223,6 +227,55 @@ export function ComposerRuntimePlugin({
         updateEditorWithoutHistory(editor, () => {
           $restoreComposerFromSegments(payload.segments);
           $trimComposerTextToMaxLength(maxTextLength);
+        });
+        return true;
+      },
+      COMMAND_PRIORITY_LOW,
+    );
+  }, [editor, maxTextLength]);
+
+  useEffect(() => {
+    return editor.registerCommand(
+      REPLACE_COMPOSER_COMMAND,
+      (payload) => {
+        const previousSegments = editor
+          .getEditorState()
+          .read(() => $exportComposerSegments());
+
+        editor.update(() => {
+          $restoreComposerFromSegments(previousSegments);
+        }, {
+          discrete: true,
+          tag: HISTORY_MERGE_TAG,
+          onUpdate: () => {
+            editor.update(() => {
+              $restoreComposerFromSegments(payload.segments);
+              $trimComposerTextToMaxLength(maxTextLength);
+            }, {
+              discrete: true,
+              tag: HISTORY_PUSH_TAG,
+            });
+          },
+        });
+        return true;
+      },
+      COMMAND_PRIORITY_LOW,
+    );
+  }, [editor, maxTextLength]);
+
+  useEffect(() => {
+    return editor.registerCommand(
+      INSERT_COMPOSER_SEGMENTS_COMMAND,
+      (payload) => {
+        editor.update(() => {
+          $restoreComposerFromSegments([
+            ...$exportComposerSegments(),
+            ...payload.segments,
+          ]);
+          $trimComposerTextToMaxLength(maxTextLength);
+        }, {
+          discrete: true,
+          tag: HISTORY_PUSH_TAG,
         });
         return true;
       },

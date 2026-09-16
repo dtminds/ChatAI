@@ -273,6 +273,47 @@ describe("MysqlWorkbenchService smart reply facade", () => {
     expect(javaClient.listKnowledgeDocPage).toHaveBeenCalled();
     expect(javaClient.addKnowledgeFaq).toHaveBeenCalled();
   });
+
+  it("loads smart reply reference messages after checking conversation access", async () => {
+    const javaClient = createJavaClient();
+    const listSmartReplyReferenceMessages = vi.fn().mockResolvedValue({
+      messages: [createMessageDto({ senderType: "agent", seq: 3050 })],
+    });
+    const service = createWorkbenchService(
+      {
+        canAccessSeat: vi.fn().mockResolvedValue(true),
+        getConversationLookup: vi.fn().mockResolvedValue({
+          chatType: 1,
+          id: "144",
+          messageSourceThirdUserId: "seat-user-001",
+          platform: 5,
+          seatId: "12",
+          seatHostSubUserId: "101",
+          seatUnreadCount: 0,
+          thirdExternalUserId: "current-customer",
+          thirdUserId: "seat-user-001",
+          uid: 9001,
+          unreadCount: 0,
+        }),
+        listSmartReplyReferenceMessages,
+      } as unknown as WorkbenchRepository,
+      javaClient,
+    );
+
+    await expect(
+      service.getSmartReplyReferenceMessages("101", {
+        conversationId: "144",
+        messageSeqs: [3050, 3051],
+      }),
+    ).resolves.toMatchObject({ messages: [{ seq: 3050 }] });
+    expect(listSmartReplyReferenceMessages).toHaveBeenCalledWith({
+      conversation: expect.objectContaining({ id: "144", seatId: "12" }),
+      messageSeqs: [3050, 3051],
+      platform: 5,
+      uid: 9001,
+    });
+  });
+
   it("forwards smart heartbeat for an operable single chat conversation", async () => {
     const javaClient = createJavaClient();
     const service = createWorkbenchService(

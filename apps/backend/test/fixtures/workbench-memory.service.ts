@@ -37,6 +37,8 @@ import type {
   WorkbenchSmartReplySendAnswerResponse,
   WorkbenchSmartReplyPollRequest,
   WorkbenchSmartReplyPollResponse,
+  WorkbenchSmartReplyReferenceMessagesRequest,
+  WorkbenchSmartReplyReferenceMessagesResponse,
   WorkbenchKnowledgePageRequest,
   WorkbenchKnowledgePageResponse,
   WorkbenchKnowledgeConfigRequest,
@@ -1416,6 +1418,18 @@ export function createMemoryWorkbenchService() {
             },
           ];
         }),
+      };
+    },
+    getSmartReplyReferenceMessages(
+      _subUserId: string,
+      request: WorkbenchSmartReplyReferenceMessagesRequest,
+    ): WorkbenchSmartReplyReferenceMessagesResponse {
+      const messageSeqs = new Set(request.messageSeqs);
+
+      return {
+        messages: Object.values(state.messagesByConversationId)
+          .flat()
+          .filter((message) => messageSeqs.has(message.seq)),
       };
     },
     sendMessage(

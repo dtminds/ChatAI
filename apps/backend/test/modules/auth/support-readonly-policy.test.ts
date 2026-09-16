@@ -27,6 +27,12 @@ describe("support read-only policy", () => {
     )).not.toThrow();
   });
 
+  it("allows batched smart reply reference-message reads", () => {
+    expect(() => assertSupportReadonlyRequestAllowed(
+      createRequest("POST", "/api/server/smart-reply/reference-messages"),
+    )).not.toThrow();
+  });
+
   it("blocks the unused download status endpoint", () => {
     expect(() => assertSupportReadonlyRequestAllowed(
       createRequest("POST", "/api/server/messages/download-status"),

@@ -582,7 +582,7 @@ apps/web/src/pages/chat/components/agent-turn-detail-renderers.tsx
 ```text
 现有 SmartReplySuggestion / pending 状态
   → resolveSmartReplyAssistantTurn
-  → 辅助条状态、操作和建议 Composer
+  → 辅助条状态、操作和共享 Composer 模式
 ```
 
 兼容层只负责把现有话术推荐状态映射到新交互，不伪造 `turnId`、`toolCallId` 或工具活动。未来接入真实 Agent Turn 后，应替换事件来源和投影 Adapter，而不是把 Smart Reply 的 `generateStatus` 扩展成通用 Agent 协议。
@@ -592,8 +592,8 @@ apps/web/src/pages/chat/components/agent-turn-detail-renderers.tsx
 | Smart Reply 事实 | 兼容层阶段 | 辅助条/UI |
 | --- | --- | --- |
 | 自动或手动请求 pending、结果 processing | `thinking` | on 模式，展示「正在生成话术推荐」和耗时 |
-| 强制重新生成，且已有旧建议 | `thinking` | on 模式；旧建议 Composer 保留但不可编辑、不可发送 |
-| 推荐 ready | `confirmation` | on 模式；展示建议 Composer，横条操作为「重新生成」「忽略」 |
+| 强制重新生成，且已有旧建议 | `thinking` | on 模式；共享 Composer 保留旧建议但不可编辑、不可发送 |
+| 推荐 ready | `confirmation` | on 模式；结果写入共享 Composer，横条操作为「重新生成」「忽略」 |
 | 最新客户消息语义不完整且仍在等待窗口内 | `waiting_for_customer` | wait 模式，展示「等待 {客户昵称} 补充消息」 |
 | 转人工、明确的信息不足、知识未命中、语义等待超时 | `skipped` | wait 模式保持轻提示并进入等待客户状态，不做定时退出；原因通过 hover Tooltip 展示 |
 | 普通生成失败 | `failed` | confirmation 视觉，展示失败原因和「重新生成」「忽略」 |
@@ -603,15 +603,18 @@ apps/web/src/pages/chat/components/agent-turn-detail-renderers.tsx
 
 建议 Composer 的交互约束：
 
-- 推荐内容进入独立的建议 Composer，不写入正常 Composer。
-- 建议 Composer 复用正常 Composer 的布局、Enter 行为、表情、收录和素材入口。
-- 正常 Composer 在建议期间保持挂载，只暂时隐藏；原草稿、引用、附件和编辑历史不得被清空。
-- 建议 Composer 右侧保留「添加到FAQ」「违规词检测」「采纳并发送」。
-- 违规词检测只由客服手动触发，不读取或继承历史自动检测配置；检测结果展示后不会因编辑内容或 Composer 失焦自动消失，由客服手动关闭，并在忽略建议或成功发送后随建议 Composer 一起清除。
+- 工作台始终只挂载一个 Composer 和一个 Lexical Editor 实例，通过 `message` / `suggestion` 模式切换样式、可编辑状态和发送动作，不创建第二份编辑器状态。
+- 发起推荐时，如果 Composer 没有文本、附件或引用，直接进入 `thinking`；如果已有内容，辅助条先进入 `draft_confirmation`，展示「当前消息框已有内容，需要我帮你起草回复吗？」以及「忽略」「起草回复」。
+- `draft_confirmation` 中点击「忽略」只取消本次推荐，保留客服正在编辑的内容；点击「起草回复」后进入 `thinking`，原内容继续可见但暂时不可编辑、不可发送。
+- 推荐 ready 后，在同一 Editor 中用 AI 结果整体替换原 segments；替换必须形成一个独立的 Lexical 历史记录，客服执行一次撤销即可回到替换前内容。
+- 推荐生成在覆盖前失败时，不修改原内容，并恢复普通可编辑模式。
+- `suggestion` 模式沿用同一 Composer 的引用、表情、快捷回复、收录、素材和文件入口；引用直接进入当前 Composer，素材、文件和收藏表情只插入编辑器，不立即发送。
+- `suggestion` 模式右侧保留「添加到FAQ」「违规词检测」「采纳并发送」，隐藏 Enter 发送设置；所有 segments 只通过「采纳并发送」一次发送。
+- 违规词检测只由客服手动触发，不读取或继承历史自动检测配置；检测结果展示后不会因编辑内容或 Composer 失焦自动消失，由客服手动关闭，并在忽略建议或成功发送后清除。
 - 横条 confirmation 只展示「重新生成」「忽略」，不再提供「长一点」「短一点」或弹窗编辑。
-- 重新生成成功后用新建议替换旧建议；重新生成失败时恢复旧建议并解除编辑锁，同时通过全局错误 Toast 反馈。
-- 「采纳并发送」发送建议 Composer 当前的完整 segments；成功后将推荐标记为已采纳并回到 waiting。
-- 忽略后隐藏当前建议并回到 waiting。
+- 重新生成成功后在同一 Editor 中替换旧建议；重新生成失败时保留旧建议并解除编辑锁，同时通过全局错误 Toast 反馈。
+- 「采纳并发送」发送共享 Composer 当前的完整 segments 和引用；成功后清空 Composer，将推荐标记为已采纳并回到 waiting。
+- 推荐内容已经写入 Composer 后，点击「忽略」会清空 Composer、关闭检测结果、隐藏当前建议并回到 waiting，不通过「忽略」恢复此前原稿；客服可以在处理建议期间使用编辑器撤销回到替换前内容。
 
 触发互斥规则：
 
@@ -647,11 +650,18 @@ apps/web/src/pages/chat/components/agent-turn-detail-renderers.tsx
 | 未知 tool_result | 丢弃事件，不污染当前摘要，Reducer 不抛异常 |
 | 旧 Turn 事件 | 丢弃事件，不污染当前 Turn |
 | 现有话术推荐生成中 | 辅助条进入 thinking，消息下方不出现处理中提示 |
-| 现有话术推荐 ready | 建议进入独立 Composer，正常 Composer 保持挂载并隐藏 |
-| 客服忽略建议 | 建议 Composer 消失，正常 Composer 原草稿恢复，辅助条回 waiting |
-| 客服采纳并发送 | 发送建议 Composer 当前 segments，成功后回 waiting |
-| 推荐期间收到新客户消息 | 不排队、不覆盖当前建议，也不丢弃正常 Composer 草稿 |
-| 强制重新生成失败 | 恢复旧建议并解除锁定，通过全局 Toast 提示失败 |
+| Composer 为空时发起话术推荐 | 直接进入 thinking，不增加前置确认 |
+| Composer 已有内容时发起话术推荐 | 辅助条进入 draft_confirmation，原内容保持可编辑且不被覆盖 |
+| 客服在 draft_confirmation 点击忽略 | 取消本次推荐并保留当前 Composer 内容 |
+| 客服在 draft_confirmation 点击起草回复 | 进入 thinking，原内容保持可见但不可编辑、不可发送 |
+| 现有话术推荐 ready | AI 结果覆盖同一个 Composer，页面始终只有一个 Editor 实例 |
+| 覆盖建议后执行一次撤销 | 恢复覆盖前的人工内容 |
+| 客服忽略已生成建议 | 清空共享 Composer 和检测结果，辅助条回 waiting |
+| 客服采纳并发送 | 发送共享 Composer 当前 segments 和引用，清空后回 waiting |
+| 推荐期间收到新客户消息 | 不排队、不覆盖当前推荐或 Composer 内容 |
+| 覆盖前生成失败 | 保留原内容并恢复可编辑，通过全局 Toast 提示失败 |
+| 强制重新生成失败 | 保留旧建议并解除锁定，通过全局 Toast 提示失败 |
+| 建议模式选择素材、文件或收藏表情 | 插入共享 Composer，不立即发送 |
 | 手动违规词检测命中 | 阻止采纳发送；编辑内容不自动清除结果，客服手动关闭后恢复其它操作 |
 
 ## 13. 与后端对齐要求

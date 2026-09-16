@@ -1,5 +1,6 @@
 import type {
   WorkbenchAttachmentDto,
+  WorkbenchSendMessagePayload,
   WorkbenchSmartReplySuggestionDto,
 } from "@chatai/contracts";
 import {
@@ -17,6 +18,7 @@ import type { WorkbenchSmartReplyTextModerationResponse } from "@chatai/contract
 import { resolveMediaAssetUrl } from "@/lib/media-asset-url";
 
 const DEFAULT_SMART_REPLY_ASSISTANT_NAME = "智能助手";
+const SMART_REPLY_REFERENCE_MESSAGE_LIMIT = 100;
 export const SMART_REPLY_THINKING_LABEL = "思考中..";
 export const SMART_REPLY_CONTENT_INCOMPLETE_SKIP_MESSAGE = "content_incomplete_skip";
 export const SMART_REPLY_CONTENT_INCOMPLETE_SKIP_HINT =
@@ -1236,16 +1238,57 @@ export function enrichSmartReplyRecommendedAttachmentsFromMessages(
   });
 }
 
+export function resolveSmartReplyReferenceMessageSeqs(
+  attachments: SmartReplyRecommendedAttachment[],
+): number[] {
+  const seqs: number[] = [];
+  const seen = new Set<number>();
+
+  for (const attachment of attachments) {
+    const transMsgInfoId =
+      readSmartReplyRecommendedAttachmentTransMsgInfoId(attachment);
+
+    if (!transMsgInfoId) {
+      continue;
+    }
+
+    const seq = Number.parseInt(transMsgInfoId, 10);
+
+    if (!Number.isSafeInteger(seq) || seq <= 0 || seen.has(seq)) {
+      continue;
+    }
+
+    seen.add(seq);
+    seqs.push(seq);
+
+    if (seqs.length >= SMART_REPLY_REFERENCE_MESSAGE_LIMIT) {
+      break;
+    }
+  }
+
+  return seqs;
+}
+
 export function resolveSmartReplyAttachmentIds(
   suggestion: Pick<SmartReplySuggestion, "genAnswer" | "refAttachIds">,
 ): string[] {
   const ids: string[] = [];
   const seen = new Set<string>();
+  const forwardOnlyIds = new Set(
+    extractSmartReplyGenAnswerInlineAttachments(suggestion.genAnswer)
+      .filter((attachment) => attachment.id.startsWith("transmsg:"))
+      .map((attachment) => attachment.transMsgInfoId)
+      .filter((id): id is string => Boolean(id)),
+  );
 
   for (const id of suggestion.refAttachIds ?? []) {
     const normalized = normalizeSmartReplyAttachmentId(id);
 
-    if (normalized && !seen.has(normalized)) {
+    if (
+      normalized &&
+      !forwardOnlyIds.has(normalized) &&
+      !seen.has(normalized)
+    ) {
       seen.add(normalized);
       ids.push(normalized);
     }
@@ -1438,6 +1481,7 @@ export function getSmartReplyLookupKey(message: { uiMessageKey?: string; seq?: n
 
 export type SmartReplySendPayload = {
   content: string;
+  quote?: WorkbenchSendMessagePayload["quote"];
   recommendedAttachments: SmartReplyRecommendedAttachment[];
   selectedAttachmentIds: string[];
   segments?: ComposerSegment[];

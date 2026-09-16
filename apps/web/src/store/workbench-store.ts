@@ -67,6 +67,7 @@ import { parseWorkbenchDate } from "@/pages/chat/lib/chat-time";
 import { sortMessagesBySentAt } from "@/pages/chat/lib/message-order";
 import {
   buildConversationComposerDraft,
+  hasConversationComposerDraftContent,
   type ConversationComposerDraft,
 } from "@/pages/chat/lib/conversation-composer-draft";
 import type { AgentHostingStatus } from "@/pages/chat/lib/chat-agent-hosting-status";
@@ -258,6 +259,7 @@ type WorkbenchState = {
     Record<string, SmartReplySuggestion>
   >;
   smartReplyActiveMessageKeyByConversationId: Record<string, string>;
+  smartReplyDraftConfirmationMessageKeyByConversationId: Record<string, string>;
   smartReplyAutoPendingMessageKeysByConversationId: Record<
     string,
     Record<string, true>
@@ -269,6 +271,7 @@ type WorkbenchState = {
   smartReplyHiddenMessageKeysByConversationId: Record<string, Record<string, true>>;
   smartReplyPendingMessageKeysByConversationId: Record<string, Record<string, true>>;
   smartReplyLastPolledAtByConversationId: Record<string, number>;
+  composerHasContentByConversationId: Record<string, boolean>;
   activeAccountId: string;
   activeConversationId: string;
   activeMode: ChatMode;
@@ -370,7 +373,7 @@ type WorkbenchState = {
   dismissSmartReply: (message: ChatMessage) => void;
   requestSmartReplyGeneralAnswer: (
     message: ChatMessage,
-    options?: { force?: boolean },
+    options?: { confirmedComposerOverwrite?: boolean; force?: boolean },
   ) => Promise<void>;
   requestSmartReplyMakeShorter: (message: ChatMessage) => Promise<void>;
   sendSmartReply: (
@@ -407,6 +410,7 @@ type WorkbenchState = {
     draft: ConversationComposerDraft,
   ) => void;
   clearComposerDraft: (conversationId: string) => void;
+  setComposerHasContent: (conversationId: string, hasContent: boolean) => void;
 };
 
 type WorkbenchStore = WorkbenchState;
@@ -501,6 +505,7 @@ function createInitialState(): Omit<
   | "dismissConversationOpenError"
   | "saveComposerDraft"
   | "clearComposerDraft"
+  | "setComposerHasContent"
 > {
   return {
     accounts: [],
@@ -533,12 +538,14 @@ function createInitialState(): Omit<
     messagePaginationByConversationId: {},
     messagesByConversationId: {},
     smartReplyActiveMessageKeyByConversationId: {},
+    smartReplyDraftConfirmationMessageKeyByConversationId: {},
     smartReplyAutoPendingMessageKeysByConversationId: {},
     smartReplyAutoSkippedMessageKeysByConversationId: {},
     smartReplyByMessageIdByConversationId: {},
     smartReplyHiddenMessageKeysByConversationId: {},
     smartReplyPendingMessageKeysByConversationId: {},
     smartReplyLastPolledAtByConversationId: {},
+    composerHasContentByConversationId: {},
     pendingMessages: [],
     pollState: {
       intervalMs: 2500,
@@ -1879,6 +1886,49 @@ function shouldPreserveExistingSmartReplySuggestion(
   );
 }
 
+function hasComposerContentForConversation(
+  state: WorkbenchStore,
+  conversationId: string,
+) {
+  if (conversationId in state.composerHasContentByConversationId) {
+    return state.composerHasContentByConversationId[conversationId] === true;
+  }
+
+  return hasConversationComposerDraftContent(
+    state.composerDraftsByConversationId[conversationId],
+  );
+}
+
+function stageSmartReplyDraftConfirmation(
+  set: (
+    partial:
+      | Partial<WorkbenchStore>
+      | ((state: WorkbenchStore) => Partial<WorkbenchStore>),
+  ) => void,
+  conversationId: string,
+  lookupKey: string,
+) {
+  set((currentState) => ({
+    smartReplyActiveMessageKeyByConversationId: {
+      ...currentState.smartReplyActiveMessageKeyByConversationId,
+      [conversationId]: lookupKey,
+    },
+    smartReplyDraftConfirmationMessageKeyByConversationId: {
+      ...currentState.smartReplyDraftConfirmationMessageKeyByConversationId,
+      [conversationId]: lookupKey,
+    },
+    smartReplyHiddenMessageKeysByConversationId: {
+      ...currentState.smartReplyHiddenMessageKeysByConversationId,
+      [conversationId]: omitSmartReplyHiddenKey(
+        currentState.smartReplyHiddenMessageKeysByConversationId[
+          conversationId
+        ] ?? {},
+        lookupKey,
+      ),
+    },
+  }));
+}
+
 function triggerSmartReplyAutoGeneration(
   get: () => WorkbenchStore,
   set: (
@@ -1918,6 +1968,10 @@ function triggerSmartReplyAutoGeneration(
           state.smartReplyActiveMessageKeyByConversationId[conversationId],
         autoPending:
           state.smartReplyAutoPendingMessageKeysByConversationId[conversationId],
+        draftConfirmationMessageKey:
+          state.smartReplyDraftConfirmationMessageKeyByConversationId[
+            conversationId
+          ],
         hidden: state.smartReplyHiddenMessageKeysByConversationId[conversationId],
         messages: state.messagesByConversationId[conversationId] ?? [],
         pending: state.smartReplyPendingMessageKeysByConversationId[conversationId],
@@ -1926,6 +1980,11 @@ function triggerSmartReplyAutoGeneration(
       lookupKey,
     )
   ) {
+    return;
+  }
+
+  if (hasComposerContentForConversation(state, conversationId)) {
+    stageSmartReplyDraftConfirmation(set, conversationId, lookupKey);
     return;
   }
 
@@ -3154,6 +3213,10 @@ function clearConversationMessageState(
       state.smartReplyActiveMessageKeyByConversationId,
       smartReplyClearedConversationIds,
     ),
+    smartReplyDraftConfirmationMessageKeyByConversationId: omitByKeys(
+      state.smartReplyDraftConfirmationMessageKeyByConversationId,
+      smartReplyClearedConversationIds,
+    ),
     smartReplyHiddenMessageKeysByConversationId: omitByKeys(
       state.smartReplyHiddenMessageKeysByConversationId,
       smartReplyClearedConversationIds,
@@ -3164,6 +3227,10 @@ function clearConversationMessageState(
     ),
     smartReplyLastPolledAtByConversationId: omitByKeys(
       state.smartReplyLastPolledAtByConversationId,
+      smartReplyClearedConversationIds,
+    ),
+    composerHasContentByConversationId: omitByKeys(
+      state.composerHasContentByConversationId,
       smartReplyClearedConversationIds,
     ),
   };
@@ -3206,9 +3273,13 @@ function getMessageStateConversationIds(state: WorkbenchStore) {
     ...Object.keys(state.smartReplyAutoPendingMessageKeysByConversationId),
     ...Object.keys(state.smartReplyAutoSkippedMessageKeysByConversationId),
     ...Object.keys(state.smartReplyActiveMessageKeyByConversationId),
+    ...Object.keys(
+      state.smartReplyDraftConfirmationMessageKeyByConversationId,
+    ),
     ...Object.keys(state.smartReplyByMessageIdByConversationId),
     ...Object.keys(state.smartReplyPendingMessageKeysByConversationId),
     ...Object.keys(state.smartReplyLastPolledAtByConversationId),
+    ...Object.keys(state.composerHasContentByConversationId),
   ]);
 }
 
@@ -5337,14 +5408,39 @@ export function createWorkbenchStore() {
           return { composerDraftsByConversationId };
         });
       },
+      setComposerHasContent(conversationId, hasContent) {
+        if (!conversationId) {
+          return;
+        }
+
+        set((currentState) => {
+          if (
+            currentState.composerHasContentByConversationId[conversationId] ===
+            hasContent
+          ) {
+            return currentState;
+          }
+
+          return {
+            composerHasContentByConversationId: {
+              ...currentState.composerHasContentByConversationId,
+              [conversationId]: hasContent,
+            },
+          };
+        });
+      },
       dismissSmartReply(message) {
         const state = get();
         const conversationId = message.conversationId;
         const lookupKey = getSmartReplyLookupKey(message);
         const suggestions =
           state.smartReplyByMessageIdByConversationId[conversationId];
+        const isDraftConfirmation =
+          state.smartReplyDraftConfirmationMessageKeyByConversationId[
+            conversationId
+          ] === lookupKey;
 
-        if (!suggestions?.[lookupKey]) {
+        if (!suggestions?.[lookupKey] && !isDraftConfirmation) {
           return;
         }
 
@@ -5354,6 +5450,24 @@ export function createWorkbenchStore() {
               currentState.smartReplyActiveMessageKeyByConversationId,
               conversationId,
             ),
+          smartReplyDraftConfirmationMessageKeyByConversationId:
+            replaceSmartReplyActiveMessageKey(
+              currentState.smartReplyDraftConfirmationMessageKeyByConversationId,
+              conversationId,
+            ),
+          ...(isDraftConfirmation
+            ? {
+                smartReplyAutoSkippedMessageKeysByConversationId: {
+                  ...currentState.smartReplyAutoSkippedMessageKeysByConversationId,
+                  [conversationId]: {
+                    ...(currentState.smartReplyAutoSkippedMessageKeysByConversationId[
+                      conversationId
+                    ] ?? {}),
+                    [lookupKey]: true,
+                  },
+                },
+              }
+            : {}),
           smartReplyHiddenMessageKeysByConversationId: {
             ...currentState.smartReplyHiddenMessageKeysByConversationId,
             [conversationId]: {
@@ -5382,12 +5496,33 @@ export function createWorkbenchStore() {
           state.smartReplyByMessageIdByConversationId[conversationId]?.[lookupKey];
 
         if (
+          !options?.confirmedComposerOverwrite &&
+          !options?.force &&
+          hasComposerContentForConversation(state, conversationId)
+        ) {
+          stageSmartReplyDraftConfirmation(set, conversationId, lookupKey);
+          return;
+        }
+
+        set((currentState) => ({
+          smartReplyDraftConfirmationMessageKeyByConversationId:
+            replaceSmartReplyActiveMessageKey(
+              currentState.smartReplyDraftConfirmationMessageKeyByConversationId,
+              conversationId,
+            ),
+        }));
+
+        if (
           hasBlockingSmartReplyAssistantTurn(
             {
               activeMessageKey:
                 state.smartReplyActiveMessageKeyByConversationId[conversationId],
               autoPending:
                 state.smartReplyAutoPendingMessageKeysByConversationId[
+                  conversationId
+                ],
+              draftConfirmationMessageKey:
+                state.smartReplyDraftConfirmationMessageKeyByConversationId[
                   conversationId
                 ],
               hidden:
@@ -5767,7 +5902,9 @@ export function createWorkbenchStore() {
           };
         }
 
-        const sendResult = await get().sendAgentMessageSegments(segments);
+        const sendResult = await get().sendAgentMessageSegments(segments, {
+          quote: payload.quote,
+        });
 
         if (!sendResult.ok) {
           return sendResult;
@@ -5807,6 +5944,11 @@ export function createWorkbenchStore() {
             smartReplyActiveMessageKeyByConversationId:
               replaceSmartReplyActiveMessageKey(
                 currentState.smartReplyActiveMessageKeyByConversationId,
+                conversationId,
+              ),
+            smartReplyDraftConfirmationMessageKeyByConversationId:
+              replaceSmartReplyActiveMessageKey(
+                currentState.smartReplyDraftConfirmationMessageKeyByConversationId,
                 conversationId,
               ),
             smartReplyByMessageIdByConversationId: {

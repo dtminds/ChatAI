@@ -12,6 +12,7 @@ import type {
   WorkbenchSmartReplyMakeShorterRequest,
   ComposerAiEditRequest,
   WorkbenchSmartReplyPollRequest,
+  WorkbenchSmartReplyReferenceMessagesRequest,
   WorkbenchSmartReplySendAnswerRequest,
   WorkbenchKnowledgePageRequest,
   WorkbenchKnowledgeConfigRequest,
@@ -202,6 +203,11 @@ const SmartReplySendAnswerBodySchema = Type.Object({
 const SmartReplyAttachmentsBodySchema = Type.Object({
   conversationId: Type.String(),
   ids: Type.Array(Type.String()),
+});
+
+const SmartReplyReferenceMessagesBodySchema = Type.Object({
+  conversationId: Type.String(),
+  messageSeqs: Type.Array(Type.Integer({ minimum: 1 }), { maxItems: 100 }),
 });
 
 const SmartReplyTextModerationBodySchema = Type.Object({
@@ -1935,6 +1941,21 @@ export async function registerChatRoutes(app: FastifyInstance) {
       getWorkbenchService(app, request).listSmartReplyAttachments(
         getSubUserId(request),
         request.body satisfies WorkbenchSmartReplyAttachmentsRequest,
+      ),
+  );
+
+  app.post<{ Body: Static<typeof SmartReplyReferenceMessagesBodySchema> }>(
+    "/api/server/smart-reply/reference-messages",
+    {
+      preHandler: app.authenticate,
+      schema: {
+        body: SmartReplyReferenceMessagesBodySchema,
+      },
+    },
+    async (request) =>
+      getWorkbenchService(app, request).getSmartReplyReferenceMessages(
+        getSubUserId(request),
+        request.body satisfies WorkbenchSmartReplyReferenceMessagesRequest,
       ),
   );
 

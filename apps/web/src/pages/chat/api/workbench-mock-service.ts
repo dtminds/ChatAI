@@ -1137,6 +1137,17 @@ export function createMockWorkbenchService(): WorkbenchService {
         ),
       };
     },
+    async getSmartReplyReferenceMessages(input) {
+      const normalizedSeqs = new Set(input.messageSeqs);
+
+      return {
+        messages: clone(
+          Object.values(state.messagesByConversationId)
+            .flat()
+            .filter((message) => normalizedSeqs.has(message.seq)),
+        ),
+      };
+    },
     async getChatRecordDetail(input) {
       return {
         messageSeq: input.messageSeq,

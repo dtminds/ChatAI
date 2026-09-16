@@ -30,7 +30,7 @@ type UseSmartReplyStateOptions = {
   onSent: () => void;
   requestSmartReplyGeneralAnswer: (
     message: ChatMessage,
-    options?: { force?: boolean },
+    options?: { confirmedComposerOverwrite?: boolean; force?: boolean },
   ) => Promise<void>;
   sendSmartReply: (
     message: ChatMessage,
@@ -120,7 +120,10 @@ export function useSmartReplyState({
   );
 
   const handleTriggerSmartReply = useCallback(
-    (message: ChatMessage, options?: { force?: boolean }) => {
+    (
+      message: ChatMessage,
+      options?: { confirmedComposerOverwrite?: boolean; force?: boolean },
+    ) => {
       void requestSmartReplyGeneralAnswer(message, options).catch(() => {
         toast.error("操作失败，请稍后重试");
       });

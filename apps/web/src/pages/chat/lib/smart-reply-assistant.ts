@@ -19,7 +19,11 @@ import {
 } from "@/pages/chat/api/smart-reply-adapter";
 import type { SmartReplySuggestion } from "@/pages/chat/lib/smart-reply-types";
 
+export const SMART_REPLY_DRAFT_CONFIRMATION_LABEL =
+  "当前消息框已有内容，需要我帮你起草回复吗？";
+
 export type SmartReplyAssistantPhase =
+  | "draft_confirmation"
   | "thinking"
   | "waiting_for_customer"
   | "confirmation"
@@ -40,6 +44,7 @@ export type SmartReplyAssistantTurn = {
 type SmartReplyAssistantInput = {
   activeMessageKey?: string;
   autoPending?: Record<string, true>;
+  draftConfirmationMessageKey?: string;
   hidden?: Record<string, true>;
   messages: Message[];
   now?: number;
@@ -50,6 +55,7 @@ type SmartReplyAssistantInput = {
 export function resolveSmartReplyAssistantTurn({
   activeMessageKey,
   autoPending = {},
+  draftConfirmationMessageKey,
   hidden = {},
   messages,
   now = Date.now(),
@@ -72,6 +78,16 @@ export function resolveSmartReplyAssistantTurn({
 
   if (!message) {
     return undefined;
+  }
+
+  if (draftConfirmationMessageKey === activeMessageKey) {
+    return createTurn({
+      isComposerEditable: true,
+      label: SMART_REPLY_DRAFT_CONFIRMATION_LABEL,
+      lookupKey: activeMessageKey,
+      message,
+      phase: "draft_confirmation",
+    });
   }
 
   return resolveCandidateTurn({

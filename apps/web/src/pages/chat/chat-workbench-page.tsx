@@ -62,6 +62,7 @@ import {
 import {
   CLEAR_COMPOSER_COMMAND,
   INSERT_COMPOSER_MENTION_COMMAND,
+  INSERT_COMPOSER_SEGMENTS_COMMAND,
   RESTORE_COMPOSER_COMMAND,
   UPDATE_COMPOSER_IMAGE_COMMAND,
 } from "@/pages/chat/components/composer/lexical-commands";
@@ -471,6 +472,7 @@ function ChatWorkbenchContent({
     scopeTransitionError,
     sendAgentMessageSegments,
     sendSmartReply,
+    setComposerHasContent,
     setActiveAccount,
     setActiveConversation,
     setActiveMode,
@@ -566,6 +568,7 @@ function ChatWorkbenchContent({
       scopeTransitionError: state.scopeTransitionError,
       sendAgentMessageSegments: state.sendAgentMessageSegments,
       sendSmartReply: state.sendSmartReply,
+      setComposerHasContent: state.setComposerHasContent,
       setActiveAccount: state.setActiveAccount,
       setActiveConversation: state.setActiveConversation,
       setActiveMode: state.setActiveMode,
@@ -651,6 +654,7 @@ function ChatWorkbenchContent({
   const workbenchBodyRef = useRef<HTMLDivElement | null>(null);
   const messageViewportRef = useRef<HTMLDivElement | null>(null);
   const composerRef = useRef<LexicalEditor | null>(null);
+  const composerModeRef = useRef<"message" | "suggestion">("message");
   const mentionRetryDialogStateRef =
     useRef<MentionRetryDialogState | null>(null);
   const isSendingDraftRef = useRef(false);
@@ -688,9 +692,36 @@ function ChatWorkbenchContent({
   const handleComposerSegmentsChange = useCallback(
     (nextSegments: ComposerSegment[]) => {
       composerSegmentsRef.current = nextSegments;
+      const conversationId = activeConversationIdRef.current;
+
+      if (conversationId) {
+        setComposerHasContent(
+          conversationId,
+          nextSegments.length > 0 || quotedMessageRef.current !== null,
+        );
+      }
+    },
+    [setComposerHasContent],
+  );
+  const handleComposerModeChange = useCallback(
+    (mode: "message" | "suggestion") => {
+      composerModeRef.current = mode;
     },
     [],
   );
+
+  useEffect(() => {
+    const conversationId = activeConversationId;
+
+    if (!conversationId) {
+      return;
+    }
+
+    setComposerHasContent(
+      conversationId,
+      composerSegmentsRef.current.length > 0 || quotedMessage !== null,
+    );
+  }, [activeConversationId, quotedMessage, setComposerHasContent]);
   const consumeRoutedConversationOpen = useCallback(
     (requestKey: string) => {
       completedRoutedConversationOpenRequestKeyRef.current = requestKey;
@@ -1690,6 +1721,14 @@ function ChatWorkbenchContent({
     if (!options?.keepQuote) {
       setQuotedMessage(null);
     }
+
+    const conversationId = activeConversationIdRef.current;
+    if (conversationId) {
+      setComposerHasContent(
+        conversationId,
+        options?.keepQuote === true && quotedMessageRef.current !== null,
+      );
+    }
   };
 
   const restoreComposerDraftForConversation = (conversationId: string) => {
@@ -1706,6 +1745,7 @@ function ChatWorkbenchContent({
     composerRef.current?.dispatchCommand(RESTORE_COMPOSER_COMMAND, {
       segments: savedDraft.segments,
     });
+    setComposerHasContent(conversationId, true);
   };
 
   const clearComposer = (options?: { keepQuote?: boolean }) => {
@@ -1791,6 +1831,34 @@ function ChatWorkbenchContent({
     [],
   );
 
+  const sendComposerMaterialSegments = useCallback(
+    async (segments: ComposerSegment[]) => {
+      if (composerModeRef.current !== "suggestion") {
+        return sendAgentMessageSegments(segments);
+      }
+
+      const editor = composerRef.current;
+      if (!editor) {
+        return {
+          errorCode: "UNAVAILABLE",
+          errorMessage: "当前无法添加素材",
+          reason: "unavailable" as const,
+          ok: false as const,
+        };
+      }
+
+      editor.dispatchCommand(INSERT_COMPOSER_SEGMENTS_COMMAND, { segments });
+      editor.focus();
+
+      return {
+        didConsumeQuote: false,
+        ok: true as const,
+        optNos: [],
+      };
+    },
+    [sendAgentMessageSegments],
+  );
+
   const {
     activeMaterialLibraryBizType,
     activeMaterialLibraryGroupId,
@@ -1843,7 +1911,7 @@ function ChatWorkbenchContent({
     },
     requestActiveConversationRead,
     resolvedActiveConversationId: activeConversation?.id,
-    sendAgentMessageSegments,
+    sendAgentMessageSegments: sendComposerMaterialSegments,
   });
 
   const resetLocalSessionState = useCallback(() => {
@@ -1903,7 +1971,11 @@ function ChatWorkbenchContent({
     isSendingDraftRef,
     onSendFailure: handleSmartReplySendFailure,
     onSendingChange: setIsSendingDraft,
-    onSent: scrollMessageViewportToBottom,
+    onSent: () => {
+      clearComposer();
+      scrollMessageViewportToBottom();
+      void requestActiveConversationRead({ force: true });
+    },
     requestSmartReplyGeneralAnswer,
     sendSmartReply,
   });
@@ -2016,6 +2088,7 @@ function ChatWorkbenchContent({
 
   const handleFileSelect = (fileList: FileList | File[] | null) => {
     const files = Array.from(fileList ?? []);
+    const shouldInsertIntoComposer = composerModeRef.current === "suggestion";
 
     if (files.length === 0) {
       return;
@@ -2027,6 +2100,8 @@ function ChatWorkbenchContent({
       );
       return;
     }
+
+    const targetConversationId = activeConversation.id;
 
     for (const file of files) {
       if (!isSupportedComposerFile(file)) {
@@ -2089,6 +2164,22 @@ function ChatWorkbenchContent({
                 : item,
             ),
           );
+
+          if (shouldInsertIntoComposer) {
+            if (
+              activeConversationIdRef.current !== targetConversationId ||
+              composerModeRef.current !== "suggestion"
+            ) {
+              return;
+            }
+
+            composerRef.current?.dispatchCommand(
+              INSERT_COMPOSER_SEGMENTS_COMMAND,
+              { segments: [fileSegment] },
+            );
+            composerRef.current?.focus();
+            return;
+          }
 
           const result = await sendAgentMessageSegments([fileSegment]);
 
@@ -2589,6 +2680,7 @@ function ChatWorkbenchContent({
       sidebarItems={sidebarItems}
       onCustomerPanelResizeStart={handleCustomerPanelResizeStart}
       onComposerSegmentsChange={handleComposerSegmentsChange}
+      onComposerModeChange={handleComposerModeChange}
       onCancelFileUpload={handleCancelFileUpload}
       onCancelAgentHosting={() => handleChangeFullAuto(false)}
       onChangeSeatAgentMode={handleChangeSeatAgentMode}

@@ -46,6 +46,8 @@ import {
   type WorkbenchSmartReplySendAnswerResponse,
   type WorkbenchSmartReplyPollRequest,
   type WorkbenchSmartReplyPollResponse,
+  type WorkbenchSmartReplyReferenceMessagesRequest,
+  type WorkbenchSmartReplyReferenceMessagesResponse,
   type WorkbenchKnowledgePageRequest,
   type WorkbenchKnowledgePageResponse,
   type WorkbenchKnowledgeConfigRequest,
@@ -651,6 +653,14 @@ export function createHttpWorkbenchService(): WorkbenchService {
         WorkbenchSmartReplyAttachmentsResponse,
         WorkbenchSmartReplyAttachmentsRequest
       >("/server/smart-reply/attachments", request);
+    },
+    getSmartReplyReferenceMessages(request) {
+      return http.post<
+        WorkbenchSmartReplyReferenceMessagesResponse,
+        WorkbenchSmartReplyReferenceMessagesRequest
+      >("/server/smart-reply/reference-messages", request, {
+        supportReadonlyAllowed: true,
+      });
     },
     checkSmartReplyTextModeration(request) {
       return http.post<

@@ -3181,6 +3181,112 @@ describe("useWorkbenchStore", () => {
     });
   });
 
+  it("asks before auto-generating when the composer already has a draft", async () => {
+    const baseService = createMockWorkbenchService();
+    const observedAutoRequests: Array<{ conversationId: string; msgId: number }> = [];
+
+    setWorkbenchService({
+      ...baseService,
+      async requestSmartReplyAutoGeneralAnswer(request) {
+        observedAutoRequests.push(request);
+        return { id: "88" };
+      },
+      async pollSmartReplies() {
+        return { suggestions: [] };
+      },
+    });
+    useWorkbenchStore.getState().saveComposerDraft("conv-001", {
+      draft: "客服正在编辑的草稿",
+      quotedMessage: null,
+      segments: [{ text: "客服正在编辑的草稿", type: "text" }],
+    });
+
+    await useWorkbenchStore.getState().initializeWorkbench();
+
+    expect(observedAutoRequests).toEqual([]);
+    expect(
+      useWorkbenchStore.getState()
+        .smartReplyDraftConfirmationMessageKeyByConversationId["conv-001"],
+    ).toBe("9");
+    expect(
+      useWorkbenchStore.getState().smartReplyActiveMessageKeyByConversationId[
+        "conv-001"
+      ],
+    ).toBe("9");
+  });
+
+  it("starts manual generation only after the composer overwrite is confirmed", async () => {
+    const baseService = createMockWorkbenchService();
+    const observedGeneralAnswerRequests: Array<{
+      conversationId: string;
+      msgId: number;
+    }> = [];
+
+    setWorkbenchService({
+      ...baseService,
+      async requestSmartReplyAutoGeneralAnswer() {
+        return { id: "auto-9" };
+      },
+      async requestSmartReplyGeneralAnswer(request) {
+        observedGeneralAnswerRequests.push(request);
+        return {
+          suggestion: {
+            assistantName: "智能助手",
+            content: "",
+            messageId: String(request.msgId),
+            status: "processing",
+          },
+        };
+      },
+      async pollSmartReplies() {
+        return { suggestions: [] };
+      },
+    });
+
+    await useWorkbenchStore.getState().initializeWorkbench();
+    const message = useWorkbenchStore
+      .getState()
+      .messagesByConversationId["conv-001"].find(
+        (item): item is Message & { role: "customer" } =>
+          item.role === "customer" && item.seq === 9,
+      );
+
+    expect(message).toBeDefined();
+    useWorkbenchStore.setState((state) => ({
+      smartReplyActiveMessageKeyByConversationId: {},
+      smartReplyAutoPendingMessageKeysByConversationId: {},
+      smartReplyByMessageIdByConversationId: {
+        ...state.smartReplyByMessageIdByConversationId,
+        "conv-001": {},
+      },
+      smartReplyPendingMessageKeysByConversationId: {},
+    }));
+    useWorkbenchStore.getState().setComposerHasContent("conv-001", true);
+
+    await useWorkbenchStore.getState().requestSmartReplyGeneralAnswer(message!);
+
+    expect(observedGeneralAnswerRequests).toEqual([]);
+    expect(
+      useWorkbenchStore.getState()
+        .smartReplyDraftConfirmationMessageKeyByConversationId["conv-001"],
+    ).toBe("9");
+
+    await useWorkbenchStore.getState().requestSmartReplyGeneralAnswer(message!, {
+      confirmedComposerOverwrite: true,
+    });
+
+    expect(observedGeneralAnswerRequests).toEqual([
+      expect.objectContaining({
+        conversationId: "conv-001",
+        msgId: 9,
+      }),
+    ]);
+    expect(
+      useWorkbenchStore.getState()
+        .smartReplyDraftConfirmationMessageKeyByConversationId["conv-001"],
+    ).toBeUndefined();
+  });
+
   it("clears auto smart reply preview pending when a background conversation auto request completes", async () => {
     const baseService = createMockWorkbenchService();
     const autoRequest = createDeferred<{ id: string }>();
@@ -5339,6 +5445,11 @@ describe("useWorkbenchStore", () => {
   it("hides only the sent smart reply after sending its answer", async () => {
     const baseService = createMockWorkbenchService();
     const sendSmartReplyAnswer = vi.fn(baseService.sendSmartReplyAnswer);
+    const sendAgentMessageSegments = vi.fn(async () => ({
+      didConsumeQuote: true,
+      ok: true as const,
+      optNos: ["opt-quote-001"],
+    }));
 
     setWorkbenchService({
       ...baseService,
@@ -5356,6 +5467,7 @@ describe("useWorkbenchStore", () => {
     }
 
     useWorkbenchStore.setState((state) => ({
+      sendAgentMessageSegments,
       smartReplyByMessageIdByConversationId: {
         ...state.smartReplyByMessageIdByConversationId,
         "conv-001": {
@@ -5384,6 +5496,15 @@ describe("useWorkbenchStore", () => {
 
     const result = await useWorkbenchStore.getState().sendSmartReply(firstMessage, {
       content: "发送第一条推荐",
+      quote: {
+        quoteMsgId: "quoted-message-001",
+        quotedMessage: {
+          contentType: "text",
+          fallbackText: "被引用的消息",
+          senderName: "客户",
+          text: "被引用的消息",
+        },
+      },
       recommendedAttachments: [],
       selectedAttachmentIds: [],
     });
@@ -5391,10 +5512,24 @@ describe("useWorkbenchStore", () => {
     const state = useWorkbenchStore.getState();
 
     expect(result.ok).toBe(true);
+    expect(sendAgentMessageSegments).toHaveBeenCalledWith(
+      [{ text: "发送第一条推荐", type: "text" }],
+      {
+        quote: {
+          quoteMsgId: "quoted-message-001",
+          quotedMessage: {
+            contentType: "text",
+            fallbackText: "被引用的消息",
+            senderName: "客户",
+            text: "被引用的消息",
+          },
+        },
+      },
+    );
     expect(sendSmartReplyAnswer).toHaveBeenCalledWith(
       expect.objectContaining({
         conversationId: "conv-001",
-        optNos: expect.arrayContaining([expect.stringMatching(/^opt-\d+$/)]),
+        optNos: ["opt-quote-001"],
         recordId: "record-9",
       }),
     );

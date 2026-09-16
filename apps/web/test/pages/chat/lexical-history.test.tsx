@@ -15,7 +15,10 @@ import {
   ComposerLiteAttachmentNode,
   ComposerMentionNode,
 } from "@/pages/chat/components/composer/lexical-nodes";
-import { RESTORE_COMPOSER_COMMAND } from "@/pages/chat/components/composer/lexical-commands";
+import {
+  REPLACE_COMPOSER_COMMAND,
+  RESTORE_COMPOSER_COMMAND,
+} from "@/pages/chat/components/composer/lexical-commands";
 import { ComposerRuntimePlugin } from "@/pages/chat/components/composer/lexical-plugins";
 import { HistoryPlugin } from "@/pages/chat/components/lexical-history";
 import type { ConditionalLogicSegment } from "@/pages/chat/ai-hosting/agent-components/agent-settings.constants";
@@ -92,7 +95,7 @@ function pressRedo(editor: HTMLElement) {
 }
 
 describe("Lexical editor history", () => {
-  it("supports composer undo and redo without restoring replaced draft content", async () => {
+  it("keeps draft restoration outside history and makes AI replacement undoable", async () => {
     const user = userEvent.setup();
     const editorRef = createRef<LexicalEditor>();
 
@@ -154,6 +157,16 @@ describe("Lexical editor history", () => {
       });
     });
     await waitFor(() => expect(textbox).toHaveTextContent("切换后草稿"));
+
+    pressUndo(textbox);
+    await waitFor(() => expect(textbox).toHaveTextContent("切换后草稿"));
+
+    act(() => {
+      editorRef.current?.dispatchCommand(REPLACE_COMPOSER_COMMAND, {
+        segments: [{ text: "AI 生成的建议", type: "text" }],
+      });
+    });
+    await waitFor(() => expect(textbox).toHaveTextContent("AI 生成的建议"));
 
     pressUndo(textbox);
     await waitFor(() => expect(textbox).toHaveTextContent("切换后草稿"));

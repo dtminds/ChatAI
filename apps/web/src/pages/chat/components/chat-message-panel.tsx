@@ -105,6 +105,7 @@ export function ChatMessagePanel({
     smartReplyActiveMessageKey,
     smartReplyAutoPendingByMessageId,
     smartReplyCanDisplay,
+    smartReplyDraftConfirmationMessageKey,
     smartReplyHiddenMessageKeys,
     smartReplyPendingByMessageId,
     smartReplySuggestionsByMessageId,
@@ -119,6 +120,10 @@ export function ChatMessagePanel({
         state,
         conversationId,
       ),
+      smartReplyDraftConfirmationMessageKey:
+        state.smartReplyDraftConfirmationMessageKeyByConversationId[
+          conversationId
+        ],
       smartReplyHiddenMessageKeys:
         state.smartReplyHiddenMessageKeysByConversationId[conversationId],
       smartReplyPendingByMessageId:
@@ -186,6 +191,7 @@ export function ChatMessagePanel({
     ? resolveSmartReplyAssistantTurn({
         activeMessageKey: smartReplyActiveMessageKey,
         autoPending: smartReplyAutoPendingByMessageId,
+        draftConfirmationMessageKey: smartReplyDraftConfirmationMessageKey,
         hidden: smartReplyHiddenMessageKeys,
         messages,
         pending: smartReplyPendingByMessageId,

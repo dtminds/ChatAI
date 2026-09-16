@@ -12,6 +12,7 @@ import {
   mergeSmartReplyRecommendedAttachments,
   resolveSmartReplyAttachmentCount,
   resolveSmartReplyAttachmentIds,
+  resolveSmartReplyReferenceMessageSeqs,
   collectNewSmartReplyPendingKeys,
   collectPendingSmartReplyPollMsgIds,
   collectQuestionImgs,
@@ -1050,9 +1051,35 @@ describe("smart-reply-adapter", () => {
     expect(
       resolveSmartReplyAttachmentIds({
         genAnswer,
+        refAttachIds: ["2486"],
       }),
     ).toEqual([]);
     expect(resolveSmartReplyAttachmentCount({ genAnswer })).toBe(1);
+  });
+
+  it("collects forward message ids for one batch hydration request", () => {
+    expect(
+      resolveSmartReplyReferenceMessageSeqs([
+        {
+          fileName: "小程序",
+          fileType: "7",
+          id: "transmsg:weapp:3050",
+          transMsgInfoId: "3050",
+        },
+        {
+          fileName: "视频号",
+          fileType: "3",
+          id: "transmsg:sphfeed:3051",
+          transMsgInfoId: "3051",
+        },
+        {
+          fileName: "重复的小程序",
+          fileType: "7",
+          id: "transmsg:weapp:3050",
+          transMsgInfoId: "3050",
+        },
+      ]),
+    ).toEqual([3050, 3051]);
   });
 
   it("enriches forward mini-program attachments from conversation messages", () => {

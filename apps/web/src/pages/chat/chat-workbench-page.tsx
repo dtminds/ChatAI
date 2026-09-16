@@ -3012,10 +3012,10 @@ function ChatWorkbenchContent({
         onAction={async () => {
           if (pollingPauseReason === "sync-gap") {
             const recovered = await recoverFromCursorInvalidation();
-            if (!recovered) {
-              window.location.reload();
-            } else {
+            if (recovered) {
               setPollingPauseReason(null);
+            } else {
+              window.location.reload();
             }
           } else {
             window.location.reload();

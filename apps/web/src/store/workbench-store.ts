@@ -6167,16 +6167,25 @@ export function createWorkbenchStore() {
       const requestId = getScopeRequestId();
 
       try {
-        if (
-          import.meta.env.DEV &&
-          typeof localStorage !== "undefined" &&
-          localStorage.getItem("chatai.debug.forceWorkbenchCursorInvalidate") === "1"
-        ) {
-          throw {
-            code: "WORKBENCH_CURSOR_INVALIDATED",
-            message: "DEBUG: Forced cursor invalidation for testing",
-            status: 409,
-          };
+        if (import.meta.env.DEV && typeof localStorage !== "undefined") {
+          const debugFlag = localStorage.getItem("chatai.debug.forceWorkbenchCursorInvalidate");
+          
+          if (debugFlag === "1") {
+            localStorage.removeItem("chatai.debug.forceWorkbenchCursorInvalidate");
+            throw {
+              code: "WORKBENCH_CURSOR_INVALIDATED",
+              message: "DEBUG: Forced cursor invalidation for testing (one-shot)",
+              status: 409,
+            };
+          }
+
+          if (debugFlag === "always") {
+            throw {
+              code: "WORKBENCH_CURSOR_INVALIDATED",
+              message: "DEBUG: Forced cursor invalidation for testing (always)",
+              status: 409,
+            };
+          }
         }
 
         const activeConversationId = state.activeConversationId || undefined;
@@ -6669,9 +6678,16 @@ export function createWorkbenchStore() {
     async recoverFromCursorInvalidation() {
       const state = get();
 
-      if (state.pollState.status !== "recovering") {
+      if (state.pollState.status !== "recovering" && state.pollState.status !== "paused") {
         return false;
       }
+
+      set((currentState) => ({
+        pollState: {
+          ...currentState.pollState,
+          status: "recovering",
+        },
+      }));
 
       try {
         const activeConversationId = state.activeConversationId;

@@ -9360,7 +9360,7 @@ describe("useWorkbenchStore", () => {
     expect(state.pollState.recoveryAttempts).toBe(4);
   });
 
-  it("forces cursor invalidation in DEV when debug localStorage flag is set", async () => {
+  it("forces cursor invalidation in DEV when debug localStorage flag is set to '1' (one-shot)", async () => {
     const originalEnv = import.meta.env.DEV;
     const baseService = createMockWorkbenchService();
 
@@ -9391,12 +9391,90 @@ describe("useWorkbenchStore", () => {
       const state = useWorkbenchStore.getState();
       expect(state.pollState.status).toBe("idle");
       expect(state.pollState.recoveryAttempts).toBe(1);
+      expect(localStorageMock["chatai.debug.forceWorkbenchCursorInvalidate"]).toBeUndefined();
+
+      await useWorkbenchStore.getState().pollWorkbench();
+      const stateAfter = useWorkbenchStore.getState();
+      expect(stateAfter.pollState.recoveryAttempts).toBe(1);
     } finally {
       Object.defineProperty(import.meta.env, "DEV", {
         configurable: true,
         value: originalEnv,
       });
     }
+  });
+
+  it("forces cursor invalidation on every poll when debug flag is 'always'", async () => {
+    const originalEnv = import.meta.env.DEV;
+    const baseService = createMockWorkbenchService();
+
+    try {
+      Object.defineProperty(import.meta.env, "DEV", {
+        configurable: true,
+        value: true,
+      });
+
+      const localStorageMock: Record<string, string> = {
+        "chatai.debug.forceWorkbenchCursorInvalidate": "always",
+      };
+      global.localStorage = {
+        getItem: vi.fn((key: string) => localStorageMock[key] ?? null),
+        setItem: vi.fn((key: string, value: string) => {
+          localStorageMock[key] = value;
+        }),
+        removeItem: vi.fn((key: string) => {
+          delete localStorageMock[key];
+        }),
+      } as any;
+
+      setWorkbenchService(baseService);
+      await useWorkbenchStore.getState().initializeWorkbench();
+
+      await useWorkbenchStore.getState().pollWorkbench();
+      expect(useWorkbenchStore.getState().pollState.recoveryAttempts).toBe(1);
+
+      await useWorkbenchStore.getState().pollWorkbench();
+      expect(useWorkbenchStore.getState().pollState.recoveryAttempts).toBe(2);
+
+      expect(localStorageMock["chatai.debug.forceWorkbenchCursorInvalidate"]).toBe("always");
+    } finally {
+      Object.defineProperty(import.meta.env, "DEV", {
+        configurable: true,
+        value: originalEnv,
+      });
+    }
+  });
+
+  it("allows manual recovery from paused state via recoverFromCursorInvalidation", async () => {
+    const baseService = createMockWorkbenchService();
+
+    setWorkbenchService(baseService);
+    await useWorkbenchStore.getState().initializeWorkbench();
+
+    useWorkbenchStore.setState((state) => ({
+      pollState: {
+        ...state.pollState,
+        pauseReason: "cursor-invalidated",
+        recoveryAttempts: 4,
+        status: "paused",
+      },
+    }));
+
+    const composerDraft = {
+      draft: "Test draft",
+      quotedMessage: null,
+      segments: [{ text: "Test draft", type: "text" as const }],
+    };
+    useWorkbenchStore.getState().saveComposerDraft("conv-001", composerDraft);
+
+    const recovered = await useWorkbenchStore.getState().recoverFromCursorInvalidation();
+
+    expect(recovered).toBe(true);
+
+    const state = useWorkbenchStore.getState();
+    expect(state.pollState.status).toBe("idle");
+    expect(state.pollState.pauseReason).toBeUndefined();
+    expect(state.composerDraftsByConversationId["conv-001"]).toEqual(composerDraft);
   });
 
   it("allows manual recovery via recoverFromCursorInvalidation when auto-recovery fails", async () => {

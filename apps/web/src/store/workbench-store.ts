@@ -115,7 +115,8 @@ import {
   SMART_REPLY_SEMANTIC_WAIT_TIMEOUT_MS,
   type SmartReplySendPayload,
 } from "@/pages/chat/api/smart-reply-adapter";
-import type { SmartReplySuggestion } from "@/pages/chat/components/smart-reply-card";
+import { hasBlockingSmartReplyAssistantTurn } from "@/pages/chat/lib/smart-reply-assistant";
+import type { SmartReplySuggestion } from "@/pages/chat/lib/smart-reply-types";
 import { MESSAGE_REVOKE_WINDOW_MS } from "@/pages/chat/chat-constants";
 import type {
   Account,
@@ -256,6 +257,7 @@ type WorkbenchState = {
     string,
     Record<string, SmartReplySuggestion>
   >;
+  smartReplyActiveMessageKeyByConversationId: Record<string, string>;
   smartReplyAutoPendingMessageKeysByConversationId: Record<
     string,
     Record<string, true>
@@ -530,6 +532,7 @@ function createInitialState(): Omit<
     me: undefined,
     messagePaginationByConversationId: {},
     messagesByConversationId: {},
+    smartReplyActiveMessageKeyByConversationId: {},
     smartReplyAutoPendingMessageKeysByConversationId: {},
     smartReplyAutoSkippedMessageKeysByConversationId: {},
     smartReplyByMessageIdByConversationId: {},
@@ -1259,17 +1262,7 @@ function buildSmartReplyHiddenKeys(
 ) {
   const hidden: Record<string, true> = {};
 
-  for (const [key, suggestion] of Object.entries(suggestions)) {
-    if (
-      isSmartReplyGenerationFailed(suggestion) ||
-      isSmartReplyKnowledgeMiss(suggestion)
-    ) {
-      // Historical terminal failures are kept for auto-generation guards but
-      // hidden from the chat feed because they are not useful operator replies.
-      hidden[key] = true;
-      continue;
-    }
-
+  for (const key of Object.keys(suggestions)) {
     const messageIndex = messages.findIndex(
       (message) => getSmartReplyLookupKey(message) === key,
     );
@@ -1419,7 +1412,7 @@ function getLatestNonSystemMessage(messages: Message[]) {
   for (let index = messages.length - 1; index >= 0; index -= 1) {
     const message = messages[index];
 
-    if (message?.role !== "system") {
+    if (message && message.role !== "system") {
       return message;
     }
   }
@@ -1475,6 +1468,48 @@ function getLatestSmartReplyEligibleMessageKey(messages: Message[]) {
   }
 
   return undefined;
+}
+
+function getInitialSmartReplyActiveMessageKey(input: {
+  canActivate: boolean;
+  hidden: Record<string, true>;
+  messages: Message[];
+  pending: Record<string, true>;
+  suggestions: Record<string, SmartReplySuggestion>;
+}) {
+  if (!input.canActivate) {
+    return undefined;
+  }
+
+  const latestMessage = getLatestNonSystemMessage(input.messages);
+
+  if (!latestMessage || !isSmartReplyEligibleMessage(latestMessage)) {
+    return undefined;
+  }
+
+  const lookupKey = getSmartReplyLookupKey(latestMessage);
+
+  if (
+    !lookupKey ||
+    input.hidden[lookupKey] ||
+    (!input.pending[lookupKey] && !input.suggestions[lookupKey])
+  ) {
+    return undefined;
+  }
+
+  return lookupKey;
+}
+
+function replaceSmartReplyActiveMessageKey(
+  activeKeys: Record<string, string>,
+  conversationId: string,
+  lookupKey?: string,
+) {
+  const remainingActiveKeys = omitByKeys(activeKeys, [conversationId]);
+
+  return lookupKey
+    ? { ...remainingActiveKeys, [conversationId]: lookupKey }
+    : remainingActiveKeys;
 }
 
 function pruneSemanticWaitSmartReplyPendingKeys(input: {
@@ -1874,6 +1909,26 @@ function triggerSmartReplyAutoGeneration(
   }
 
   const lookupKey = getSmartReplyLookupKey(message);
+  const state = get();
+
+  if (
+    hasBlockingSmartReplyAssistantTurn(
+      {
+        activeMessageKey:
+          state.smartReplyActiveMessageKeyByConversationId[conversationId],
+        autoPending:
+          state.smartReplyAutoPendingMessageKeysByConversationId[conversationId],
+        hidden: state.smartReplyHiddenMessageKeysByConversationId[conversationId],
+        messages: state.messagesByConversationId[conversationId] ?? [],
+        pending: state.smartReplyPendingMessageKeysByConversationId[conversationId],
+        suggestions: state.smartReplyByMessageIdByConversationId[conversationId],
+      },
+      lookupKey,
+    )
+  ) {
+    return;
+  }
+
   const optimisticSuggestion = createTriggeredSmartReplySuggestion(message);
 
   set((currentState) => {
@@ -1882,6 +1937,10 @@ function triggerSmartReplyAutoGeneration(
     }
 
     return {
+      smartReplyActiveMessageKeyByConversationId: {
+        ...currentState.smartReplyActiveMessageKeyByConversationId,
+        [conversationId]: lookupKey,
+      },
       smartReplyAutoPendingMessageKeysByConversationId: {
         ...currentState.smartReplyAutoPendingMessageKeysByConversationId,
         [conversationId]: {
@@ -3091,6 +3150,10 @@ function clearConversationMessageState(
       state.smartReplyByMessageIdByConversationId,
       smartReplyClearedConversationIds,
     ),
+    smartReplyActiveMessageKeyByConversationId: omitByKeys(
+      state.smartReplyActiveMessageKeyByConversationId,
+      smartReplyClearedConversationIds,
+    ),
     smartReplyHiddenMessageKeysByConversationId: omitByKeys(
       state.smartReplyHiddenMessageKeysByConversationId,
       smartReplyClearedConversationIds,
@@ -3142,6 +3205,7 @@ function getMessageStateConversationIds(state: WorkbenchStore) {
     ...Object.keys(state.historyPanelScrollModeByConversationId),
     ...Object.keys(state.smartReplyAutoPendingMessageKeysByConversationId),
     ...Object.keys(state.smartReplyAutoSkippedMessageKeysByConversationId),
+    ...Object.keys(state.smartReplyActiveMessageKeyByConversationId),
     ...Object.keys(state.smartReplyByMessageIdByConversationId),
     ...Object.keys(state.smartReplyPendingMessageKeysByConversationId),
     ...Object.keys(state.smartReplyLastPolledAtByConversationId),
@@ -4432,6 +4496,14 @@ export function createWorkbenchStore() {
           pageSmartReplyByMessageId,
           { hidden: pageSmartReplyHidden },
         );
+        const pageSmartReplyActiveMessageKey =
+          getInitialSmartReplyActiveMessageKey({
+            canActivate: canUseSmartReplyForConversation(get(), conversationId),
+            hidden: pageSmartReplyHidden,
+            messages: page.messages,
+            pending: pageSmartReplyPending,
+            suggestions: pageSmartReplyByMessageId,
+          });
 
         set((currentState) => ({
           activeMessageSeq: getActiveMessageSeq(
@@ -4458,6 +4530,12 @@ export function createWorkbenchStore() {
             ...currentState.smartReplyPendingMessageKeysByConversationId,
             [conversationId]: pageSmartReplyPending,
           },
+          smartReplyActiveMessageKeyByConversationId:
+            replaceSmartReplyActiveMessageKey(
+              currentState.smartReplyActiveMessageKeyByConversationId,
+              conversationId,
+              pageSmartReplyActiveMessageKey,
+            ),
           smartReplyByMessageIdByConversationId: {
             ...currentState.smartReplyByMessageIdByConversationId,
             [conversationId]: pageSmartReplyByMessageId,
@@ -4792,6 +4870,17 @@ export function createWorkbenchStore() {
           pageSmartReplyByMessageId,
           { hidden: pageSmartReplyHidden },
         );
+        const pageSmartReplyActiveMessageKey =
+          getInitialSmartReplyActiveMessageKey({
+            canActivate: canUseSmartReplyForConversation(
+              get(),
+              conversation.id,
+            ),
+            hidden: pageSmartReplyHidden,
+            messages: conversationPage.messages,
+            pending: pageSmartReplyPending,
+            suggestions: pageSmartReplyByMessageId,
+          });
 
         set((currentState) => {
           const staleMessageConversationIds = [
@@ -4836,6 +4925,12 @@ export function createWorkbenchStore() {
               ...clearedMessageState.smartReplyByMessageIdByConversationId,
               [conversation.id]: pageSmartReplyByMessageId,
             },
+            smartReplyActiveMessageKeyByConversationId:
+              replaceSmartReplyActiveMessageKey(
+                clearedMessageState.smartReplyActiveMessageKeyByConversationId,
+                conversation.id,
+                pageSmartReplyActiveMessageKey,
+              ),
             smartReplyHiddenMessageKeysByConversationId: {
               ...clearedMessageState.smartReplyHiddenMessageKeysByConversationId,
               [conversation.id]: pageSmartReplyHidden,
@@ -5246,12 +5341,19 @@ export function createWorkbenchStore() {
         const state = get();
         const conversationId = message.conversationId;
         const lookupKey = getSmartReplyLookupKey(message);
+        const suggestions =
+          state.smartReplyByMessageIdByConversationId[conversationId];
 
-        if (!state.smartReplyByMessageIdByConversationId[conversationId]?.[lookupKey]) {
+        if (!suggestions?.[lookupKey]) {
           return;
         }
 
         set((currentState) => ({
+          smartReplyActiveMessageKeyByConversationId:
+            replaceSmartReplyActiveMessageKey(
+              currentState.smartReplyActiveMessageKeyByConversationId,
+              conversationId,
+            ),
           smartReplyHiddenMessageKeysByConversationId: {
             ...currentState.smartReplyHiddenMessageKeysByConversationId,
             [conversationId]: {
@@ -5276,9 +5378,38 @@ export function createWorkbenchStore() {
         }
 
         const lookupKey = getSmartReplyLookupKey(message);
+        const previousSuggestion =
+          state.smartReplyByMessageIdByConversationId[conversationId]?.[lookupKey];
 
-        if (options?.force) {
+        if (
+          hasBlockingSmartReplyAssistantTurn(
+            {
+              activeMessageKey:
+                state.smartReplyActiveMessageKeyByConversationId[conversationId],
+              autoPending:
+                state.smartReplyAutoPendingMessageKeysByConversationId[
+                  conversationId
+                ],
+              hidden:
+                state.smartReplyHiddenMessageKeysByConversationId[conversationId],
+              messages: state.messagesByConversationId[conversationId] ?? [],
+              pending:
+                state.smartReplyPendingMessageKeysByConversationId[conversationId],
+              suggestions:
+                state.smartReplyByMessageIdByConversationId[conversationId],
+            },
+            lookupKey,
+          )
+        ) {
+          return;
+        }
+
+        if (!options?.force && previousSuggestion) {
           set((currentState) => ({
+            smartReplyActiveMessageKeyByConversationId: {
+              ...currentState.smartReplyActiveMessageKeyByConversationId,
+              [conversationId]: lookupKey,
+            },
             smartReplyHiddenMessageKeysByConversationId: {
               ...currentState.smartReplyHiddenMessageKeysByConversationId,
               [conversationId]: omitSmartReplyHiddenKey(
@@ -5288,8 +5419,47 @@ export function createWorkbenchStore() {
                 lookupKey,
               ),
             },
+            ...(!isSmartReplyPollComplete(previousSuggestion)
+              ? {
+                  smartReplyPendingMessageKeysByConversationId: {
+                    ...currentState.smartReplyPendingMessageKeysByConversationId,
+                    [conversationId]: {
+                      ...(currentState.smartReplyPendingMessageKeysByConversationId[
+                        conversationId
+                      ] ?? {}),
+                      [lookupKey]: true,
+                    },
+                  },
+                }
+              : {}),
           }));
+
+          if (!isSmartReplyPollComplete(previousSuggestion)) {
+            syncSmartReplyRuntimeTimers(
+              conversationId,
+              get().smartReplyPendingMessageKeysByConversationId[conversationId] ?? {},
+            );
+            scheduleSmartReplyPollForConversation(conversationId, { force: true });
+          }
+
+          return;
         }
+
+        set((currentState) => ({
+          smartReplyActiveMessageKeyByConversationId: {
+            ...currentState.smartReplyActiveMessageKeyByConversationId,
+            [conversationId]: lookupKey,
+          },
+          smartReplyHiddenMessageKeysByConversationId: {
+            ...currentState.smartReplyHiddenMessageKeysByConversationId,
+            [conversationId]: omitSmartReplyHiddenKey(
+              currentState.smartReplyHiddenMessageKeysByConversationId[
+                conversationId
+              ] ?? {},
+              lookupKey,
+            ),
+          },
+        }));
 
         try {
           const revealedSuggestion = options?.force
@@ -5335,6 +5505,10 @@ export function createWorkbenchStore() {
         }
 
         set((currentState) => ({
+          smartReplyActiveMessageKeyByConversationId: {
+            ...currentState.smartReplyActiveMessageKeyByConversationId,
+            [conversationId]: lookupKey,
+          },
           smartReplyPendingMessageKeysByConversationId: {
             ...currentState.smartReplyPendingMessageKeysByConversationId,
             [conversationId]: {
@@ -5399,6 +5573,31 @@ export function createWorkbenchStore() {
             const errorMessage =
               getRequestApiErrorMessage(error) ?? "智能回复生成失败，请稍后重试";
 
+            if (options?.force && shouldPreserveExistingSmartReplySuggestion(previousSuggestion)) {
+              return {
+                smartReplyByMessageIdByConversationId: {
+                  ...currentState.smartReplyByMessageIdByConversationId,
+                  [conversationId]: {
+                    ...(currentState.smartReplyByMessageIdByConversationId[
+                      conversationId
+                    ] ?? {}),
+                    ...(previousSuggestion
+                      ? { [lookupKey]: previousSuggestion }
+                      : {}),
+                  },
+                },
+                smartReplyPendingMessageKeysByConversationId: {
+                  ...currentState.smartReplyPendingMessageKeysByConversationId,
+                  [conversationId]: omitPendingSmartReplyKey(
+                    currentState.smartReplyPendingMessageKeysByConversationId[
+                      conversationId
+                    ] ?? {},
+                    lookupKey,
+                  ),
+                },
+              };
+            }
+
             return {
               smartReplyByMessageIdByConversationId: {
                 ...currentState.smartReplyByMessageIdByConversationId,
@@ -5429,6 +5628,7 @@ export function createWorkbenchStore() {
             conversationId,
             get().smartReplyPendingMessageKeysByConversationId[conversationId] ?? {},
           );
+          throw error;
         }
       },
       async requestSmartReplyMakeShorter(message) {
@@ -5604,6 +5804,11 @@ export function createWorkbenchStore() {
           }
 
           return {
+            smartReplyActiveMessageKeyByConversationId:
+              replaceSmartReplyActiveMessageKey(
+                currentState.smartReplyActiveMessageKeyByConversationId,
+                conversationId,
+              ),
             smartReplyByMessageIdByConversationId: {
               ...currentState.smartReplyByMessageIdByConversationId,
               [conversationId]: {
@@ -5849,20 +6054,62 @@ export function createWorkbenchStore() {
             return { ok: true };
           }
 
-          set((currentState) => ({
-            accounts: currentState.accounts.map((item) =>
+          set((currentState) => {
+            const accounts = currentState.accounts.map((item) =>
               item.id === accountId
                 ? {
                     ...item,
                     takenOverEmployeeId: takeoverResult.hostSubUserId,
                   }
                 : item,
-            ),
-            takeoverStatusByAccountId: omitTakeoverStatus(
-              currentState.takeoverStatusByAccountId,
-              accountId,
-            ),
-          }));
+            );
+            const activeConversationId = currentState.activeConversationId;
+            const activeConversation = activeConversationId
+              ? getConversationById(currentState, activeConversationId)
+              : undefined;
+            const shouldActivateCachedSmartReply =
+              activeConversationId && activeConversation?.accountId === accountId;
+            const smartReplyActiveMessageKey = shouldActivateCachedSmartReply
+              ? getInitialSmartReplyActiveMessageKey({
+                  canActivate: canUseSmartReplyForConversation(
+                    { ...currentState, accounts },
+                    activeConversationId,
+                  ),
+                  hidden:
+                    currentState.smartReplyHiddenMessageKeysByConversationId[
+                      activeConversationId
+                    ] ?? {},
+                  messages:
+                    currentState.messagesByConversationId[activeConversationId] ?? [],
+                  pending:
+                    currentState.smartReplyPendingMessageKeysByConversationId[
+                      activeConversationId
+                    ] ?? {},
+                  suggestions:
+                    currentState.smartReplyByMessageIdByConversationId[
+                      activeConversationId
+                    ] ?? {},
+                })
+              : undefined;
+
+            return {
+              accounts,
+              ...(shouldActivateCachedSmartReply
+                ? {
+                    smartReplyActiveMessageKeyByConversationId:
+                      replaceSmartReplyActiveMessageKey(
+                        currentState.smartReplyActiveMessageKeyByConversationId,
+                        activeConversationId,
+                        smartReplyActiveMessageKey,
+                      ),
+                  }
+                : {}),
+              takeoverStatusByAccountId: omitTakeoverStatus(
+                currentState.takeoverStatusByAccountId,
+                accountId,
+              ),
+            };
+          });
           clearTakeoverRequest(accountId);
           return { ok: true };
         } catch (error) {
@@ -5960,6 +6207,18 @@ export function createWorkbenchStore() {
             bootstrapSmartReplyByMessageId,
             { hidden: bootstrapSmartReplyHidden },
           );
+          const bootstrapSmartReplyActiveMessageKey = conversationPage
+            ? getInitialSmartReplyActiveMessageKey({
+                canActivate: canUseSmartReplyForConversation(
+                  bootstrapSmartReplyState,
+                  conversationPage.conversationId,
+                ),
+                hidden: bootstrapSmartReplyHidden,
+                messages: conversationPage.messages,
+                pending: bootstrapSmartReplyPending,
+                suggestions: bootstrapSmartReplyByMessageId,
+              })
+            : undefined;
 
           set({
             accounts: bootstrapResult.accounts,
@@ -6014,6 +6273,13 @@ export function createWorkbenchStore() {
                   ),
                 }
               : {},
+            smartReplyActiveMessageKeyByConversationId:
+              conversationPage && bootstrapSmartReplyActiveMessageKey
+                ? {
+                    [conversationPage.conversationId]:
+                      bootstrapSmartReplyActiveMessageKey,
+                  }
+                : {},
             smartReplyPendingMessageKeysByConversationId: conversationPage
               ? {
                   [conversationPage.conversationId]: bootstrapSmartReplyPending,
@@ -6667,6 +6933,8 @@ export function createWorkbenchStore() {
         };
       }
       const sendBatchStartedAt = Date.now();
+      const activeSmartReplyLookupKey =
+        state.smartReplyActiveMessageKeyByConversationId[activeConversationId];
       const shouldClearHandoffAfterSend = hasConversationHandoff(
         activeConversation.handoffMsgId,
       );
@@ -6807,12 +7075,30 @@ export function createWorkbenchStore() {
           );
         }
 
-        set((currentState) => ({
-          sendStatusByConversationId: {
-            ...currentState.sendStatusByConversationId,
-            [activeConversationId]: "idle",
-          },
-        }));
+        set((currentState) => {
+          const shouldClearSmartReplyTurn = Boolean(
+            activeSmartReplyLookupKey &&
+              currentState.smartReplyActiveMessageKeyByConversationId[
+                activeConversationId
+              ] === activeSmartReplyLookupKey,
+          );
+
+          return {
+            sendStatusByConversationId: {
+              ...currentState.sendStatusByConversationId,
+              [activeConversationId]: "idle",
+            },
+            ...(shouldClearSmartReplyTurn
+              ? {
+                  smartReplyActiveMessageKeyByConversationId:
+                    replaceSmartReplyActiveMessageKey(
+                      currentState.smartReplyActiveMessageKeyByConversationId,
+                      activeConversationId,
+                    ),
+                }
+              : {}),
+          };
+        });
 
         return { didConsumeQuote: hasSentQuote, ok: true, optNos };
       } catch (error) {
@@ -7498,6 +7784,9 @@ export function createWorkbenchStore() {
         fullAutoStatusByConversationId: previousConversationId
           ? omitByKeys(get().fullAutoStatusByConversationId, [previousConversationId])
           : get().fullAutoStatusByConversationId,
+        smartReplyActiveMessageKeyByConversationId: previousConversationId
+          ? omitByKeys(get().smartReplyActiveMessageKeyByConversationId, [previousConversationId])
+          : get().smartReplyActiveMessageKeyByConversationId,
         historyPanelOpenConversationId: undefined,
         isConversationLoading: false,
         messageUpdateCursor: undefined,
@@ -7818,6 +8107,17 @@ export function createWorkbenchStore() {
           accountSwitchSmartReplyByMessageId,
           { hidden: accountSwitchSmartReplyHidden },
         );
+        const accountSwitchSmartReplyActiveMessageKey =
+          getInitialSmartReplyActiveMessageKey({
+            canActivate: canUseSmartReplyForConversation(
+              get(),
+              conversationPage.conversationId,
+            ),
+            hidden: accountSwitchSmartReplyHidden,
+            messages: conversationPage.messages,
+            pending: accountSwitchSmartReplyPending,
+            suggestions: accountSwitchSmartReplyByMessageId,
+          });
 
         set((currentState) => {
           const currentMessages =
@@ -7853,6 +8153,12 @@ export function createWorkbenchStore() {
               ...currentState.smartReplyByMessageIdByConversationId,
               [conversationPage.conversationId]: accountSwitchSmartReplyByMessageId,
             },
+            smartReplyActiveMessageKeyByConversationId:
+              replaceSmartReplyActiveMessageKey(
+                currentState.smartReplyActiveMessageKeyByConversationId,
+                conversationPage.conversationId,
+                accountSwitchSmartReplyActiveMessageKey,
+              ),
             smartReplyHiddenMessageKeysByConversationId: {
               ...currentState.smartReplyHiddenMessageKeysByConversationId,
               [conversationPage.conversationId]: accountSwitchSmartReplyHidden,
@@ -8022,6 +8328,14 @@ export function createWorkbenchStore() {
           pageSmartReplyByMessageId,
           { hidden: pageSmartReplyHidden },
         );
+        const pageSmartReplyActiveMessageKey =
+          getInitialSmartReplyActiveMessageKey({
+            canActivate: canUseSmartReplyForConversation(get(), conversationId),
+            hidden: pageSmartReplyHidden,
+            messages: page.messages,
+            pending: pageSmartReplyPending,
+            suggestions: pageSmartReplyByMessageId,
+          });
 
         set((currentState) => {
           const staleMessageConversationIds = [
@@ -8058,6 +8372,12 @@ export function createWorkbenchStore() {
               ...clearedMessageState.smartReplyPendingMessageKeysByConversationId,
               [conversationId]: pageSmartReplyPending,
             },
+            smartReplyActiveMessageKeyByConversationId:
+              replaceSmartReplyActiveMessageKey(
+                clearedMessageState.smartReplyActiveMessageKeyByConversationId,
+                conversationId,
+                pageSmartReplyActiveMessageKey,
+              ),
             smartReplyByMessageIdByConversationId: {
               ...clearedMessageState.smartReplyByMessageIdByConversationId,
               [conversationId]: pageSmartReplyByMessageId,
@@ -8281,6 +8601,12 @@ export function createWorkbenchStore() {
               activeConversationId: "",
               activeMessageSeq: 0,
               isConversationLoading: false,
+              smartReplyActiveMessageKeyByConversationId: previousConversationId
+                ? omitByKeys(
+                    get().smartReplyActiveMessageKeyByConversationId,
+                    [previousConversationId],
+                  )
+                : get().smartReplyActiveMessageKeyByConversationId,
               smartReplyByMessageIdByConversationId: previousConversationId
                 ? omitByKeys(
                     get().smartReplyByMessageIdByConversationId,
@@ -8333,6 +8659,12 @@ export function createWorkbenchStore() {
         set({
           activeConversationId: "",
           activeMessageSeq: 0,
+          smartReplyActiveMessageKeyByConversationId: state.activeConversationId
+            ? omitByKeys(
+                get().smartReplyActiveMessageKeyByConversationId,
+                [state.activeConversationId],
+              )
+            : get().smartReplyActiveMessageKeyByConversationId,
           smartReplyByMessageIdByConversationId: state.activeConversationId
             ? omitByKeys(
                 get().smartReplyByMessageIdByConversationId,

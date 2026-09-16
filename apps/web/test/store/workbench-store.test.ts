@@ -58,6 +58,18 @@ function getSeedMessageIdAt(conversationId: string, index: number) {
   return seedMessages[conversationId]?.[index] ? String(index + 1) : undefined;
 }
 
+function hideSmartReply(conversationId: string, lookupKey: string) {
+  useWorkbenchStore.setState((state) => ({
+    smartReplyHiddenMessageKeysByConversationId: {
+      ...state.smartReplyHiddenMessageKeysByConversationId,
+      [conversationId]: {
+        ...(state.smartReplyHiddenMessageKeysByConversationId[conversationId] ?? {}),
+        [lookupKey]: true,
+      },
+    },
+  }));
+}
+
 function createCachedConversation(accountId: string): Conversation {
   return {
     accountId,
@@ -2632,10 +2644,11 @@ describe("useWorkbenchStore", () => {
             },
             {
               assistantName: "智能助手",
-              content: "最新问题推荐",
+              content: "",
+              failReason: "命中人工处理规则",
+              generateStatus: 4,
               messageId: "9",
               pollComplete: true,
-              status: "ready",
             },
           ],
         };
@@ -2651,7 +2664,7 @@ describe("useWorkbenchStore", () => {
         content: "旧问题推荐",
       },
       "9": {
-        content: "最新问题推荐",
+        content: "",
       },
     });
     expect(
@@ -2661,9 +2674,14 @@ describe("useWorkbenchStore", () => {
     ).toEqual({
       "7": true,
     });
+    expect(
+      useWorkbenchStore.getState().smartReplyActiveMessageKeyByConversationId[
+        "conv-001"
+      ],
+    ).toBe("9");
   });
 
-  it("keeps but hides failed smart replies returned with the latest message page", async () => {
+  it("activates a failed smart reply returned for the latest customer message", async () => {
     const baseService = createMockWorkbenchService();
 
     setWorkbenchService({
@@ -2709,9 +2727,8 @@ describe("useWorkbenchStore", () => {
         pollComplete: true,
       },
     });
-    expect(state.smartReplyHiddenMessageKeysByConversationId["conv-001"]).toEqual({
-      "9": true,
-    });
+    expect(state.smartReplyHiddenMessageKeysByConversationId["conv-001"]).toEqual({});
+    expect(state.smartReplyActiveMessageKeyByConversationId["conv-001"]).toBe("9");
     expect(state.smartReplyPendingMessageKeysByConversationId["conv-001"]).toEqual(
       {},
     );
@@ -3228,6 +3245,82 @@ describe("useWorkbenchStore", () => {
     expect(
       useWorkbenchStore.getState().smartReplyPendingMessageKeysByConversationId["conv-001"],
     ).toEqual({});
+  });
+
+  it("does not activate or reveal cached smart replies for an account not taken over", async () => {
+    const baseService = createMockWorkbenchService();
+    const observedGeneralAnswerRequests: Array<{
+      conversationId: string;
+      msgId: number;
+    }> = [];
+
+    setWorkbenchService({
+      ...baseService,
+      async getSeats() {
+        const seats = await baseService.getSeats();
+
+        return seats.map((seat) =>
+          seat.seatId === "drc"
+            ? { ...seat, hostSubUserId: undefined }
+            : seat,
+        );
+      },
+      async getMessages(conversationId, options) {
+        const page = await baseService.getMessages(conversationId, options);
+
+        if (conversationId !== "conv-001") {
+          return page;
+        }
+
+        return {
+          ...page,
+          smartReplies: [
+            {
+              assistantName: "智能助手",
+              content: "已有推荐",
+              messageId: "9",
+              pollComplete: true,
+              status: "ready",
+            },
+          ],
+        };
+      },
+      async requestSmartReplyGeneralAnswer(request) {
+        observedGeneralAnswerRequests.push(request);
+        return { suggestion: null };
+      },
+    });
+
+    await useWorkbenchStore.getState().initializeWorkbench();
+
+    expect(
+      useWorkbenchStore.getState().smartReplyActiveMessageKeyByConversationId[
+        "conv-001"
+      ],
+    ).toBeUndefined();
+    expect(
+      useWorkbenchStore.getState().smartReplyByMessageIdByConversationId[
+        "conv-001"
+      ]?.["9"],
+    ).toMatchObject({ content: "已有推荐" });
+
+    const message = useWorkbenchStore
+      .getState()
+      .messagesByConversationId["conv-001"].find(
+        (item): item is Message & { role: "customer" } =>
+          item.role === "customer" && item.seq === 9,
+      );
+
+    expect(message).toBeDefined();
+
+    await useWorkbenchStore.getState().requestSmartReplyGeneralAnswer(message!);
+
+    expect(
+      useWorkbenchStore.getState().smartReplyActiveMessageKeyByConversationId[
+        "conv-001"
+      ],
+    ).toBeUndefined();
+    expect(observedGeneralAnswerRequests).toEqual([]);
   });
 
   it("does not auto-generate or poll smart replies when seat AI assistant is disabled", async () => {
@@ -4002,6 +4095,15 @@ describe("useWorkbenchStore", () => {
 
     await useWorkbenchStore.getState().initializeWorkbench();
     await new Promise((resolve) => globalThis.setTimeout(resolve, 0));
+    useWorkbenchStore.setState((state) => ({
+      smartReplyHiddenMessageKeysByConversationId: {
+        ...state.smartReplyHiddenMessageKeysByConversationId,
+        "conv-001": {
+          ...(state.smartReplyHiddenMessageKeysByConversationId["conv-001"] ?? {}),
+          "9": true,
+        },
+      },
+    }));
     observedAutoRequests.length = 0;
 
     await useWorkbenchStore.getState().pollWorkbench();
@@ -4464,6 +4566,7 @@ describe("useWorkbenchStore", () => {
     });
 
     await useWorkbenchStore.getState().initializeWorkbench();
+    hideSmartReply("conv-001", "9");
     observedGeneralAnswerRequests.length = 0;
     observedSmartReplyRequests.length = 0;
 
@@ -4517,6 +4620,7 @@ describe("useWorkbenchStore", () => {
     });
 
     await useWorkbenchStore.getState().initializeWorkbench();
+    hideSmartReply("conv-001", "9");
 
     const message = useWorkbenchStore
       .getState()
@@ -4555,6 +4659,71 @@ describe("useWorkbenchStore", () => {
       },
     });
     await requestPromise;
+  });
+
+  it("restores the previous suggestion when forced regeneration fails", async () => {
+    const baseService = createMockWorkbenchService();
+
+    setWorkbenchService({
+      ...baseService,
+      async getMessages(conversationId, options) {
+        const page = await baseService.getMessages(conversationId, options);
+
+        if (conversationId !== "conv-001") {
+          return page;
+        }
+
+        return {
+          ...page,
+          smartReplies: [
+            {
+              assistantName: "智能助手",
+              content: "原有话术建议",
+              generateStatus: 2,
+              messageId: "9",
+              pollComplete: true,
+              recordId: "record-9",
+              status: "ready",
+            },
+          ],
+        };
+      },
+      async requestSmartReplyGeneralAnswer() {
+        throw new Error("generation failed");
+      },
+    });
+
+    await useWorkbenchStore.getState().initializeWorkbench();
+
+    const message = useWorkbenchStore
+      .getState()
+      .messagesByConversationId["conv-001"].find(
+        (item): item is Message & { role: "customer" } =>
+          item.role === "customer" && item.seq === 9,
+      );
+
+    expect(message).toBeDefined();
+
+    await expect(
+      useWorkbenchStore.getState().requestSmartReplyGeneralAnswer(message!, {
+        force: true,
+      }),
+    ).rejects.toThrow("generation failed");
+
+    expect(
+      useWorkbenchStore.getState().smartReplyByMessageIdByConversationId[
+        "conv-001"
+      ]?.["9"],
+    ).toMatchObject({
+      content: "原有话术建议",
+      recordId: "record-9",
+      status: "ready",
+    });
+    expect(
+      useWorkbenchStore.getState().smartReplyPendingMessageKeysByConversationId[
+        "conv-001"
+      ],
+    ).toEqual({});
   });
 
   it("reveals an existing hidden smart reply without requesting generation", async () => {
@@ -4622,6 +4791,7 @@ describe("useWorkbenchStore", () => {
     });
 
     await useWorkbenchStore.getState().initializeWorkbench();
+    hideSmartReply("conv-001", "9");
     observedSmartReplyRequests.length = 0;
     observedGeneralAnswerRequests.length = 0;
 
@@ -4629,7 +4799,7 @@ describe("useWorkbenchStore", () => {
       .getState()
       .messagesByConversationId["conv-001"].find(
         (item): item is Message & { role: "customer" } =>
-          item.role === "customer" && item.seq === 7,
+          item.role === "customer" && item.seq === 9,
       );
 
     expect(message).toBeDefined();
@@ -4640,9 +4810,68 @@ describe("useWorkbenchStore", () => {
       useWorkbenchStore.getState().smartReplyHiddenMessageKeysByConversationId[
         "conv-001"
       ],
-    ).toEqual({});
+    ).toEqual({ "7": true });
+    expect(
+      useWorkbenchStore.getState().smartReplyActiveMessageKeyByConversationId[
+        "conv-001"
+      ],
+    ).toBe("9");
     expect(observedSmartReplyRequests).toEqual([]);
     expect(observedGeneralAnswerRequests).toEqual([]);
+  });
+
+  it("does not activate a cached smart reply when the conversation ends with an agent message", async () => {
+    const baseService = createMockWorkbenchService();
+
+    setWorkbenchService({
+      ...baseService,
+      async getMessages(conversationId, options) {
+        const page = await baseService.getMessages(conversationId, options);
+
+        if (conversationId !== "conv-001") {
+          return page;
+        }
+
+        return {
+          ...page,
+          messages: [
+            createSmartReplyTextMessageDto({
+              id: "msg-customer-7",
+              seq: 7,
+              text: "客户问题",
+            }),
+            createSmartReplyTextMessageDto({
+              id: "msg-agent-8",
+              senderType: "agent",
+              seq: 8,
+              text: "客服已经回复",
+            }),
+          ],
+          smartReplies: [
+            {
+              assistantName: "智能助手",
+              content: "历史推荐话术",
+              messageId: "7",
+              pollComplete: true,
+              status: "ready",
+            },
+          ],
+        };
+      },
+    });
+
+    await useWorkbenchStore.getState().initializeWorkbench();
+
+    expect(
+      useWorkbenchStore.getState().smartReplyActiveMessageKeyByConversationId[
+        "conv-001"
+      ],
+    ).toBeUndefined();
+    expect(
+      useWorkbenchStore.getState().smartReplyByMessageIdByConversationId[
+        "conv-001"
+      ]?.["7"],
+    ).toMatchObject({ content: "历史推荐话术" });
   });
 
   it("does not continue polling a revealed suggestion after switching conversations", async () => {
@@ -4668,6 +4897,7 @@ describe("useWorkbenchStore", () => {
     });
 
     await useWorkbenchStore.getState().initializeWorkbench();
+    hideSmartReply("conv-001", "9");
 
     const message = useWorkbenchStore
       .getState()
@@ -4712,7 +4942,7 @@ describe("useWorkbenchStore", () => {
     expect(state.smartReplyLastPolledAtByConversationId["conv-001"]).toBeUndefined();
   });
 
-  it("hides a dismissed smart reply while preserving the suggestion for later reveal", async () => {
+  it("dismisses the active smart reply turn without revealing an older suggestion", async () => {
     const baseService = createMockWorkbenchService();
 
     setWorkbenchService({
@@ -4730,14 +4960,26 @@ describe("useWorkbenchStore", () => {
             createSmartReplyTextMessageDto({
               id: "msg-customer-7",
               seq: 7,
-              text: "客户问题",
+              text: "较早的客户问题",
+            }),
+            createSmartReplyTextMessageDto({
+              id: "msg-customer-9",
+              seq: 9,
+              text: "当前客户问题",
             }),
           ],
           smartReplies: [
             {
               assistantName: "智能助手",
-              content: "推荐话术",
+              content: "较早的推荐话术",
               messageId: "7",
+              pollComplete: true,
+              status: "ready",
+            },
+            {
+              assistantName: "智能助手",
+              content: "当前推荐话术",
+              messageId: "9",
               pollComplete: true,
               status: "ready",
             },
@@ -4752,10 +4994,17 @@ describe("useWorkbenchStore", () => {
       .getState()
       .messagesByConversationId["conv-001"].find(
         (item): item is Message & { role: "customer" } =>
-          item.role === "customer" && item.seq === 7,
+          item.role === "customer" && item.seq === 9,
       );
 
     expect(message).toBeDefined();
+
+    useWorkbenchStore.setState((state) => ({
+      smartReplyHiddenMessageKeysByConversationId: {
+        ...state.smartReplyHiddenMessageKeysByConversationId,
+        "conv-001": {},
+      },
+    }));
 
     useWorkbenchStore.getState().dismissSmartReply(message!);
 
@@ -4763,17 +5012,26 @@ describe("useWorkbenchStore", () => {
       useWorkbenchStore.getState().smartReplyHiddenMessageKeysByConversationId[
         "conv-001"
       ],
-    ).toEqual({ "7": true });
+    ).toEqual({ "9": true });
+    expect(
+      useWorkbenchStore.getState().smartReplyActiveMessageKeyByConversationId[
+        "conv-001"
+      ],
+    ).toBeUndefined();
     expect(
       useWorkbenchStore.getState().smartReplyByMessageIdByConversationId[
         "conv-001"
-      ]?.["7"],
-    ).toEqual(
-      expect.objectContaining({
-        content: "推荐话术",
+      ],
+    ).toMatchObject({
+      "7": {
+        content: "较早的推荐话术",
         status: "ready",
-      }),
-    );
+      },
+      "9": {
+        content: "当前推荐话术",
+        status: "ready",
+      },
+    });
   });
 
   it("hides a dismissed smart reply for a revoked message", async () => {
@@ -4936,6 +5194,7 @@ describe("useWorkbenchStore", () => {
     });
 
     await useWorkbenchStore.getState().initializeWorkbench();
+    hideSmartReply("conv-001", "9");
     observedSmartReplyRequests.length = 0;
     observedGeneralAnswerRequests.length = 0;
 
@@ -5013,6 +5272,7 @@ describe("useWorkbenchStore", () => {
     });
 
     await useWorkbenchStore.getState().initializeWorkbench();
+    hideSmartReply("conv-001", "9");
     observedSmartReplyRequests.length = 0;
     observedGeneralAnswerRequests.length = 0;
 
@@ -5849,48 +6109,17 @@ describe("useWorkbenchStore", () => {
     vi.useRealTimers();
   });
 
-  it("keeps polling other pending smart replies after one item times out", async () => {
-    vi.useFakeTimers();
-    vi.setSystemTime(new Date("2026-05-29T12:00:00+08:00"));
+  it("does not start another smart reply while one is active", async () => {
     const baseService = createMockWorkbenchService();
+    const observedGeneralAnswerRequests: Array<{
+      conversationId: string;
+      msgId: number;
+    }> = [];
 
     setWorkbenchService({
       ...baseService,
-      async getMessages(conversationId, options) {
-        const page = await baseService.getMessages(conversationId, options);
-
-        if (conversationId !== "conv-001") {
-          return page;
-        }
-
-        return {
-          ...page,
-          messages: [
-            ...page.messages,
-            createSmartReplyTextMessageDto({
-              id: "msg-customer-11",
-              seq: 11,
-              text: "第二条手动推荐",
-            }),
-          ],
-          smartReplies: [
-            {
-              assistantName: "智能助手",
-              content: "",
-              messageId: "8",
-              status: "processing",
-            },
-            {
-              assistantName: "智能助手",
-              content: "已有最新结果",
-              messageId: "10",
-              pollComplete: true,
-              status: "ready",
-            },
-          ],
-        };
-      },
       async requestSmartReplyGeneralAnswer(request) {
+        observedGeneralAnswerRequests.push(request);
         return {
           suggestion: {
             assistantName: "智能助手",
@@ -5900,62 +6129,71 @@ describe("useWorkbenchStore", () => {
           },
         };
       },
-      async pollSmartReplies(request) {
-        if (Date.now() < new Date("2026-05-29T12:00:30+08:00").getTime()) {
-          return { suggestions: [] };
-        }
-
-        return {
-          suggestions: [
-            {
-              assistantName: "智能助手",
-              content: "第二条结果",
-              messageId: "11",
-              pollComplete: true,
-              status: "ready",
-            },
-          ],
-        };
-      },
     });
 
     await useWorkbenchStore.getState().initializeWorkbench();
-    await Promise.resolve();
+    observedGeneralAnswerRequests.length = 0;
 
-    await vi.advanceTimersByTimeAsync(1_000);
-
-    const message = useWorkbenchStore
+    const activeMessage = useWorkbenchStore
       .getState()
       .messagesByConversationId["conv-001"].find(
-        (item): item is Message & { role: "customer" } =>
-          item.role === "customer" && item.seq === 11,
+        (item): item is ChatMessage => item?.role === "customer" && item.seq === 8,
       );
 
-    expect(message).toBeDefined();
+    expect(activeMessage).toBeDefined();
 
-    await useWorkbenchStore.getState().requestSmartReplyGeneralAnswer(message!);
+    const targetMessage = {
+      ...activeMessage!,
+      content: { text: "第二条手动推荐", type: "text" as const },
+      msgid: "msg-customer-11",
+      seq: 11,
+      uiMessageKey: "11",
+    } satisfies ChatMessage;
 
-    await vi.advanceTimersByTimeAsync(29_000);
+    useWorkbenchStore.setState((state) => ({
+      messagesByConversationId: {
+        ...state.messagesByConversationId,
+        "conv-001": [activeMessage!, targetMessage],
+      },
+      smartReplyActiveMessageKeyByConversationId: {
+        ...state.smartReplyActiveMessageKeyByConversationId,
+        "conv-001": "8",
+      },
+      smartReplyAutoPendingMessageKeysByConversationId: {
+        ...state.smartReplyAutoPendingMessageKeysByConversationId,
+        "conv-001": {},
+      },
+      smartReplyByMessageIdByConversationId: {
+        ...state.smartReplyByMessageIdByConversationId,
+        "conv-001": {
+          "8": {
+            assistantName: "智能助手",
+            content: "",
+            messageId: "8",
+            status: "processing",
+          },
+        },
+      },
+      smartReplyHiddenMessageKeysByConversationId: {
+        ...state.smartReplyHiddenMessageKeysByConversationId,
+        "conv-001": {},
+      },
+      smartReplyPendingMessageKeysByConversationId: {
+        ...state.smartReplyPendingMessageKeysByConversationId,
+        "conv-001": { "8": true },
+      },
+    }));
 
-    expect(
-      useWorkbenchStore.getState().smartReplyByMessageIdByConversationId["conv-001"]?.[
-        "8"
-      ],
-    ).toMatchObject({
-      failReason: "智能回复生成超时，请稍后重试",
-      pollComplete: true,
-    });
+    await useWorkbenchStore
+      .getState()
+      .requestSmartReplyGeneralAnswer(targetMessage);
 
+    expect(observedGeneralAnswerRequests).toEqual([]);
     expect(
       useWorkbenchStore.getState().smartReplyByMessageIdByConversationId["conv-001"]?.[
         "11"
       ],
-    ).toMatchObject({
-      content: "第二条结果",
-      pollComplete: true,
-    });
-
-    vi.useRealTimers();
+    ).toBeUndefined();
   });
 
   it("keeps the opposite history cursor when prepending older pages", async () => {
@@ -7094,6 +7332,67 @@ describe("useWorkbenchStore", () => {
     expect(state.conversationListsByScope[state.activeAccountId][0].preview).toBe(
       "第二段[强]",
     );
+  });
+
+  it("ends the active smart reply turn after another message is sent", async () => {
+    await useWorkbenchStore.getState().initializeWorkbench();
+    const conversationId = useWorkbenchStore.getState().activeConversationId;
+
+    useWorkbenchStore.setState((state) => ({
+      smartReplyActiveMessageKeyByConversationId: {
+        ...state.smartReplyActiveMessageKeyByConversationId,
+        [conversationId]: "9",
+      },
+    }));
+
+    await useWorkbenchStore.getState().sendAgentTextMessage("改为直接回复客户");
+
+    expect(
+      useWorkbenchStore.getState().smartReplyActiveMessageKeyByConversationId[
+        conversationId
+      ],
+    ).toBeUndefined();
+  });
+
+  it("does not clear a newer smart reply turn when an earlier send completes", async () => {
+    const baseService = createMockWorkbenchService();
+    const sendGate = createDeferred();
+
+    setWorkbenchService({
+      ...baseService,
+      async sendMessage(payload) {
+        await sendGate.promise;
+        return baseService.sendMessage(payload);
+      },
+    });
+
+    await useWorkbenchStore.getState().initializeWorkbench();
+    const conversationId = useWorkbenchStore.getState().activeConversationId;
+    useWorkbenchStore.setState((state) => ({
+      smartReplyActiveMessageKeyByConversationId: {
+        ...state.smartReplyActiveMessageKeyByConversationId,
+        [conversationId]: "9",
+      },
+    }));
+
+    const sendPromise = useWorkbenchStore
+      .getState()
+      .sendAgentTextMessage("回复当前问题");
+
+    useWorkbenchStore.setState((state) => ({
+      smartReplyActiveMessageKeyByConversationId: {
+        ...state.smartReplyActiveMessageKeyByConversationId,
+        [conversationId]: "10",
+      },
+    }));
+    sendGate.resolve();
+    await sendPromise;
+
+    expect(
+      useWorkbenchStore.getState().smartReplyActiveMessageKeyByConversationId[
+        conversationId
+      ],
+    ).toBe("10");
   });
 
   it("sends member mention text as ordered Java placeholder tokens", async () => {
@@ -10852,6 +11151,69 @@ describe("useWorkbenchStore", () => {
       ...beforeAccount,
       takenOverEmployeeId: "sub-user-001",
     });
+  });
+
+  it("activates the latest cached smart reply after taking over the account", async () => {
+    await useWorkbenchStore.getState().initializeWorkbench();
+    await useWorkbenchStore.getState().setActiveAccount("ndt");
+
+    const conversationId = useWorkbenchStore.getState().activeConversationId;
+    const message = {
+      author: "客户",
+      content: { text: "想了解活动", type: "text" },
+      conversationId,
+      isOwnMessage: false,
+      rawMsgtype: "text",
+      role: "customer",
+      sender: { id: "customer-1", name: "客户" },
+      sentAt: "2026-09-15 10:00:00",
+      seq: 99,
+      status: "sent",
+      uiMessageKey: "message-99",
+    } satisfies ChatMessage;
+
+    useWorkbenchStore.setState((state) => ({
+      accounts: state.accounts.map((account) =>
+        account.id === "ndt"
+          ? {
+              ...account,
+              seatAIAssistantEnabled: true,
+              semiAutoAuth: true,
+              semiAutoSwitch: true,
+            }
+          : account,
+      ),
+      messagesByConversationId: {
+        ...state.messagesByConversationId,
+        [conversationId]: [message],
+      },
+      smartReplyByMessageIdByConversationId: {
+        ...state.smartReplyByMessageIdByConversationId,
+        [conversationId]: {
+          "99": {
+            assistantName: "智能助手",
+            content: "当前活动如下",
+            generateStatus: 2,
+            pollComplete: true,
+            status: "ready",
+          },
+        },
+      },
+    }));
+
+    expect(
+      useWorkbenchStore.getState().smartReplyActiveMessageKeyByConversationId[
+        conversationId
+      ],
+    ).toBeUndefined();
+
+    await useWorkbenchStore.getState().takeOverAccount("ndt");
+
+    expect(
+      useWorkbenchStore.getState().smartReplyActiveMessageKeyByConversationId[
+        conversationId
+      ],
+    ).toBe("99");
   });
 
   it("returns the API error message when takeover fails", async () => {

@@ -560,7 +560,7 @@ export function ComposerAiEditPlugin({
                   size={24}
                   thinking
                 />
-                <ShinyText duration={1.15} shimmerWidth={48}>
+                <ShinyText duration={1.15}>
                   正在生成
                 </ShinyText>
               </div>

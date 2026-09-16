@@ -804,7 +804,12 @@ function ImageOcrPanel({
                 className="size-5 shrink-0"
                 src={ocrLoadingIconUrl}
               />
-              <ShinyText className="text-white/82" duration={1.15} shimmerWidth={48}>
+              <ShinyText
+                baseColor="var(--image-preview-ocr-shiny-text-base)"
+                className="text-white/82"
+                duration={1.15}
+                highlightColor="var(--image-preview-ocr-shiny-text-highlight)"
+              >
                 {panelTitle}
               </ShinyText>
             </>

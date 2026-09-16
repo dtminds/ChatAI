@@ -1,15 +1,19 @@
 import { cn } from "@/lib/utils";
 
+const SHINY_TEXT_SWEEP_PROGRESS = 0.85;
+
 type ShinyTextProps = React.ComponentProps<"span"> & {
+  baseColor?: string;
   duration?: number;
-  shimmerWidth?: number;
+  highlightColor?: string;
 };
 
 function ShinyText({
+  baseColor,
   children,
   className,
   duration = 1.35,
-  shimmerWidth = 56,
+  highlightColor = "var(--foreground)",
   style,
   ...props
 }: ShinyTextProps) {
@@ -18,8 +22,11 @@ function ShinyText({
       data-slot="shiny-text"
       style={
         {
-          "--shiny-text-duration": `${duration}s`,
-          "--shiny-text-shimmer-width": `${shimmerWidth}px`,
+          ...(baseColor
+            ? { "--shiny-text-base-color": baseColor }
+            : {}),
+          "--shiny-text-cycle-duration": `${getShinyTextCycleDuration(duration)}s`,
+          "--shiny-text-highlight-color": highlightColor,
           ...style,
         } as React.CSSProperties
       }
@@ -31,4 +38,8 @@ function ShinyText({
   );
 }
 
-export { ShinyText };
+function getShinyTextCycleDuration(sweepDuration: number) {
+  return Number((sweepDuration / SHINY_TEXT_SWEEP_PROGRESS).toFixed(3));
+}
+
+export { getShinyTextCycleDuration, ShinyText };

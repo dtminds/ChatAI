@@ -19,8 +19,19 @@ import {
   ChatComposer,
   type ComposerMaterialLibraryBizType,
 } from "@/pages/chat/components/chat-composer";
+import {
+  ChatAIAssistantStatusBar,
+  type ChatAIAssistantAction,
+  type ChatAIAssistantStatus,
+} from "@/pages/chat/components/chat-ai-assistant-status-bar";
+import {
+  ChatAIAssistantDebugMenu,
+  getChatAIAssistantDebugScenarioView,
+  type ChatAIAssistantDebugScenario,
+} from "@/pages/chat/components/chat-ai-assistant-debug-menu";
 import { ChatAgentHostingStatusBar } from "@/pages/chat/components/chat-agent-hosting-status-bar";
 import { ChatHandoffStatusBar } from "@/pages/chat/components/chat-handoff-status-bar";
+import { SmartReplySuggestionComposer } from "@/pages/chat/components/smart-reply-suggestion-composer";
 import { ChatHeader } from "@/pages/chat/components/chat-header";
 import { CHAT_USER_MEMORY_RESERVED_WIDTH } from "@/pages/chat/components/chat-user-memory-popover";
 import { ChatMessagePanel } from "@/pages/chat/components/chat-message-panel";
@@ -54,6 +65,13 @@ import {
 } from "@/pages/chat/lib/chat-agent-hosting-status";
 import type { SmartReplySendPayload } from "@/pages/chat/api/smart-reply-adapter";
 import { hasConversationHandoff } from "@/pages/chat/lib/conversation-handoff-preview";
+import { resolveConversationAIAssistantEligibility } from "@/pages/chat/lib/conversation-ai-assistant";
+import {
+  resolveSmartReplyAssistantTurn,
+  type SmartReplyAssistantPhase,
+} from "@/pages/chat/lib/smart-reply-assistant";
+import { useWorkbenchStore } from "@/store/workbench-store";
+import { useShallow } from "zustand/react/shallow";
 
 const WORKBENCH_SIDEBAR_COLLAPSED_STORAGE_KEY =
   "chatai.workbenchSidebarCollapsed";
@@ -76,6 +94,9 @@ type ChatPanelProps = {
   fullAutoActionPending?: boolean;
   seatAgentModeActionPending?: boolean;
   fullAutoDisplayStatus?: AgentHostingStatus;
+  aiAssistantStatus?: ChatAIAssistantStatus;
+  aiAssistantStatusLabel?: string;
+  aiAssistantActions?: readonly ChatAIAssistantAction[];
   activeAccount?: Account;
   seatAIHostingEnabled?: boolean;
   conversationAIHostingConfigured?: boolean;
@@ -179,9 +200,7 @@ type ChatPanelProps = {
   onRetryMessage: (uiMessageKey: string) => void | Promise<void>;
   onLoadSendFailReason?: (uiMessageKey: string) => Promise<string | undefined>;
   onSendSmartReply?: (message: ChatMessage, payload: SmartReplySendPayload) => void;
-  onFillSmartReplyComposer?: (message: ChatMessage, content: string) => void;
   onDismissSmartReply?: (message: ChatMessage) => void;
-  onMakeShorterSmartReply?: (message: ChatMessage) => void;
   onTriggerSmartReply?: (
     message: ChatMessage,
     options?: { force?: boolean },
@@ -226,6 +245,9 @@ export function ChatPanel({
   fullAutoActionPending = false,
   seatAgentModeActionPending = false,
   fullAutoDisplayStatus,
+  aiAssistantStatus = "waiting",
+  aiAssistantStatusLabel,
+  aiAssistantActions,
   activeAccount,
   seatAIHostingEnabled = false,
   conversationAIHostingConfigured = false,
@@ -309,9 +331,7 @@ export function ChatPanel({
   onRetryMessage,
   onLoadSendFailReason,
   onSendSmartReply,
-  onFillSmartReplyComposer,
   onDismissSmartReply,
-  onMakeShorterSmartReply,
   onTriggerSmartReply,
   onToggleMessageSelection,
   onToggleTickets,
@@ -338,6 +358,30 @@ export function ChatPanel({
   const [isDesktopSidebarCollapsed, setIsDesktopSidebarCollapsed] = useState(
     readDesktopSidebarCollapsedPreference,
   );
+  const [aiAssistantDebugScenario, setAIAssistantDebugScenario] =
+    useState<ChatAIAssistantDebugScenario | null>(null);
+  const activeConversationId = activeConversation?.id;
+  const smartReplyState = useWorkbenchStore(
+    useShallow((state) => ({
+      activeMessageKey: activeConversationId
+        ? state.smartReplyActiveMessageKeyByConversationId[activeConversationId]
+        : undefined,
+      autoPending: activeConversationId
+        ? state.smartReplyAutoPendingMessageKeysByConversationId[
+            activeConversationId
+          ]
+        : undefined,
+      hidden: activeConversationId
+        ? state.smartReplyHiddenMessageKeysByConversationId[activeConversationId]
+        : undefined,
+      pending: activeConversationId
+        ? state.smartReplyPendingMessageKeysByConversationId[activeConversationId]
+        : undefined,
+      suggestions: activeConversationId
+        ? state.smartReplyByMessageIdByConversationId[activeConversationId]
+        : undefined,
+    })),
+  );
   const resolvedAuxiliaryPanel = activeAuxiliaryPanel ?? null;
   const resolvedAgentHostingStatus =
     fullAutoDisplayStatus ??
@@ -348,6 +392,39 @@ export function ChatPanel({
     resolvedAgentHostingStatus === "exited"
       ? null
       : resolvedAgentHostingStatus;
+  const aiAssistantStatusVisible =
+    resolveConversationAIAssistantEligibility({
+      account: activeAccount,
+      canUseConversationActions: canSendMessage,
+      conversation: activeConversation,
+    }).canUse && !agentHostingStatus;
+  const smartReplyTurn = aiAssistantStatusVisible
+    ? resolveSmartReplyAssistantTurn({
+        activeMessageKey: smartReplyState.activeMessageKey,
+        autoPending: smartReplyState.autoPending,
+        hidden: smartReplyState.hidden,
+        messages,
+        pending: smartReplyState.pending,
+        suggestions: smartReplyState.suggestions,
+      })
+    : undefined;
+  const hasComposerStatusOverlay =
+    Boolean(agentHostingStatus) || aiAssistantStatusVisible;
+  const aiAssistantDebugView = aiAssistantDebugScenario
+    ? getChatAIAssistantDebugScenarioView(aiAssistantDebugScenario)
+    : null;
+  const resolvedAIAssistantStatus =
+    aiAssistantDebugView?.status ??
+    (smartReplyTurn
+      ? getSmartReplyStatusBarStatus(smartReplyTurn.phase)
+      : aiAssistantStatus);
+  const resolvedAIAssistantStatusLabel = aiAssistantDebugView
+    ? aiAssistantDebugView.label
+    : smartReplyTurn
+      ? smartReplyTurn.label
+      : aiAssistantStatusLabel;
+  const showSmartReplySuggestionComposer =
+    !aiAssistantDebugScenario && Boolean(smartReplyTurn?.showComposer);
   const hasActiveFileUpload = fileUploadQueue.length > 0;
   const hasActiveConversation = activeConversation !== undefined;
   const isTicketSupported = isConversationTicketSupported(activeConversation);
@@ -451,6 +528,14 @@ export function ChatPanel({
     setIsMobileSidebarOpen(false);
   }, [activeConversation?.id, isMobileLayout]);
 
+  useEffect(() => {
+    setAIAssistantDebugScenario(null);
+  }, [activeConversation?.id]);
+
+  useEffect(() => {
+    onEmojiPickerOpenChange(false);
+  }, [showSmartReplySuggestionComposer, onEmojiPickerOpenChange]);
+
   useLayoutEffect(() => {
     onPersistentSidebarChange?.(hasPersistentDesktopSidebar);
   }, [hasPersistentDesktopSidebar, onPersistentSidebarChange]);
@@ -502,6 +587,56 @@ export function ChatPanel({
     }
     onToggleTickets?.();
   };
+  const resolvedAIAssistantActions: readonly ChatAIAssistantAction[] =
+    aiAssistantDebugScenario === "thinking-cancellable"
+      ? [
+          {
+            id: "stop",
+            label: "停止",
+            onSelect: () => setAIAssistantDebugScenario("waiting"),
+            tone: "quiet",
+          },
+        ]
+      : aiAssistantDebugScenario === "confirmation"
+        ? [
+            {
+              id: "ignore",
+              label: "忽略",
+              onSelect: () => setAIAssistantDebugScenario("waiting"),
+              tone: "quiet",
+            },
+            {
+              id: "approve",
+              label: "批准",
+              onSelect: () =>
+                setAIAssistantDebugScenario("thinking-cancellable"),
+              tone: "primary",
+            },
+          ]
+        : smartReplyTurn &&
+            (smartReplyTurn.phase === "confirmation" ||
+              smartReplyTurn.phase === "failed")
+          ? [
+              {
+                disabled: !onDismissSmartReply,
+                id: "ignore",
+                label: "忽略",
+                onSelect: onDismissSmartReply
+                  ? () => onDismissSmartReply(smartReplyTurn.message)
+                  : undefined,
+                tone: "quiet",
+              },
+              {
+                disabled: !onTriggerSmartReply,
+                id: "regenerate",
+                label: "重新生成",
+                onSelect: onTriggerSmartReply
+                  ? () => onTriggerSmartReply(smartReplyTurn.message, { force: true })
+                  : undefined,
+                tone: "primary",
+              },
+            ]
+          : (aiAssistantActions ?? []);
 
   return (
     <section className="flex h-full min-h-0 min-w-0 flex-col bg-surface">
@@ -568,7 +703,7 @@ export function ChatPanel({
                   canCollectMaterialActions={canCollectMaterialActions}
                   canUseMessageActions={canSendMessage}
                   canUseMessageForward={canUseMessageForward}
-                  hasAgentHostingOverlay={!!agentHostingStatus}
+                  hasComposerStatusOverlay={hasComposerStatusOverlay}
                   hasMoreHistory={hasMoreHistory}
                   historyLoadLabel={historyLoadLabel}
                   isConversationLoading={isConversationLoading}
@@ -591,10 +726,6 @@ export function ChatPanel({
                   onLoadOlderMessages={onLoadOlderMessages}
                   onOpenQuotedMessage={onOpenQuotedMessage}
                   onQuoteMessage={onQuoteMessage}
-                  onSendSmartReply={onSendSmartReply}
-                  onFillSmartReplyComposer={onFillSmartReplyComposer}
-                  onDismissSmartReply={onDismissSmartReply}
-                  onMakeShorterSmartReply={onMakeShorterSmartReply}
                   onTriggerSmartReply={onTriggerSmartReply}
                   onToggleMessageSelection={onToggleMessageSelection}
                   onRevokeMessage={onRevokeMessage}
@@ -665,13 +796,43 @@ export function ChatPanel({
                             status={agentHostingStatus}
                           />
                         </div>
+                      ) : aiAssistantStatusVisible ? (
+                        <div
+                          className="absolute left-1/2 top-1 z-0 w-[calc(100%-2rem)] max-w-[860px] -translate-x-1/2 -translate-y-[42px]"
+                          data-testid="chat-ai-assistant-status-bar-anchor"
+                        >
+                          <ChatAIAssistantStatusBar
+                            actions={resolvedAIAssistantActions}
+                            customerName={activeConversation.customerName}
+                            key={activeConversation.id}
+                            label={resolvedAIAssistantStatusLabel}
+                            reason={smartReplyTurn?.reason}
+                            status={resolvedAIAssistantStatus}
+                            waitingForCustomer={Boolean(
+                              smartReplyTurn &&
+                                smartReplyTurn.phase === "skipped",
+                            )}
+                          />
+                          <ChatAIAssistantDebugMenu
+                            className="absolute left-[calc(100%+0.5rem)] top-[21px] -translate-y-1/2 max-[940px]:left-auto max-[940px]:right-1"
+                            onValueChange={setAIAssistantDebugScenario}
+                            value={
+                              aiAssistantDebugScenario ??
+                              resolvedAIAssistantStatus
+                            }
+                          />
+                        </div>
                       ) : null}
                       <div
                         className={cn(
                           "flex flex-col",
+                          showSmartReplySuggestionComposer && "hidden",
                           multiSelectMode && "pointer-events-none",
                         )}
-                        inert={multiSelectMode || undefined}
+                        aria-hidden={showSmartReplySuggestionComposer || undefined}
+                        inert={
+                          multiSelectMode || showSmartReplySuggestionComposer || undefined
+                        }
                       >
                         <ChatComposer
                           canConfigureSeatAIHosting={canConfigureSeatAIHosting}
@@ -766,6 +927,69 @@ export function ChatPanel({
                           composerRef={composerRef}
                         />
                       </div>
+                      {showSmartReplySuggestionComposer && smartReplyTurn ? (
+                        <div
+                          className={cn(
+                            multiSelectMode && "pointer-events-none",
+                          )}
+                          inert={multiSelectMode || undefined}
+                        >
+                          <SmartReplySuggestionComposer
+                            composerProps={{
+                              accountAvatarUrl:
+                                activeAccount?.avatarUrl ?? accountAvatarUrl,
+                              accountName: activeAccount?.name ?? accountName,
+                              canConfigureSeatAIHosting,
+                              canConfigureSeatSemiAuto,
+                              canToggleConversationAIHosting,
+                              collectedExpressions,
+                              conversationAIHostingConfigured,
+                              conversationId: activeConversation.id,
+                              currentSeatThirdUserId: activeConversation.thirdUserId,
+                              fullAutoActionPending,
+                              fullAutoSwitch:
+                                activeAccount?.fullAutoSwitch === true,
+                              groupMembers,
+                              hasActiveFileUpload,
+                              hasMoreCollectedExpressions,
+                              inputEnterBehavior,
+                              isCollectedExpressionLoadingMore,
+                              isEmojiPickerOpen,
+                              isGroupConversation:
+                                activeConversation.mode === "group",
+                              isMobileLayout,
+                              onChangeFullAuto:
+                                onChangeFullAuto ?? noopChangeFullAuto,
+                              onChangeSeatAgentMode:
+                                onChangeSeatAgentMode ?? noopChangeSeatAgentMode,
+                              onClearQuotedMessage,
+                              onDeleteCollectedExpression,
+                              onEmojiPickerOpenChange,
+                              onEnterBehaviorChange,
+                              onFileSelect,
+                              onLoadMoreCollectedExpressions,
+                              onOpenCollectedExpressions,
+                              onOpenMaterialLibrary:
+                                onOpenMaterialLibrary ?? noop,
+                              onSelectCollectedExpression,
+                              onTopCollectedExpression,
+                              seatAIHostingAuth:
+                                activeAccount?.seatAIHostingAuth === true,
+                              seatAgentModeActionPending,
+                              seatSemiAutoAuth:
+                                activeAccount?.semiAutoAuth === true,
+                              semiAutoSwitch:
+                                activeAccount?.semiAutoSwitch === true,
+                              sendingCollectedExpressionId,
+                              shouldShowConversationAIHostingControl,
+                            }}
+                            conversationMessages={messages}
+                            isSending={isSendingDraft}
+                            onSend={onSendSmartReply}
+                            turn={smartReplyTurn}
+                          />
+                        </div>
+                      ) : null}
                       {multiSelectMode && multiSelectToolbar ? (
                         <div
                           className="absolute inset-0 z-10 flex items-center justify-center bg-surface"
@@ -855,6 +1079,20 @@ function writeDesktopSidebarCollapsedPreference(isCollapsed: boolean) {
   } catch {
     // Sidebar persistence is best-effort; the current session still updates.
   }
+}
+
+function getSmartReplyStatusBarStatus(
+  phase: SmartReplyAssistantPhase,
+): ChatAIAssistantStatus {
+  if (phase === "thinking") {
+    return "thinking";
+  }
+
+  if (phase === "confirmation" || phase === "failed") {
+    return "confirmation";
+  }
+
+  return "waiting";
 }
 
 function noop() {}

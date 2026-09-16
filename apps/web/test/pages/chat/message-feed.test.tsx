@@ -754,6 +754,43 @@ describe("message feed row actions", () => {
     expect(onTriggerSmartReply).toHaveBeenCalledWith(message);
   });
 
+  it("allows retrying a skipped recommendation from the same message menu", async () => {
+    const user = userEvent.setup();
+    const onTriggerSmartReply = vi.fn();
+    const message = {
+      content: { text: "我要转人工", type: "text" },
+      conversationId: "conv-1",
+      isOwnMessage: false,
+      rawMsgtype: "text",
+      role: "customer",
+      sender: { id: "cus-1", name: "客户甲" },
+      sentAt: "2026-05-25T10:00:00+08:00",
+      seq: 12,
+      status: "sent",
+      uiMessageKey: "msg-customer-1",
+    } as ChatMessage;
+
+    render(
+      <MessageRow
+        activeSmartReplyLookupKey="12"
+        message={message}
+        onTriggerSmartReply={onTriggerSmartReply}
+        smartReply={{
+          assistantName: "智能助手",
+          content: "",
+          failReason: "命中人工处理规则",
+          generateStatus: 4,
+          status: "processing",
+        }}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "消息操作" }));
+    await user.click(screen.getByRole("menuitem", { name: "话术推荐" }));
+
+    expect(onTriggerSmartReply).toHaveBeenCalledWith(message);
+  });
+
   it("keeps smart reply recommendation visible but disabled when actions are locked", async () => {
     const user = userEvent.setup();
     const onTriggerSmartReply = vi.fn();
@@ -787,7 +824,9 @@ describe("message feed row actions", () => {
     expect(onTriggerSmartReply).not.toHaveBeenCalled();
   });
 
-  it("hides smart reply trigger icon when a ready suggestion card is shown", () => {
+  it("lets an inactive ready smart reply be reopened from the message menu", async () => {
+    const user = userEvent.setup();
+
     render(
       <MessageRow
         message={{
@@ -811,113 +850,18 @@ describe("message feed row actions", () => {
     );
 
     expect(screen.queryByTestId("smart-reply-trigger-icon")).not.toBeInTheDocument();
-    expect(screen.getByTestId("smart-reply-card")).toBeInTheDocument();
-  });
-
-  it("shows a compact inline spinner instead of a card while auto smart reply is being previewed", () => {
-    render(
-      <MessageRow
-        isSmartReplyAutoPending
-        message={{
-          content: { text: "客户想了解产品", type: "text" },
-          conversationId: "conv-1",
-          uiMessageKey: "msg-customer-1",
-          rawMsgtype: "text",
-          role: "customer",
-          sender: { id: "cus-1", name: "客户甲" },
-          sentAt: "2026-05-25T10:00:00+08:00",
-          seq: 12,
-          status: "sent",
-        } as ChatMessage}
-      />,
-    );
-
-    expect(screen.getByTestId("smart-reply-inline-processing")).toBeInTheDocument();
-    expect(screen.getByRole("status")).toHaveTextContent("正在生成话术推荐");
     expect(screen.queryByTestId("smart-reply-card")).not.toBeInTheDocument();
+    expect(
+      screen.queryByTestId("smart-reply-inline-processing"),
+    ).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "消息操作" }));
+    expect(
+      screen.getByRole("menuitem", { name: "话术推荐" }),
+    ).toBeInTheDocument();
   });
 
-  it("shows a compact inline spinner instead of a card while manual smart reply is pending", () => {
-    render(
-      <MessageRow
-        isSmartReplyPending
-        message={{
-          content: { text: "客户想了解产品", type: "text" },
-          conversationId: "conv-1",
-          uiMessageKey: "msg-customer-1",
-          rawMsgtype: "text",
-          role: "customer",
-          sender: { id: "cus-1", name: "客户甲" },
-          sentAt: "2026-05-25T10:00:00+08:00",
-          seq: 12,
-          status: "sent",
-        } as ChatMessage}
-      />,
-    );
-
-    expect(screen.getByTestId("smart-reply-inline-processing")).toBeInTheDocument();
-    expect(screen.getByRole("status")).toHaveTextContent("正在生成话术推荐");
-    expect(screen.queryByTestId("smart-reply-card")).not.toBeInTheDocument();
-  });
-
-  it.each([
-    { expectedLabel: "正在生成话术推荐", generateStatus: 0, status: "thinking" as const },
-    { expectedLabel: "正在生成话术推荐", generateStatus: 1, status: "processing" as const },
-    { expectedLabel: "生成失败：model_error", failReason: "model_error", generateStatus: 3 },
-    {
-      expectedLabel: "已跳过话术推荐：命中人工处理规则",
-      failReason: "命中人工处理规则",
-      generateStatus: 4,
-      status: "ready" as const,
-    },
-    {
-      createdAt: Date.now() - 10_000,
-      expectedLabel: "客户可能还没说完",
-      failReason: "客户可能还没说完",
-      generateStatus: 5,
-      status: "processing" as const,
-    },
-    {
-      createdAt: Date.now() - 21_000,
-      expectedLabel: "语义不完整，已跳过话术推荐",
-      generateStatus: 5,
-      status: "processing" as const,
-    },
-  ])(
-    "shows inline smart reply state instead of a card for gen_status $generateStatus",
-    ({ createdAt, expectedLabel, failReason, generateStatus, status }) => {
-      render(
-        <MessageRow
-          message={{
-            content: { text: "客户想了解产品", type: "text" },
-            conversationId: "conv-1",
-            uiMessageKey: "msg-customer-1",
-            rawMsgtype: "text",
-            role: "customer",
-            sender: { id: "cus-1", name: "客户甲" },
-            sentAt: "2026-05-25T10:00:00+08:00",
-            seq: 12,
-            status: "sent",
-          } as ChatMessage}
-          smartReply={{
-            assistantName: "护肤小助手",
-            content: generateStatus === 4 ? "转人工原因" : "",
-            createdAt,
-            failReason,
-            generateStatus,
-            pollComplete: generateStatus === 3 || generateStatus === 4,
-            status,
-          }}
-        />,
-      );
-
-      expect(screen.getByTestId("smart-reply-inline-processing")).toBeInTheDocument();
-      expect(screen.getByRole("status")).toHaveTextContent(expectedLabel);
-      expect(screen.queryByTestId("smart-reply-card")).not.toBeInTheDocument();
-    },
-  );
-
-  it("regenerates failed inline smart replies from the refresh action", async () => {
+  it("disables smart reply on another message while a turn is active", async () => {
     const user = userEvent.setup();
     const onTriggerSmartReply = vi.fn();
     const message = {
@@ -934,144 +878,19 @@ describe("message feed row actions", () => {
 
     render(
       <MessageRow
+        activeSmartReplyLookupKey="11"
         message={message}
         onTriggerSmartReply={onTriggerSmartReply}
-        smartReply={{
-          assistantName: "护肤小助手",
-          content: "",
-          failReason: "model_error",
-          generateStatus: 3,
-          pollComplete: true,
-        }}
       />,
     );
-
-    await user.click(screen.getByRole("button", { name: "重新生成" }));
-
-    expect(onTriggerSmartReply).toHaveBeenCalledWith(message, { force: true });
-  });
-
-  it("dismisses expired semantic-wait inline smart replies without offering regeneration", async () => {
-    const user = userEvent.setup();
-    const onDismissSmartReply = vi.fn();
-    const onTriggerSmartReply = vi.fn();
-    const message = {
-      content: { text: "客户想了解产品", type: "text" },
-      conversationId: "conv-1",
-      uiMessageKey: "msg-customer-1",
-      rawMsgtype: "text",
-      role: "customer",
-      sender: { id: "cus-1", name: "客户甲" },
-      sentAt: "2026-05-25T10:00:00+08:00",
-      seq: 12,
-      status: "sent",
-    } as ChatMessage;
-
-    render(
-      <MessageRow
-        message={message}
-        onDismissSmartReply={onDismissSmartReply}
-        onTriggerSmartReply={onTriggerSmartReply}
-        smartReply={{
-          assistantName: "护肤小助手",
-          content: "",
-          createdAt: Date.now() - 21_000,
-          generateStatus: 5,
-          pollComplete: false,
-          status: "processing",
-        }}
-      />,
-    );
-
-    expect(screen.getByRole("status")).toHaveTextContent(
-      "语义不完整，已跳过话术推荐",
-    );
-    expect(screen.queryByRole("button", { name: "重新生成" })).not.toBeInTheDocument();
-
-    await user.click(screen.getByRole("button", { name: "收起" }));
-
-    expect(onDismissSmartReply).toHaveBeenCalledWith(message);
-    expect(onTriggerSmartReply).not.toHaveBeenCalled();
-  });
-
-  it("dismisses the smart reply card so the avatar recommendation action can be used again", async () => {
-    const user = userEvent.setup();
-    const onDismissSmartReply = vi.fn();
-    const message = {
-      content: { text: "客户想了解产品", type: "text" },
-      conversationId: "conv-1",
-      uiMessageKey: "msg-customer-1",
-      rawMsgtype: "text",
-      role: "customer",
-      sender: { id: "cus-1", name: "客户甲" },
-      sentAt: "2026-05-25T10:00:00+08:00",
-      seq: 12,
-      status: "sent",
-    } as ChatMessage;
-    const { rerender } = render(
-      <MessageRow
-        message={message}
-        onDismissSmartReply={onDismissSmartReply}
-        smartReply={{
-          assistantName: "护肤小助手",
-          content: "建议先确认肤质",
-          generateStatus: 2,
-          status: "ready",
-        }}
-      />,
-    );
-
-    expect(screen.getByTestId("smart-reply-card")).toBeInTheDocument();
-
-    await user.click(screen.getByRole("button", { name: "收起" }));
-
-    expect(onDismissSmartReply).toHaveBeenCalledWith(message);
-
-    rerender(
-      <MessageRow
-        message={message}
-        onDismissSmartReply={onDismissSmartReply}
-      />,
-    );
-
-    expect(screen.queryByTestId("smart-reply-card")).not.toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "消息操作" }));
 
-    expect(screen.getByRole("menuitem", { name: "话术推荐" })).toBeInTheDocument();
-  });
+    const action = screen.getByRole("menuitem", { name: "话术推荐" });
+    expect(action).toHaveAttribute("data-disabled");
+    await user.click(action);
 
-  it("calls smart reply trigger handler when regenerate is selected", async () => {
-    const user = userEvent.setup();
-    const onTriggerSmartReply = vi.fn();
-    const message = {
-      content: { text: "客户想了解产品", type: "text" },
-      conversationId: "conv-1",
-      uiMessageKey: "msg-customer-1",
-      rawMsgtype: "text",
-      role: "customer",
-      sender: { id: "cus-1", name: "客户甲" },
-      sentAt: "2026-05-25T10:00:00+08:00",
-      seq: 12,
-    } as ChatMessage;
-
-    render(
-      <MessageRow
-        message={message}
-        onTriggerSmartReply={onTriggerSmartReply}
-        smartReply={{
-          assistantName: "护肤小助手",
-          content: "建议先确认肤质",
-          generateStatus: 2,
-          status: "ready",
-        }}
-      />,
-    );
-
-    await user.click(screen.getByRole("button", { name: "更多智能回复操作" }));
-    await user.click(screen.getByRole("menuitem", { name: "重新生成" }));
-
-    expect(onTriggerSmartReply).toHaveBeenCalledWith(message, { force: true });
+    expect(onTriggerSmartReply).not.toHaveBeenCalled();
   });
 
   it("asks for confirmation before revoking own sent messages within 180 seconds", async () => {

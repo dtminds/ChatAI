@@ -449,7 +449,6 @@ function ChatWorkbenchContent({
     pollWorkbench,
     dismissSmartReply,
     requestSmartReplyGeneralAnswer,
-    requestSmartReplyMakeShorter,
     readReceiptError,
     revokeMessage,
     pinConversation,
@@ -560,7 +559,6 @@ function ChatWorkbenchContent({
       readReceiptError: state.readReceiptError,
       refreshSeatSummaries: state.refreshSeatSummaries,
       requestSmartReplyGeneralAnswer: state.requestSmartReplyGeneralAnswer,
-      requestSmartReplyMakeShorter: state.requestSmartReplyMakeShorter,
       retryFailedMessage: state.retryFailedMessage,
       loadSendFailReason: state.loadSendFailReason,
       revokeMessage: state.revokeMessage,
@@ -1895,23 +1893,18 @@ function ChatWorkbenchContent({
 
   const {
     handleDismissSmartReply,
-    handleFillSmartReplyComposer,
-    handleMakeShorterSmartReply,
     handleSendSmartReply,
     handleTriggerSmartReply,
   } = useSmartReplyState({
     activeConversation,
     canSendMessage,
-    composerRef,
     dismissSmartReply,
     isMountedRef,
     isSendingDraftRef,
-    onDraftChange: handleDraftChange,
     onSendFailure: handleSmartReplySendFailure,
     onSendingChange: setIsSendingDraft,
     onSent: scrollMessageViewportToBottom,
     requestSmartReplyGeneralAnswer,
-    requestSmartReplyMakeShorter,
     sendSmartReply,
   });
 
@@ -2682,9 +2675,7 @@ function ChatWorkbenchContent({
       onSelectCollectedExpression={handleSelectMaterial}
       onTopCollectedExpression={handleTopCollectedExpression}
       onSendSmartReply={handleSendSmartReply}
-      onFillSmartReplyComposer={handleFillSmartReplyComposer}
       onDismissSmartReply={handleDismissSmartReply}
-      onMakeShorterSmartReply={handleMakeShorterSmartReply}
       onTriggerSmartReply={handleTriggerSmartReply}
       onToggleMessageSelection={messageForward.toggleMessageSelection}
       onToggleTickets={

@@ -315,6 +315,20 @@ describe("smart-reply-adapter", () => {
     ).toBe(false);
   });
 
+  it("treats an attachment-only successful suggestion as ready", () => {
+    expect(
+      isSmartReplyReady({
+        assistantName: "智能助手",
+        content: "",
+        genAnswer:
+          '[{"fileUrl":"s5/msg/product.jpg","msgtype":"image"}]',
+        generateStatus: 2,
+        pollComplete: true,
+        status: "ready",
+      }),
+    ).toBe(true);
+  });
+
   it("marks only newly appended customer messages as pending", () => {
     expect(
       collectNewSmartReplyPendingKeys(
@@ -684,7 +698,7 @@ describe("smart-reply-adapter", () => {
         generateStatus: 2,
         status: "ready",
       }),
-    ).toBe(false);
+    ).toBe(true);
     expect(
       shouldShowSmartReplyTriggerIcon(customerMessage, {
         assistantName: "护肤小助手",
@@ -1145,6 +1159,26 @@ describe("smart-reply-adapter", () => {
         type: "h5",
       },
     ]);
+  });
+
+  it("uses composer segments when the suggestion has been edited", () => {
+    const segments = [
+      { text: "编辑后的话术", type: "text" as const },
+      {
+        imageUrl: "https://example.com/emotion.png",
+        materialCollectionId: "emotion-1",
+        type: "emotion" as const,
+      },
+    ];
+
+    expect(
+      buildSmartReplySendSegments({
+        content: "服务端原始话术",
+        recommendedAttachments: [],
+        segments,
+        selectedAttachmentIds: [],
+      }),
+    ).toEqual(segments);
   });
 
   it("resolves attachment count from ids and inline attachments", () => {

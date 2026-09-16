@@ -352,7 +352,21 @@ export function shouldShowSmartReplyTriggerIcon(
     return false;
   }
 
+  if (isSmartReplySkippedResult(suggestion)) {
+    return true;
+  }
+
+  if (isSmartReplyReady(suggestion)) {
+    return true;
+  }
+
   return !shouldShowSmartReplyCard(suggestion) && !getSmartReplyInlineState(suggestion);
+}
+
+export function isSmartReplySkippedResult(
+  suggestion?: SmartReplySuggestion | null,
+) {
+  return readSmartReplyGenerateStatus(suggestion) === 4;
 }
 
 export function collectNewSmartReplyPendingKeys(
@@ -453,10 +467,13 @@ export function isSmartReplyReady(suggestion?: SmartReplySuggestion | null) {
     return false;
   }
 
+  const hasSendableContent =
+    suggestion.content.trim().length > 0 ||
+    resolveSmartReplyAttachmentCount(suggestion) > 0;
   const generateStatus = readSmartReplyGenerateStatus(suggestion);
 
   if (generateStatus != null) {
-    return generateStatus === 2 && suggestion.content.trim().length > 0;
+    return generateStatus === 2 && hasSendableContent;
   }
 
   if (suggestion.status === "thinking" || suggestion.status === "processing") {
@@ -464,10 +481,10 @@ export function isSmartReplyReady(suggestion?: SmartReplySuggestion | null) {
   }
 
   if (suggestion.status === "ready") {
-    return true;
+    return hasSendableContent;
   }
 
-  return suggestion.content.trim().length > 0;
+  return hasSendableContent;
 }
 
 export function canRequestSmartReplyMakeShorter(
@@ -1423,6 +1440,7 @@ export type SmartReplySendPayload = {
   content: string;
   recommendedAttachments: SmartReplyRecommendedAttachment[];
   selectedAttachmentIds: string[];
+  segments?: ComposerSegment[];
 };
 
 export function buildSmartReplyRealAttachIds(selectedAttachmentIds: string[]) {
@@ -1440,8 +1458,13 @@ export function adaptSmartReplyViolationResult(
 export function buildSmartReplySendSegments({
   content,
   recommendedAttachments,
+  segments: providedSegments,
   selectedAttachmentIds,
 }: SmartReplySendPayload): ComposerSegment[] {
+  if (providedSegments) {
+    return providedSegments;
+  }
+
   const segments: ComposerSegment[] = [];
   const trimmedContent = content.trim();
 

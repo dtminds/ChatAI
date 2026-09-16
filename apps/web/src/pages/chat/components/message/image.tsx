@@ -805,10 +805,10 @@ function ImageOcrPanel({
                 src={ocrLoadingIconUrl}
               />
               <ShinyText
-                baseColor="rgb(255 255 255 / 0.72)"
+                baseColor="var(--image-preview-ocr-shiny-text-base)"
                 className="text-white/82"
                 duration={1.15}
-                highlightColor="rgb(255 255 255)"
+                highlightColor="var(--image-preview-ocr-shiny-text-highlight)"
               >
                 {panelTitle}
               </ShinyText>

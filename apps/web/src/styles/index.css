@@ -1258,6 +1258,11 @@ html.dark[data-appearance-theme="nature"] {
     animation: shiny-text-sweep var(--shiny-text-cycle-duration) linear infinite;
   }
 
+  [data-testid="image-preview-ocr-panel"] {
+    --image-preview-ocr-shiny-text-base: rgb(255 255 255 / 0.72);
+    --image-preview-ocr-shiny-text-highlight: rgb(255 255 255);
+  }
+
   .animated-text-switch {
     display: inline-grid;
     max-width: 100%;

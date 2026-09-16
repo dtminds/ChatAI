@@ -4,8 +4,11 @@ import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
   DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
   DropdownMenuRadioGroup,
   DropdownMenuRadioItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import {
@@ -16,6 +19,7 @@ import {
 } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import type { ChatAIAssistantStatus } from "@/pages/chat/components/chat-ai-assistant-status-bar";
+import type { AgentTurnMockScenario } from "@chatai/contracts";
 
 export type ChatAIAssistantDebugScenario =
   | "waiting"
@@ -35,12 +39,30 @@ const STATUS_OPTIONS: Array<{
   { label: "待确认 · 退款", value: "confirmation" },
 ];
 
+const MOCK_OPTIONS: Array<{
+  label: string;
+  value: AgentTurnMockScenario;
+}> = [
+  { label: "知识库回复", value: "knowledge_reply" },
+  { label: "订单查询", value: "order_reply" },
+  { label: "售后人工审批", value: "after_sales_approval" },
+  { label: "客服澄清", value: "operator_clarification" },
+  { label: "工具失败后继续", value: "tool_failure" },
+  { label: "无需回复", value: "no_reply" },
+];
+
 export function ChatAIAssistantDebugMenu({
   className,
+  disabled,
+  mockScenario,
+  onMockScenarioSelect,
   onValueChange,
   value,
 }: {
   className?: string;
+  disabled?: boolean;
+  mockScenario?: AgentTurnMockScenario;
+  onMockScenarioSelect?: (scenario: AgentTurnMockScenario) => void;
   onValueChange: (value: ChatAIAssistantDebugScenario) => void;
   value: ChatAIAssistantDebugScenario;
 }) {
@@ -61,6 +83,7 @@ export function ChatAIAssistantDebugMenu({
                   className,
                 )}
                 size="icon"
+                disabled={disabled}
                 type="button"
                 variant="ghost"
               >
@@ -79,6 +102,7 @@ export function ChatAIAssistantDebugMenu({
         </Tooltip>
       </TooltipProvider>
       <DropdownMenuContent align="end" side="top" sideOffset={8}>
+        <DropdownMenuLabel>静态状态</DropdownMenuLabel>
         <DropdownMenuRadioGroup
           onValueChange={(nextValue) => {
             if (isChatAIAssistantDebugScenario(nextValue)) {
@@ -93,6 +117,19 @@ export function ChatAIAssistantDebugMenu({
             </DropdownMenuRadioItem>
           ))}
         </DropdownMenuRadioGroup>
+        <DropdownMenuSeparator />
+        <DropdownMenuLabel>Backend Mock</DropdownMenuLabel>
+        {MOCK_OPTIONS.map((option) => (
+          <DropdownMenuItem
+            key={option.value}
+            onSelect={() => onMockScenarioSelect?.(option.value)}
+          >
+            <span className="flex-1">{option.label}</span>
+            {mockScenario === option.value ? (
+              <span className="text-xs text-muted-foreground">运行中</span>
+            ) : null}
+          </DropdownMenuItem>
+        ))}
       </DropdownMenuContent>
     </DropdownMenu>
   );

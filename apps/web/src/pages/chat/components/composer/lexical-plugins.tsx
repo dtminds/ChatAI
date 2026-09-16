@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useLayoutEffect } from "react";
 import { useLexicalComposerContext } from "@lexical/react/LexicalComposerContext";
 import { OnChangePlugin } from "@lexical/react/LexicalOnChangePlugin";
 import { $restoreEditorState } from "@lexical/utils";
@@ -123,7 +123,7 @@ export function ComposerRuntimePlugin({
 }: ComposerRuntimePluginProps) {
   const [editor] = useLexicalComposerContext();
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     registerEditor(editor);
 
     return () => registerEditor(null);

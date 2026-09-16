@@ -721,7 +721,7 @@ export function ChatComposer({
   return (
     <TooltipProvider delayDuration={300}>
       <div
-        className="chat-composer-surface relative z-10 mx-auto mb-4 mt-3 flex w-[calc(100%-2rem)] max-w-[860px] flex-col gap-1.5 rounded-[18px] border px-4 pb-2 pt-3"
+        className="chat-composer-surface relative z-10 mx-auto mb-4 mt-3 flex w-[calc(100%-2rem)] max-w-[860px] flex-col rounded-[18px] border"
         data-composer-mode={composerMode}
         data-testid="chat-composer"
         onDragEnter={handleComposerDragEnter}
@@ -748,6 +748,8 @@ export function ChatComposer({
             </span>
           </div>
         ) : null}
+
+        <div className="relative z-1 flex flex-col gap-1.5 px-4 pb-2 pt-3">
 
         {isMobileLayout ? (
           <div
@@ -1023,6 +1025,8 @@ export function ChatComposer({
                   sendLabel
                     ? "ml-1 w-auto rounded-[8px] px-3 text-[13px]"
                     : "size-8 rounded-full p-0",
+                  composerMode === "suggestion" &&
+                    "bg-ai-accent text-white hover:bg-ai-accent/90 hover:text-white",
                 )}
                 disabled={isSending || !canSubmitDraft}
                 onClick={handleSendDraft}
@@ -1355,6 +1359,8 @@ export function ChatComposer({
                   sendLabel
                     ? "ml-1 w-auto rounded-[8px] px-3 text-[13px]"
                     : "size-7 rounded-full p-0",
+                  composerMode === "suggestion" &&
+                    "bg-ai-accent text-white hover:bg-ai-accent/90 hover:text-white",
                 )}
                 disabled={isSending || !canSubmitDraft}
                 onClick={handleSendDraft}
@@ -1504,10 +1510,11 @@ export function ChatComposer({
               conversationId={conversationId}
             />
           </LexicalComposer>
+          </div>
         </div>
       </div>
     </div>
-    </TooltipProvider>
+  </TooltipProvider>
   );
 }
 

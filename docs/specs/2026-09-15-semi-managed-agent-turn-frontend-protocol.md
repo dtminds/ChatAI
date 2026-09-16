@@ -4,6 +4,7 @@
 - 状态：Draft
 - 范围：半托管模式 2.0 的前端协议、状态归约、辅助条和过程展开 UI
 - 关联产品方案：[`docs/product/2026-09-09-semi-managed-mode-2.md`](../product/2026-09-09-semi-managed-mode-2.md)
+- Backend Mock 协议：[`2026-09-16-agent-turn-mock-backend-protocol.md`](./2026-09-16-agent-turn-mock-backend-protocol.md)
 - 当前实现入口：`apps/web/src/pages/chat/components/chat-ai-assistant-status-bar.tsx`
 
 本文定义后端接口 ready 前的前端协议和 UI 结构。前端先使用本地事件 Fixture 驱动同一套 Reducer 和视图，后续由后端 Adapter 将真实 Agent 事件转换为本文协议；不因为更换事件来源而重做辅助条交互。
@@ -489,9 +490,12 @@ Renderer 选择顺序：
 
 客户自定义工具没有前端专用 Renderer 时，自动使用通用 Renderer。后续如需要让客户定义稳定的业务化展示，可增加受控的 `displayModel`，例如键值对、表格或文本，不允许客户配置注入 React 组件或任意 HTML。
 
-## 9. 人工决策与执行结果
+## 9. Tool Approval、客服澄清与执行结果
 
-前端不区分 SOP、技能、知识库和普通工具的业务身份，也不建模这些业务对象的授权过程。对前端而言，它们最终都表现为 Agent 活动；其中需要客服介入的工具活动通过通用的 `actions` 和 `decision.*` 事件表达。
+前端不区分 SOP、技能、知识库和普通工具的业务身份，但必须区分客服介入的来源：
+
+- Tool Approval：模型已经发起具体 Tool Call，执行层根据工具策略拦截，通过 `decision.*` 要求客服批准或拒绝原调用。
+- 客服澄清：模型主动调用 `request_kf_clarification` 控制工具；该工具自动放行，但会挂起并等待客服返回完整指令。
 
 活动详情和人工决策必须与模型摘要分离：
 
@@ -500,6 +504,10 @@ Renderer 选择顺序：
 - 客服点击操作后，前端发送 `decision.resolved`，不直接把按钮点击视为业务成功。
 - 执行结果仍必须通过后续 `tool_result` 回显。
 - 工具执行、幂等和结果由执行端负责，前端协议只负责展示活动和派发人工决策。
+
+`request_kf_clarification` 不产生 `decision.requested`。它的 `input` 包含问题和非穷举的建议选项，前端使用专用 Renderer 展示快捷选择和自由指令输入。客服回复后，Backend 将其归一为包含完整 `instruction` 的普通 `tool_result`，Agent Loop 再继续执行。建议 ID 只用于输入来源和审计，不能替代返回给 Agent 的完整指令。
+
+等待客服澄清时，辅助条自身展开为人工介入面板，不在横条上方叠加第二个浮层。建议选项和单行自由指令输入使用一致的宽度与高度；选项只负责选中，客服点击独立操作行中的「继续」后才提交。「终止」取消整个 Turn，不作为澄清 Tool Result 返回模型。
 
 ## 10. 纯前端 Fixture
 
@@ -641,6 +649,10 @@ apps/web/src/pages/chat/components/agent-turn-detail-renderers.tsx
 | 写工具等待确认 | 横条进入 confirmation，展示具体操作和人工按钮 |
 | 批准写工具 | 当前活动继续执行，结果由 tool_result 决定 |
 | 忽略写工具 | 当前 Turn 按取消或终止语义处理，不能假设业务已执行 |
+| Agent 请求客服澄清 | 展示建议选项和自由指令输入，不产生 Tool Approval 事件 |
+| 客服选择澄清建议 | Backend 将建议解析成完整 instruction，并以 tool_result 恢复 Loop |
+| 客服输入其它指令 | 完整文本进入 tool_result，不能限制为模型给出的建议枚举 |
+| 客服终止澄清 | 取消挂起 Tool Call 和当前 Turn，辅助条收起并回到默认状态 |
 | 文本流式输出 | 只更新一条回复建议活动和草稿 |
 | 有专用详情 Renderer | 展示业务化工具详情 |
 | 无专用详情 Renderer | 展示工具名、调用参数和返回结果 |

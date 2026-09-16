@@ -15,6 +15,7 @@ export * from "./ai-usage/dto.js";
 export * from "./auth/dto.js";
 export * from "./auth/embed-host.js";
 export * from "./chat/dto.js";
+export * from "./chat/agent-turn.js";
 export * from "./chat/enums.js";
 export * from "./chat/material-collection-content.js";
 export * from "./chat/quick-reply-content.js";

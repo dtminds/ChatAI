@@ -4,7 +4,14 @@ import {
   Cancel01Icon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import {
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 import type { LexicalEditor } from "lexical";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -92,20 +99,6 @@ export function useSmartReplyComposer({
   const canManageKnowledgeBase = canManageAiHostingAgents(subUser);
   const conversationMessagesRef = useRef(conversationMessages);
   conversationMessagesRef.current = conversationMessages;
-  const [preparedSuggestion, setPreparedSuggestion] =
-    useState<PreparedSuggestion | null>(null);
-  const [appliedSuggestion, setAppliedSuggestion] = useState<{
-    lookupKey: string;
-    revision: string;
-  } | null>(null);
-  const [overwriteConfirmationLookupKey, setOverwriteConfirmationLookupKey] =
-    useState<string>();
-  const [isFaqDialogOpen, setIsFaqDialogOpen] = useState(false);
-  const [isCheckingViolations, setIsCheckingViolations] = useState(false);
-  const violationCheckIdRef = useRef(0);
-  const [violationResult, setViolationResult] =
-    useState<SmartReplyViolationResult | null>(null);
-  const [violationCheckedClean, setViolationCheckedClean] = useState(false);
   const suggestion = turn?.suggestion;
   const turnLookupKey = turn?.lookupKey;
   const suggestionRevision = useMemo(
@@ -125,10 +118,39 @@ export function useSmartReplyComposer({
       turnLookupKey,
     ],
   );
+  const syncPreparedSuggestion = useMemo(() => {
+    if (!turnLookupKey || !suggestionRevision || !suggestion) {
+      return null;
+    }
+    return buildInitialPreparedSuggestion({
+      conversationMessages,
+      suggestion,
+      suggestionRevision,
+    });
+  }, [conversationMessages, suggestion, suggestionRevision, turnLookupKey]);
+  const [asyncPreparedSuggestion, setAsyncPreparedSuggestion] =
+    useState<PreparedSuggestion | null>(null);
+  const preparedSuggestion =
+    syncPreparedSuggestion ??
+    (asyncPreparedSuggestion?.revision === suggestionRevision
+      ? asyncPreparedSuggestion
+      : null);
+  const [appliedSuggestion, setAppliedSuggestion] = useState<{
+    lookupKey: string;
+    revision: string;
+  } | null>(null);
+  const [overwriteConfirmationLookupKey, setOverwriteConfirmationLookupKey] =
+    useState<string>();
+  const [isFaqDialogOpen, setIsFaqDialogOpen] = useState(false);
+  const [isCheckingViolations, setIsCheckingViolations] = useState(false);
+  const violationCheckIdRef = useRef(0);
+  const [violationResult, setViolationResult] =
+    useState<SmartReplyViolationResult | null>(null);
+  const [violationCheckedClean, setViolationCheckedClean] = useState(false);
 
   useEffect(() => {
     violationCheckIdRef.current += 1;
-    setPreparedSuggestion(null);
+    setAsyncPreparedSuggestion(null);
     setAppliedSuggestion(null);
     setOverwriteConfirmationLookupKey(undefined);
     setIsFaqDialogOpen(false);
@@ -143,6 +165,7 @@ export function useSmartReplyComposer({
     }
 
     violationCheckIdRef.current += 1;
+    setAsyncPreparedSuggestion(null);
     setAppliedSuggestion(null);
     setOverwriteConfirmationLookupKey(undefined);
     setIsFaqDialogOpen(false);
@@ -153,7 +176,14 @@ export function useSmartReplyComposer({
 
   useEffect(() => {
     if (!turnLookupKey || !suggestionRevision || !suggestion) {
-      setPreparedSuggestion(null);
+      setAsyncPreparedSuggestion(null);
+      return;
+    }
+
+    if (syncPreparedSuggestion) {
+      setAsyncPreparedSuggestion(null);
+      setViolationResult(null);
+      setViolationCheckedClean(false);
       return;
     }
 
@@ -164,7 +194,7 @@ export function useSmartReplyComposer({
     });
     let cancelled = false;
 
-    setPreparedSuggestion(null);
+    setAsyncPreparedSuggestion(null);
     setViolationResult(null);
     setViolationCheckedClean(false);
 
@@ -219,7 +249,7 @@ export function useSmartReplyComposer({
       );
       const selectedAttachmentIds = getInitiallySelectedAttachmentIds(enriched);
 
-      setPreparedSuggestion({
+      setAsyncPreparedSuggestion({
         revision: suggestionRevision,
         segments: buildSmartReplySendSegments({
           content,
@@ -234,9 +264,15 @@ export function useSmartReplyComposer({
     return () => {
       cancelled = true;
     };
-  }, [conversationId, suggestion, suggestionRevision, turnLookupKey]);
+  }, [
+    conversationId,
+    suggestion,
+    suggestionRevision,
+    syncPreparedSuggestion,
+    turnLookupKey,
+  ]);
 
-  useEffect(() => {
+  const applySuggestion = () => {
     if (
       !turn ||
       turn.phase !== "confirmation" ||
@@ -279,7 +315,19 @@ export function useSmartReplyComposer({
       lookupKey: turn.lookupKey,
       revision: suggestionRevision,
     });
-  }, [
+  };
+
+  useLayoutEffect(applySuggestion, [
+    appliedSuggestion,
+    approvedOverwriteLookupKey,
+    composerRef,
+    preparedSuggestion,
+    quotedMessage,
+    suggestionRevision,
+    turn,
+  ]);
+
+  useEffect(applySuggestion, [
     appliedSuggestion,
     approvedOverwriteLookupKey,
     composerRef,
@@ -329,8 +377,11 @@ export function useSmartReplyComposer({
       hasAppliedCurrentSuggestion &&
       !isSending,
   );
+  const effectiveDraftText =
+    draftText ||
+    (hasAppliedCurrentSuggestion ? suggestion?.content ?? "" : "");
   const handleCheckViolations = async () => {
-    const content = draftText.trim();
+    const content = effectiveDraftText.trim();
 
     if (!conversationId || !content || isCheckingViolations) {
       return;
@@ -375,7 +426,7 @@ export function useSmartReplyComposer({
 
     clearTransientState();
     await onSend(turn.message, {
-      content: draftText.trim(),
+      content: effectiveDraftText.trim(),
       quote: quotedMessage?.quoteMsgId
         ? {
             quoteMsgId: quotedMessage.quoteMsgId,
@@ -402,7 +453,9 @@ export function useSmartReplyComposer({
             <Button
               aria-label="添加到FAQ"
               className="size-8 p-0 shadow-none"
-              disabled={!canManageKnowledgeBase || !canEdit || !draftText.trim()}
+              disabled={
+                !canManageKnowledgeBase || !canEdit || !effectiveDraftText.trim()
+              }
               onClick={() => setIsFaqDialogOpen(true)}
               size="icon"
               type="button"
@@ -425,7 +478,7 @@ export function useSmartReplyComposer({
               disabled={
                 !canEdit ||
                 !conversationId ||
-                !draftText.trim() ||
+                !effectiveDraftText.trim() ||
                 isCheckingViolations
               }
               onClick={() => void handleCheckViolations()}
@@ -507,7 +560,7 @@ export function useSmartReplyComposer({
   const dialog = turn ? (
     <SmartReplyAddToFaqDialog
       canManage={canManageKnowledgeBase}
-      initialAnswer={draftText}
+      initialAnswer={effectiveDraftText}
       initialQuestion={getSmartReplyCustomerQuestion(turn.message)}
       onOpenChange={setIsFaqDialogOpen}
       open={isFaqDialogOpen}
@@ -532,4 +585,46 @@ function getInitiallySelectedAttachmentIds(
   attachments: SmartReplyRecommendedAttachment[],
 ) {
   return attachments.map((attachment) => attachment.id);
+}
+
+function buildInitialPreparedSuggestion({
+  conversationMessages,
+  suggestion,
+  suggestionRevision,
+}: {
+  conversationMessages: Message[];
+  suggestion: NonNullable<SmartReplyAssistantTurn["suggestion"]>;
+  suggestionRevision: string;
+}): PreparedSuggestion | null {
+  const source = resolveSmartReplyRecommendedAttachmentsSource({
+    genAnswer: suggestion.genAnswer,
+    refAttachIds: suggestion.refAttachIds,
+  });
+
+  if (source.attachmentIds.length > 0) {
+    return null;
+  }
+
+  const attachments = source.inlineAttachments;
+  const referenceMessageSeqs =
+    resolveSmartReplyReferenceMessageSeqs(attachments);
+
+  if (referenceMessageSeqs.length > 0) {
+    return null;
+  }
+
+  const enriched = enrichSmartReplyRecommendedAttachmentsFromMessages(
+    attachments,
+    conversationMessages,
+  );
+  const selectedAttachmentIds = getInitiallySelectedAttachmentIds(enriched);
+
+  return {
+    revision: suggestionRevision,
+    segments: buildSmartReplySendSegments({
+      content: suggestion.content ?? "",
+      recommendedAttachments: enriched,
+      selectedAttachmentIds,
+    }),
+  };
 }

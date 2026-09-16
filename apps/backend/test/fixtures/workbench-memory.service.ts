@@ -175,6 +175,11 @@ export function createMemoryWorkbenchService() {
   const state = buildInitialState();
 
   return {
+    assertConversationOperable(_subUserId: string, conversationId: string) {
+      if (!findConversation(state, conversationId)) {
+        throw new NotFoundError("CONVERSATION_NOT_FOUND", "会话不存在");
+      }
+    },
     deleteConversation(
       _subUserId: string,
       conversationId: string,

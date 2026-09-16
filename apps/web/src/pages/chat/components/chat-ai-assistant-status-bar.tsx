@@ -90,6 +90,7 @@ export function ChatAIAssistantStatusBar({
   actions,
   className,
   customerName,
+  delayTransitionMs = 0,
   label,
   reason,
   status = "waiting",
@@ -98,6 +99,7 @@ export function ChatAIAssistantStatusBar({
   actions?: readonly ChatAIAssistantAction[];
   className?: string;
   customerName?: string;
+  delayTransitionMs?: number;
   label?: string;
   reason?: string;
   status?: ChatAIAssistantStatus;
@@ -114,22 +116,44 @@ export function ChatAIAssistantStatusBar({
   const [outgoingView, setOutgoingView] = useState<StatusBarView | null>(null);
   const [thinkingStartedAt, setThinkingStartedAt] = useState(() => Date.now());
   const previousStatusRef = useRef(status);
+  const delayTimerRef = useRef<number | null>(null);
+  const nextViewRef = useRef<StatusBarView | null>(null);
   const beamTheme = useAppearanceStore((state): BeamTheme =>
     state.themePreference === "dark" ||
     (state.themePreference === "system" && state.isSystemDarkMode)
       ? "dark"
       : "light",
   );
+
+  useEffect(() => {
+    return () => {
+      if (delayTimerRef.current !== null) {
+        window.clearTimeout(delayTimerRef.current);
+        delayTimerRef.current = null;
+      }
+    };
+  }, []);
+
   useLayoutEffect(() => {
-    const nextView = {
+    const nextView: StatusBarView = {
       label: targetLabel,
       reason,
       status,
       waitingForCustomer,
     };
+    nextViewRef.current = nextView;
+
+    const prefersReducedMotion =
+      typeof window !== "undefined" &&
+      window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+    const resolvedDelayMs = prefersReducedMotion ? 0 : Math.max(0, delayTransitionMs);
 
     if (outgoingView) {
       if (outgoingView.status === status) {
+        if (delayTimerRef.current !== null) {
+          window.clearTimeout(delayTimerRef.current);
+          delayTimerRef.current = null;
+        }
         setOutgoingView(null);
         setVisibleView(nextView);
         return;
@@ -147,9 +171,31 @@ export function ChatAIAssistantStatusBar({
     }
 
     if (visibleView.status !== status) {
+      if (resolvedDelayMs > 0) {
+        if (delayTimerRef.current !== null) {
+          window.clearTimeout(delayTimerRef.current);
+        }
+        delayTimerRef.current = window.setTimeout(() => {
+          delayTimerRef.current = null;
+          const latestTarget = nextViewRef.current ?? nextView;
+          setOutgoingView(visibleView);
+          setVisibleView(latestTarget);
+        }, resolvedDelayMs);
+        return;
+      }
+
+      if (delayTimerRef.current !== null) {
+        window.clearTimeout(delayTimerRef.current);
+        delayTimerRef.current = null;
+      }
       setOutgoingView(visibleView);
       setVisibleView(nextView);
       return;
+    }
+
+    if (delayTimerRef.current !== null) {
+      window.clearTimeout(delayTimerRef.current);
+      delayTimerRef.current = null;
     }
 
     if (
@@ -160,6 +206,7 @@ export function ChatAIAssistantStatusBar({
       setVisibleView(nextView);
     }
   }, [
+    delayTransitionMs,
     reason,
     status,
     targetLabel,

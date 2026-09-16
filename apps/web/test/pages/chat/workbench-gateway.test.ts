@@ -100,6 +100,7 @@ describe("workbench gateway message paging", () => {
           contentType: "mini-program" as const,
           conversationId: "conv-source",
           customerId: "customer-source",
+          msgid: "msg-3050",
           rawMsgtype: "weapp",
           seatId: "seat-source",
           senderType: "agent" as const,

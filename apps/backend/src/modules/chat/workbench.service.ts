@@ -237,6 +237,10 @@ function collectSmartReplyMessagePageCandidateIds(messages: WorkbenchMessageDto[
 }
 
 export type WorkbenchService = {
+  assertConversationOperable(
+    subUserId: string,
+    conversationId: string,
+  ): Promise<void> | void;
   getBroadcastProtectionStatus(
     uid: number,
   ):
@@ -1013,6 +1017,14 @@ export class MysqlWorkbenchService implements WorkbenchService {
     }
 
     return hydrated;
+  }
+
+  async assertConversationOperable(
+    subUserId: string,
+    conversationId: string,
+  ): Promise<void> {
+    const scope = await this.getAuthenticatedWorkbenchScope(subUserId);
+    await this.getOperableConversation(subUserId, conversationId, scope);
   }
 
   async getMessages(

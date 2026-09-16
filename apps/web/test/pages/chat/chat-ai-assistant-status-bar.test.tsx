@@ -377,4 +377,41 @@ describe("ChatAIAssistantStatusBar", () => {
       "chat-ai-assistant-status-layer--entering",
     );
   });
+
+  it("delays the outgoing and incoming transition when delayTransitionMs is specified", () => {
+    vi.useFakeTimers();
+    const { rerender } = render(
+      <ChatAIAssistantStatusBar
+        customerName="客户甲"
+        delayTransitionMs={200}
+        status="waiting"
+      />,
+    );
+
+    rerender(
+      <ChatAIAssistantStatusBar
+        customerName="客户甲"
+        delayTransitionMs={200}
+        status="thinking"
+      />,
+    );
+
+    // During the 200ms delay, transition layers must not be created yet
+    expect(
+      screen.queryByTestId("chat-ai-assistant-status-outgoing-layer"),
+    ).not.toBeInTheDocument();
+    expect(screen.getByRole("status")).toHaveTextContent("正在等待 客户甲 的消息");
+
+    act(() => {
+      vi.advanceTimersByTime(200);
+    });
+
+    // After 200ms delay, the transition layers are mounted
+    expect(
+      screen.getByTestId("chat-ai-assistant-status-outgoing-layer"),
+    ).toHaveTextContent("正在等待 客户甲 的消息");
+    expect(
+      screen.getByTestId("chat-ai-assistant-status-motion-layer"),
+    ).toHaveTextContent("AI 正在思考");
+  });
 });

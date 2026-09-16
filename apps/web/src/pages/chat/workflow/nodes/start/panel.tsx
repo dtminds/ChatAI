@@ -48,6 +48,7 @@ import { ManagedAccountSelection } from "./managed-account-selection";
 import { MessageKeywords } from "./message-keywords";
 import { WecomMemberSelection } from "./wecom-member-selection";
 import { getWorkflowDirectEntryEndpoint } from "./direct-entry-api";
+import { getDirectEntryLabel } from "./entry-mode";
 import { WecomTagSelector } from "../../../components/wecom-tag-selector";
 import { useWorkflowSurface } from "../../workflow-surface";
 import { createWeComMemberRootsFromOptions } from "../../workflow-wecom-member-resource";
@@ -67,10 +68,11 @@ export function StartConfig({
   const startData = node.data;
   const { entryPolicy, triggers } = startData;
   const surface = useWorkflowSurface();
-  const canUseDirectPush = !surface.embedded;
-  const entryMode = canUseDirectPush ? (startData.entryMode ?? "event") : "event";
   const chatAiStartData = isChatAiStartNodeData(startData) ? startData : undefined;
   const isChatAi = chatAiStartData !== undefined;
+  const canUseDirectPush = !isChatAi || !surface.embedded;
+  const entryMode = canUseDirectPush ? (startData.entryMode ?? "event") : "event";
+  const directEntryLabel = getDirectEntryLabel(startData);
   const sourceIds = getStartNodeSourceIds(startData);
   const managedAccounts = resources?.managedAccounts;
   const wecomMembers = resources?.wecomMembers;
@@ -98,7 +100,7 @@ export function StartConfig({
     onNodeChange({
       ...patch,
       metric: configured
-        ? `${nextSourceIds.length} 个${sourceLabel} · ${formatEntryModeMetric(nextEntryMode, nextTriggers.length)}`
+        ? `${nextSourceIds.length} 个${sourceLabel} · ${formatEntryModeMetric(nextEntryMode, nextTriggers.length, directEntryLabel)}`
         : "待配置进入方式",
       status: configured ? "ready" : "warning",
     } as WorkflowNodeConfigPatch<"start">);
@@ -156,7 +158,7 @@ export function StartConfig({
             </label>
             <label className="flex items-center gap-2 text-[13px] text-foreground">
               <RadioGroupItem disabled={!canUseDirectPush} value="direct-push" />
-              <span>外部推送</span>
+              <span>{directEntryLabel}</span>
             </label>
           </RadioGroup>
         </section>
@@ -230,9 +232,9 @@ export function StartConfig({
             ) : null}
             </div>
           </section>
-        ) : (
+        ) : isChatAi ? (
           <DirectEntryEndpoint workflowId={workflowId} />
-        )}
+        ) : null}
       </div>
 
       <section>
@@ -393,8 +395,12 @@ async function copyDirectEntryEndpoint(endpointUrl: string) {
   }
 }
 
-function formatEntryModeMetric(mode: WorkflowStartEntryMode, triggerCount: number) {
-  if (mode === "direct-push") return "外部推送";
+function formatEntryModeMetric(
+  mode: WorkflowStartEntryMode,
+  triggerCount: number,
+  directEntryLabel: string,
+) {
+  if (mode === "direct-push") return directEntryLabel;
   return `${triggerCount} 个触发条件`;
 }
 

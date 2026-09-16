@@ -199,6 +199,12 @@ describe("workflow contracts", () => {
     });
     expect(getWorkflowCapabilityProfile("wecom_sop").allowedNodeKinds).not.toContain("message");
     expect(getWorkflowCapabilityProfile("wecom_sop").allowedNodeKinds).not.toContain("llm");
+    expect(getWorkflowCapabilityProfile("wecom_sop").allowedNodeKinds).not.toContain("order-bind");
+    expect(getWorkflowCapabilityProfile("wecom_sop").allowedNodeKinds).not.toContain("order-conversion");
+    expect(getWorkflowCapabilityProfile("chatai_sop").allowedNodeKinds).toEqual(expect.arrayContaining([
+      "order-bind",
+      "order-conversion",
+    ]));
     expect(getWorkflowCapabilityProfile("chatai_sop").variableCatalog).toEqual(expect.arrayContaining([
       "subject.id",
       "trigger.occurredAt",

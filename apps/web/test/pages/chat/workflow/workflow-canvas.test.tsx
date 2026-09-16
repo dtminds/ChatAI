@@ -312,6 +312,8 @@ describe("WorkflowCanvas", () => {
     expect(screen.getByRole("button", { name: "添加 等待节点" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "添加 大模型节点" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "添加 消息发送节点" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "添加 关联订单节点" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "添加 代客转积分节点" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "添加 转人工节点" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "添加 转 Agent节点" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "添加 等待事件节点" })).not.toBeInTheDocument();

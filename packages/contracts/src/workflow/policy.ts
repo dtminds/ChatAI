@@ -106,8 +106,6 @@ const WECOM_NODE_KINDS = [
   "tag-query",
   "tag",
   "customer-update",
-  "order-conversion",
-  "order-bind",
   "coupon",
   "smartsheet-write",
   "end",

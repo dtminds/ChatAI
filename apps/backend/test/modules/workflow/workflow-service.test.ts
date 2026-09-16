@@ -2143,6 +2143,38 @@ describe("WorkflowService", () => {
     }]);
   });
 
+  it("publishes WeCom marketing-flow entries with selected work-user bindings", async () => {
+    const repository = new InMemoryWorkflowRepository();
+    const service = createService(repository);
+    const created = await service.create(operator, { workflowType: "wecom_sop" });
+    const saved = await service.saveDraft(operator, created.id, {
+      draft: withStartConfig(created.draft, {
+        entryMode: "direct-push",
+        entryPolicy: { mode: "never" },
+        triggers: [],
+        workUserIds: [201, 202],
+      }),
+      expectedDraftVersion: created.draftVersion,
+    });
+
+    await publishApprovedDraft(service, created.id, saved.draftVersion);
+    await service.enable(operator, created.id);
+
+    await expect(repository.listActiveTriggerBindings(
+      operator.uid,
+      "workflow.direct_entry",
+    )).resolves.toMatchObject([{
+      filter: {
+        entryPolicy: { mode: "never" },
+        eventType: "workflow.direct_entry",
+        workUserIds: [201, 202],
+      },
+      revision: 1,
+      subjectType: "wecom_contact",
+      workflowId: created.id,
+    }]);
+  });
+
   it("rejects direct-entry publication when the reviewed seat mapping changed", async () => {
     let workUserId = 201;
     const service = createService(new InMemoryWorkflowRepository(), {

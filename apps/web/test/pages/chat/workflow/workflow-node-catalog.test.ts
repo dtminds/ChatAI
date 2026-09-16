@@ -42,6 +42,7 @@ import {
   getNodeConfigSections,
   getWorkflowNodeConfigSchema,
 } from "@/pages/chat/workflow/node-config-schema";
+import { createStartNodeData } from "@/pages/chat/workflow/nodes/start/definition";
 import {
   getDefaultSourceHandleId,
   getAutoConnectSourceHandleDefinition,
@@ -206,8 +207,12 @@ describe("workflow node catalog", () => {
       expect(allowedInsertableNodeKinds).toContain("smartsheet-write");
       if (workflowType === "chatai_sop") {
         expect(allowedInsertableNodeKinds).toContain("ticket-create");
+        expect(allowedInsertableNodeKinds).toContain("order-bind");
+        expect(allowedInsertableNodeKinds).toContain("order-conversion");
       } else {
         expect(allowedInsertableNodeKinds).not.toContain("ticket-create");
+        expect(allowedInsertableNodeKinds).not.toContain("order-bind");
+        expect(allowedInsertableNodeKinds).not.toContain("order-conversion");
       }
     },
   );
@@ -427,6 +432,16 @@ describe("workflow node catalog", () => {
         expect.objectContaining({ id: "sources" }),
         expect.objectContaining({ id: "triggers" }),
       ]));
+    expect(startBody.kind === "fields" ? startBody.getFields({
+      ...createStartNodeData("wecom_sop"),
+      entryMode: "direct-push",
+      workUserIds: [201],
+    }) : []).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        id: "triggers",
+        value: { kind: "text", text: "营销流转" },
+      }),
+    ]));
     expect(waitBody.kind === "fields" ? waitBody.getFields(createDefaultNodeData("wait")) : [])
       .toEqual([
         expect.objectContaining({

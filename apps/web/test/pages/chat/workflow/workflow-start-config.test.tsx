@@ -283,23 +283,59 @@ describe("workflow start configuration", () => {
       .not.toBeInTheDocument();
   });
 
-  it("disables external push entry for the embedded WeCom surface", () => {
-    const node = createStartNode(createStartNodeData("wecom_sop"));
+  it("exposes marketing flow without a push URL for the embedded WeCom surface", async () => {
+    const user = userEvent.setup();
+    const onNodeChange = vi.fn();
+    const node = createStartNode({
+      ...createStartNodeData("wecom_sop"),
+      workUserIds: [201],
+    });
 
-    render(
+    const { rerender } = render(
       <WorkflowSurfaceProvider surface="sop_embed">
         <StartConfig
           allowedEntryEventTypes={["contact.friend_added", "contact.tag_added"]}
           edges={[]}
           node={node}
           nodes={[node]}
-          onNodeChange={vi.fn()}
+          onNodeChange={onNodeChange}
+          workflowId="31"
         />
       </WorkflowSurfaceProvider>,
     );
 
     expect(screen.getByRole("radio", { name: "事件触发" })).toBeChecked();
-    expect(screen.getByRole("radio", { name: "外部推送" })).toBeDisabled();
+    const marketingFlow = screen.getByRole("radio", { name: "营销流转" });
+    expect(marketingFlow).toBeEnabled();
+
+    await user.click(marketingFlow);
+    expect(onNodeChange).toHaveBeenLastCalledWith(expect.objectContaining({
+      entryMode: "direct-push",
+      metric: "1 个企微成员 · 营销流转",
+      status: "ready",
+      triggers: [],
+    }));
+
+    const directNode = {
+      ...node,
+      data: { ...node.data, entryMode: "direct-push" as const, triggers: [] },
+    };
+    rerender(
+      <WorkflowSurfaceProvider surface="sop_embed">
+        <StartConfig
+          allowedEntryEventTypes={["contact.friend_added", "contact.tag_added"]}
+          edges={[]}
+          node={directNode}
+          nodes={[directNode]}
+          onNodeChange={onNodeChange}
+          workflowId="31"
+        />
+      </WorkflowSurfaceProvider>,
+    );
+
+    expect(screen.getByRole("radio", { name: "营销流转" })).toBeChecked();
+    expect(screen.queryByText("推送地址")).not.toBeInTheDocument();
+    expect(screen.queryByText("正在加载")).not.toBeInTheDocument();
   });
 
   it("commits WeCom members only after confirming the picker dialog", async () => {

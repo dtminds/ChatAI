@@ -32,13 +32,13 @@ export function startAgentTurnMock(input: {
 }
 
 export function resolveAgentTurnMockDecision(input: {
-  action: ResolveAgentTurnDecisionRequest["action"];
   decisionId: string;
+  resolution: ResolveAgentTurnDecisionRequest;
   turnId: string;
 }) {
   return http.post<{ ok: true }, ResolveAgentTurnDecisionRequest>(
     `/server/agent-turns/${encodeURIComponent(input.turnId)}/decisions/${encodeURIComponent(input.decisionId)}`,
-    { action: input.action },
+    input.resolution,
   );
 }
 

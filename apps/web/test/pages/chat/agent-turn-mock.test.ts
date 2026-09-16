@@ -9,6 +9,7 @@ import {
 
 const initialState: AgentTurnMockState = {
   phase: "running",
+  toolCalls: {},
   toolSummaries: {},
   turnId: "turn-1",
 };
@@ -26,8 +27,9 @@ describe("agent turn mock reducer", () => {
     };
     const decision: AgentTurnEvent = {
       actions: [
-        { id: "reject", label: "忽略", tone: "quiet" },
-        { id: "approve", label: "批准", tone: "primary" },
+        { id: "redirect", label: "拒绝并告知其他方式", tone: "quiet" },
+        { id: "reject", label: "拒绝", tone: "quiet" },
+        { id: "approve", label: "继续", tone: "primary" },
       ],
       callId: "call-1",
       decisionId: "decision-call-1",
@@ -44,6 +46,9 @@ describe("agent turn mock reducer", () => {
         decisionId: "decision-call-1",
       },
       phase: "awaiting_decision",
+      toolCalls: {
+        "call-1": toolCall,
+      },
     });
   });
 

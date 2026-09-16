@@ -32,6 +32,7 @@ import {
 } from "@/pages/chat/components/chat-ai-assistant-debug-menu";
 import { ChatAgentHostingStatusBar } from "@/pages/chat/components/chat-agent-hosting-status-bar";
 import { ChatAgentClarificationPrompt } from "@/pages/chat/components/chat-agent-clarification-prompt";
+import { ChatAgentToolApprovalPrompt } from "@/pages/chat/components/chat-agent-tool-approval-prompt";
 import { ChatHandoffStatusBar } from "@/pages/chat/components/chat-handoff-status-bar";
 import { useSmartReplyComposer } from "@/pages/chat/components/use-smart-reply-composer";
 import { useAgentTurnMock } from "@/pages/chat/components/use-agent-turn-mock";
@@ -1013,7 +1014,7 @@ export function ChatPanel({
                         <div
                           className={cn(
                             "absolute left-1/2 top-1 z-0 w-[calc(100%-2rem)] max-w-[860px] -translate-x-1/2",
-                            agentTurnMock.clarification
+                            agentTurnMock.approval || agentTurnMock.clarification
                               ? "-translate-y-full"
                               : "-translate-y-[42px]",
                             multiSelectMode && "pointer-events-none",
@@ -1021,7 +1022,28 @@ export function ChatPanel({
                           data-testid="chat-ai-assistant-status-bar-anchor"
                           inert={multiSelectMode || undefined}
                         >
-                          {agentTurnMock.clarification ? (
+                          {agentTurnMock.approval ? (
+                            <ChatAgentToolApprovalPrompt
+                              approval={agentTurnMock.approval}
+                              disabled={agentTurnMock.isResolvingApproval}
+                              onApprove={() =>
+                                void agentTurnMock.resolveApproval({
+                                  action: "approve",
+                                })
+                              }
+                              onRedirect={(instruction) =>
+                                void agentTurnMock.resolveApproval({
+                                  action: "redirect",
+                                  instruction,
+                                })
+                              }
+                              onReject={() =>
+                                void agentTurnMock.resolveApproval({
+                                  action: "reject",
+                                })
+                              }
+                            />
+                          ) : agentTurnMock.clarification ? (
                             <ChatAgentClarificationPrompt
                               disabled={agentTurnMock.isResolvingClarification}
                               input={agentTurnMock.clarification}

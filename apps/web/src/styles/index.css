@@ -1191,7 +1191,8 @@ html.dark[data-appearance-theme="nature"] {
     transition: box-shadow 250ms cubic-bezier(0.2, 0, 0, 1);
   }
 
-  .chat-agent-clarification-surface {
+  .chat-agent-clarification-surface,
+  .chat-agent-tool-approval-surface {
     box-shadow: none;
   }
 

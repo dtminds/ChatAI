@@ -45,6 +45,7 @@ const MOCK_OPTIONS: Array<{
 }> = [
   { label: "知识库回复", value: "knowledge_reply" },
   { label: "订单查询", value: "order_reply" },
+  { label: "订单绑定审批", value: "order_binding_approval" },
   { label: "售后人工审批", value: "after_sales_approval" },
   { label: "客服澄清", value: "operator_clarification" },
   { label: "工具失败后继续", value: "tool_failure" },

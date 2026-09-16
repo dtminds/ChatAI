@@ -43,6 +43,7 @@ type ClarificationStep = {
 type FinishStep = {
   input: (context: {
     clarificationInstruction?: string;
+    operatorInstruction?: string;
     rejected: boolean;
   }) => AgentTurnFinishInput;
   kind: "finish";
@@ -80,6 +81,7 @@ type TurnRecord = {
   pendingClarification?: PendingClarification;
   pendingDecision?: PendingDecision;
   clarificationInstruction?: string;
+  operatorInstruction?: string;
   rejected: boolean;
   sequence: number;
   status: TurnStatus;
@@ -180,20 +182,34 @@ export class AgentTurnMockService {
       );
     }
 
+    const instruction =
+      request.action === "redirect" ? request.instruction.trim() : undefined;
+
+    if (request.action === "redirect" && !instruction) {
+      throw new BadRequestError(
+        "AGENT_TURN_REDIRECT_INSTRUCTION_REQUIRED",
+        "请输入处理指令",
+      );
+    }
+
     record.pendingDecision = undefined;
     record.status = "running";
     this.emit(record, {
       action: request.action,
       callId: pending.callId,
       decisionId,
+      ...(instruction ? { instruction } : {}),
       type: "decision.resolved",
     });
 
-    if (request.action === "reject") {
+    if (request.action !== "approve") {
       record.rejected = true;
+      record.operatorInstruction = instruction;
       this.emit(record, {
         callId: pending.callId,
-        output: { rejected: true },
+        output: instruction
+          ? { instruction, reason: "operator_redirected" }
+          : { reason: "operator_rejected" },
         status: "cancelled",
         type: "tool_result",
       });
@@ -337,6 +353,7 @@ export class AgentTurnMockService {
 
     this.finishTurn(record, step.input({
       clarificationInstruction: record.clarificationInstruction,
+      operatorInstruction: record.operatorInstruction,
       rejected: record.rejected,
     }));
   }
@@ -359,8 +376,13 @@ export class AgentTurnMockService {
       record.status = "awaiting_decision";
       this.emit(record, {
         actions: [
-          { id: "reject", label: "忽略", tone: "quiet" },
-          { id: "approve", label: "批准", tone: "primary" },
+          {
+            id: "redirect",
+            label: "拒绝并告知其他方式",
+            tone: "quiet",
+          },
+          { id: "reject", label: "拒绝", tone: "quiet" },
+          { id: "approve", label: "继续", tone: "primary" },
         ],
         callId,
         decisionId,
@@ -517,6 +539,7 @@ function pickRandomScenario(): AgentTurnMockScenario {
   const scenarios: AgentTurnMockScenario[] = [
     "knowledge_reply",
     "order_reply",
+    "order_binding_approval",
     "after_sales_approval",
     "operator_clarification",
     "tool_failure",
@@ -546,6 +569,30 @@ function createScenarioSteps(scenario: AgentTurnMockScenario): ScenarioStep[] {
         }),
         thinking("正在根据订单状态起草回复"),
         finish(() => replyFinish("已起草回复", "订单已经签收，请问具体遇到了什么售后问题？")),
+      ];
+    case "order_binding_approval":
+      return [
+        thinking("正在核对客户提供的订单信息"),
+        tool(
+          "order.bind",
+          "绑定订单",
+          { orderId: "20984239842348" },
+          { bound: true, orderId: "20984239842348" },
+          "human",
+        ),
+        thinking("正在整理处理结果"),
+        finish(({ operatorInstruction, rejected }) => {
+          if (operatorInstruction) {
+            return replyFinish(
+              "已根据客服指令重新规划",
+              "我会按照你补充的处理方式重新核对订单信息。",
+            );
+          }
+
+          return rejected
+            ? replyFinish("已起草回复", "本次订单绑定未执行，如需继续请补充处理方式。")
+            : replyFinish("已起草回复", "订单已经完成绑定，可以继续处理后续业务。");
+        }),
       ];
     case "after_sales_approval":
       return [

@@ -28,6 +28,7 @@ Agent 不使用自由文本承载业务结果。每一轮必须通过 Tool Call 
 | --- | --- | --- | --- |
 | `knowledge.search` | `business` | `auto` | 查询模拟知识库 |
 | `order.query` | `business` | `auto` | 查询模拟订单 |
+| `order.bind` | `business` | `human` | 模拟绑定订单 |
 | `after_sales.apply` | `business` | `human` | 模拟提交售后申请 |
 | `request_kf_clarification` | `control` | `auto` | 向客服请求处理指令并等待 Tool Result |
 | `turn.finish` | `control` | `auto` | 明确结束 Agent Loop |
@@ -117,7 +118,20 @@ POST /api/server/agent-turns/:turnId/decisions/:decisionId
 }
 ```
 
-`approve` 继续执行原 Tool Call；`reject` 将其结果标记为 `cancelled`，随后 Agent Loop 继续决定最终回复。按钮点击本身不等于工具执行成功。
+人工审批支持三种结果：
+
+- `approve`：按模型原始参数继续执行 Tool Call
+- `reject`：将原 Tool Call 标记为 `cancelled`，不附加其它指令
+- `redirect`：将原 Tool Call 标记为 `cancelled`，并把客服输入的完整指令返回 Agent 重新规划
+
+```json
+{
+  "action": "redirect",
+  "instruction": "先核对客户身份再绑定"
+}
+```
+
+工具参数在审批界面只读。客服需要修改参数或改变处理方式时，不直接编辑 Tool Call，而是使用 `redirect` 告诉 Agent 如何调整；Agent 后续产生的新 Tool Call 仍按其 `approvalMode` 决定是否再次审批。按钮点击本身不等于工具执行成功。
 
 ### 3.4 回复客服澄清 Tool Call
 
@@ -210,6 +224,7 @@ turn.failed
 ```text
 knowledge_reply
 order_reply
+order_binding_approval
 after_sales_approval
 operator_clarification
 tool_failure

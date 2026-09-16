@@ -4,6 +4,7 @@ import type { WorkbenchOutgoingMessageSegment } from "./dto.js";
 export const AgentTurnMockScenarioSchema = Type.Union([
   Type.Literal("knowledge_reply"),
   Type.Literal("order_reply"),
+  Type.Literal("order_binding_approval"),
   Type.Literal("after_sales_approval"),
   Type.Literal("operator_clarification"),
   Type.Literal("tool_failure"),
@@ -41,9 +42,18 @@ export const StartAgentTurnResponseSchema = Type.Object({
 
 export type StartAgentTurnResponse = Static<typeof StartAgentTurnResponseSchema>;
 
-export const ResolveAgentTurnDecisionRequestSchema = Type.Object({
-  action: Type.Union([Type.Literal("approve"), Type.Literal("reject")]),
-});
+export const ResolveAgentTurnDecisionRequestSchema = Type.Union([
+  Type.Object({
+    action: Type.Literal("approve"),
+  }),
+  Type.Object({
+    action: Type.Literal("reject"),
+  }),
+  Type.Object({
+    action: Type.Literal("redirect"),
+    instruction: Type.String({ maxLength: 2_000, minLength: 1 }),
+  }),
+]);
 
 export type ResolveAgentTurnDecisionRequest = Static<
   typeof ResolveAgentTurnDecisionRequestSchema
@@ -125,6 +135,7 @@ export type AgentTurnEvent =
     }
   | {
       actions: readonly [
+        { id: "redirect"; label: string; tone: "quiet" },
         { id: "reject"; label: string; tone: "quiet" },
         { id: "approve"; label: string; tone: "primary" },
       ];
@@ -133,9 +144,10 @@ export type AgentTurnEvent =
       type: "decision.requested";
     }
   | {
-      action: "approve" | "reject";
+      action: "approve" | "redirect" | "reject";
       callId: string;
       decisionId: string;
+      instruction?: string;
       type: "decision.resolved";
     }
   | {

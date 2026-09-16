@@ -14,6 +14,7 @@ import type {
   AgentTurnFinishInput,
   AgentTurnKfClarificationInput,
   AgentTurnMockScenario,
+  ResolveAgentTurnDecisionRequest,
   ResolveAgentTurnKfClarificationRequest,
   WorkbenchOutgoingMessageSegment,
 } from "@chatai/contracts";
@@ -45,6 +46,13 @@ type PendingDecision = {
   decisionId: string;
 };
 
+type AgentTurnMockToolCall = Extract<AgentTurnEvent, { type: "tool_call" }>;
+
+export type AgentTurnMockApproval = {
+  decisionId: string;
+  toolCall: AgentTurnMockToolCall;
+};
+
 export type AgentTurnMockState = {
   activeScenario?: AgentTurnMockScenario;
   clarification?: {
@@ -59,12 +67,14 @@ export type AgentTurnMockState = {
   pendingDecision?: PendingDecision;
   phase: AgentTurnMockPhase;
   reason?: string;
+  toolCalls: Record<string, AgentTurnMockToolCall>;
   toolSummaries: Record<string, string>;
   turnId?: string;
 };
 
 const INITIAL_STATE: AgentTurnMockState = {
   phase: "idle",
+  toolCalls: {},
   toolSummaries: {},
 };
 
@@ -119,6 +129,7 @@ export function useAgentTurnMock({
       activeScenario: scenario,
       label: "正在启动 Agent",
       phase: "running",
+      toolCalls: {},
       toolSummaries: {},
     });
 
@@ -177,14 +188,16 @@ export function useAgentTurnMock({
     setAppliedFinishCallId(state.finishCall.callId);
   }, [appliedFinishCallId, composerRef, state.finishCall, state.phase]);
 
-  const resolveDecision = useCallback(async (action: "approve" | "reject") => {
+  const resolveDecision = useCallback(async (
+    resolution: ResolveAgentTurnDecisionRequest,
+  ) => {
     if (!state.turnId || !state.pendingDecision || isResolvingDecision) return;
 
     setIsResolvingDecision(true);
     try {
       await resolveAgentTurnMockDecision({
-        action,
         decisionId: state.pendingDecision.decisionId,
+        resolution,
         turnId: state.turnId,
       });
     } catch {
@@ -252,25 +265,6 @@ export function useAgentTurnMock({
     [isReplyReady, state],
   );
   const actions = useMemo<readonly ChatAIAssistantAction[]>(() => {
-    if (state.phase === "awaiting_decision") {
-      return [
-        {
-          disabled: isResolvingDecision,
-          id: "reject",
-          label: "忽略",
-          onSelect: () => void resolveDecision("reject"),
-          tone: "quiet",
-        },
-        {
-          disabled: isResolvingDecision,
-          id: "approve",
-          label: "批准",
-          onSelect: () => void resolveDecision("approve"),
-          tone: "primary",
-        },
-      ];
-    }
-
     if (isReplyReady || state.phase === "failed") {
       return [
         {
@@ -283,17 +277,32 @@ export function useAgentTurnMock({
     }
 
     return [];
-  }, [isReplyReady, isResolvingDecision, reset, resolveDecision, state.phase]);
+  }, [isReplyReady, reset, state.phase]);
+
+  const approval = useMemo<AgentTurnMockApproval | undefined>(() => {
+    if (!state.pendingDecision) return undefined;
+
+    const toolCall = state.toolCalls[state.pendingDecision.callId];
+    if (!toolCall) return undefined;
+
+    return {
+      decisionId: state.pendingDecision.decisionId,
+      toolCall,
+    };
+  }, [state.pendingDecision, state.toolCalls]);
 
   return {
     actions,
     activeScenario: state.activeScenario,
+    approval,
     clarification: state.clarification?.input,
+    isResolvingApproval: isResolvingDecision,
     isResolvingClarification,
     isActive: state.phase !== "idle",
     isReplyReady,
     markReplyHandled: reset,
     reset,
+    resolveApproval: resolveDecision,
     resolveClarification,
     startScenario,
     terminate,
@@ -348,6 +357,10 @@ export function reduceAgentTurnMockState(
           clarification?.callId === event.callId
             ? "awaiting_clarification"
             : "running",
+        toolCalls: {
+          ...state.toolCalls,
+          [event.callId]: event,
+        },
         toolSummaries: {
           ...state.toolSummaries,
           [event.callId]: summary,

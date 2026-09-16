@@ -102,6 +102,71 @@ describe("AgentTurnMockService", () => {
 
   });
 
+  it("cancels an order binding call and replans from the operator instruction", async () => {
+    vi.useFakeTimers();
+    service = new AgentTurnMockService();
+    const { turnId } = service.start("101", {
+      conversationId: "144",
+      mock: { scenario: "order_binding_approval", stepDelayMs: 100 },
+      trigger: { type: "agent_request" },
+    });
+    const received: AgentTurnEventEnvelope[] = [];
+    const subscription = service.subscribe(turnId, "101", 0, (event) => {
+      received.push(event);
+    });
+    received.push(...subscription.events);
+
+    await vi.advanceTimersByTimeAsync(250);
+
+    expect(received).toContainEqual(expect.objectContaining({
+      event: expect.objectContaining({
+        approvalMode: "human",
+        input: { orderId: "20984239842348" },
+        name: "order.bind",
+        type: "tool_call",
+      }),
+    }));
+
+    service.resolveDecision(turnId, "101", "decision-call-1", {
+      action: "redirect",
+      instruction: "先核对客户身份再绑定",
+    });
+
+    expect(received.slice(-2).map((item) => item.event)).toEqual([
+      expect.objectContaining({
+        action: "redirect",
+        instruction: "先核对客户身份再绑定",
+        type: "decision.resolved",
+      }),
+      expect.objectContaining({
+        callId: "call-1",
+        output: {
+          instruction: "先核对客户身份再绑定",
+          reason: "operator_redirected",
+        },
+        status: "cancelled",
+        type: "tool_result",
+      }),
+    ]);
+
+    await vi.advanceTimersByTimeAsync(500);
+
+    expect(received).toContainEqual(expect.objectContaining({
+      event: expect.objectContaining({
+        input: expect.objectContaining({
+          outcome: "reply",
+          summary: "已根据客服指令重新规划",
+        }),
+        name: "turn.finish",
+        type: "tool_call",
+      }),
+    }));
+    expect(received.at(-1)?.event).toMatchObject({
+      outcome: "reply",
+      type: "turn.completed",
+    });
+  });
+
   it("resumes a clarification tool with the operator's full instruction", async () => {
     vi.useFakeTimers();
     service = new AgentTurnMockService();

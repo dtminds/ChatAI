@@ -23,7 +23,9 @@ describe("database schema document", () => {
       "UNIQUE KEY uk_chat_agent_preflight_message",
     );
     expect(preflightTable).toContain("token_usage JSON NULL");
-    expect(preflightTable).toContain("lease_expires_at DATETIME(3) NULL");
+    expect(preflightTable).not.toContain("claim_token");
+    expect(preflightTable).not.toContain("lease_expires_at");
+    expect(preflightTable).not.toContain("status VARCHAR");
     expect(migration).toContain("先建表、再部署 Backend");
     expect(WRITABLE_TABLES).toContain(
       "xy_wap_embed_chat_agent_preflight",

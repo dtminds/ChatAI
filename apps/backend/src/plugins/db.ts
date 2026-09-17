@@ -6,7 +6,7 @@ import { WorkbenchRepository } from "../modules/chat/workbench-repository.js";
 import { MysqlWorkbenchService, type WorkbenchService } from "../modules/chat/workbench.service.js";
 import { ComposerAiEditService } from "../modules/chat/composer-ai-edit.service.js";
 import { ComposerAiEditQuotaService } from "../modules/chat/composer-ai-edit-quota.service.js";
-import { MysqlChatAgentPreflightRecordStore } from "../modules/chat/chat-agent-preflight.repository.js";
+import { MysqlChatAgentPreflightRepository } from "../modules/chat/chat-agent-preflight.repository.js";
 import { ChatAgentPreflightService } from "../modules/chat/chat-agent-preflight.service.js";
 import { createWorkbenchJavaClient } from "../modules/chat/workbench-java-client.js";
 import type { AppLogger } from "../shared/logger.js";
@@ -70,7 +70,7 @@ export const dbPlugin = fp(async (app) => {
       apiKey: process.env.VOLCENGINE_ARK_API_KEY,
       cacheKeys: app.cacheKeys,
       logger: app.log,
-      recordStore: new MysqlChatAgentPreflightRecordStore(db),
+      resultRepository: new MysqlChatAgentPreflightRepository(db),
       repository,
     }),
   );

@@ -5,7 +5,7 @@ import type {
 } from "@chatai/contracts";
 import { describe, expect, it, vi } from "vitest";
 import type {
-  ChatAgentPreflightRecordStore,
+  MysqlChatAgentPreflightRepository,
   StoredChatAgentPreflightResult,
 } from "../../../src/modules/chat/chat-agent-preflight.repository.js";
 import {
@@ -20,15 +20,13 @@ const request: ChatAgentPreflightRequest = {
 
 describe("ChatAgentPreflightService", () => {
   it("looks up the trigger message with a 20-message context window", async () => {
-    const repository = {
-      listMessageContext: vi.fn().mockResolvedValue({
-        messages: [createMessage({ senderType: "customer", seq: 20 })],
-        targetMessageId: request.triggerMessageId,
-      }),
-    };
+    const repository = createMessageRepository([
+      createMessage({ senderType: "customer", seq: 20 }),
+    ]);
+    const resultRepository = createResultRepository();
     const service = new ChatAgentPreflightService({
-      recordStore: createRecordStore(),
       repository,
+      resultRepository,
     });
 
     const response = await service.assess(9001, request);
@@ -44,28 +42,21 @@ describe("ChatAgentPreflightService", () => {
       assessment: { outcome: "response_needed" },
       source: "fallback",
     });
+    expect(resultRepository.insert).toHaveBeenCalledTimes(1);
   });
 
   it("does not assess an older customer message after later conversation activity", async () => {
-    const repository = {
-      listMessageContext: vi.fn().mockResolvedValue({
-        messages: [
-          createMessage({ senderType: "customer", seq: 20 }),
-          createMessage({
-            createdAt: 2_000,
-            senderType: "agent",
-            seq: 21,
-          }),
-        ],
-        targetMessageId: request.triggerMessageId,
-      }),
-    };
+    const repository = createMessageRepository([
+      createMessage({ senderType: "customer", seq: 20 }),
+      createMessage({ createdAt: 2_000, senderType: "agent", seq: 21 }),
+    ]);
+    const resultRepository = createResultRepository();
     const fetchMock = vi.fn();
     const service = new ChatAgentPreflightService({
       apiKey: "test-key",
       fetch: fetchMock,
-      recordStore: createRecordStore(),
       repository,
+      resultRepository,
     });
 
     const response = await service.assess(9001, request);
@@ -78,6 +69,7 @@ describe("ChatAgentPreflightService", () => {
       source: "fallback",
     });
     expect(fetchMock).not.toHaveBeenCalled();
+    expect(resultRepository.insert).not.toHaveBeenCalled();
   });
 
   it("keeps the latest 20 messages in the model context", () => {
@@ -113,53 +105,37 @@ describe("ChatAgentPreflightService", () => {
     expect(context.map((message) => message.messageId)).toEqual(["3"]);
   });
 
-  it("sends images as multimodal content and accepts a valid model result", async () => {
+  it("sends images as multimodal content and saves model usage", async () => {
     const imageUrl = "https://example.com/customer.png";
-    const repository = {
-      listMessageContext: vi.fn().mockResolvedValue({
-        messages: [
-          createMessage({
-            content: { alt: "商品照片", fileUrl: imageUrl },
-            contentType: "image",
-            rawMsgtype: "image",
-            senderType: "customer",
-            seq: 20,
-          }),
-        ],
-        targetMessageId: request.triggerMessageId,
+    const repository = createMessageRepository([
+      createMessage({
+        content: { alt: "商品照片", fileUrl: imageUrl },
+        contentType: "image",
+        rawMsgtype: "image",
+        senderType: "customer",
+        seq: 20,
       }),
-    };
-    const fetchMock = vi
-      .fn()
-      .mockResolvedValue(
-        new Response(
-          JSON.stringify({
-            choices: [
-              {
-                message: {
-                  content: JSON.stringify({
-                    direction: "provide_response",
-                    reasoningSummary: "客户发送商品图片，等待进一步判断",
-                    outcome: "response_needed",
-                  }),
-                },
-              },
-            ],
-            usage: {
-              completion_tokens: 26,
-              prompt_tokens: 118,
-              total_tokens: 144,
-            },
-          }),
-          { status: 200 },
-        ),
-      );
-    const recordStore = createRecordStore();
+    ]);
+    const fetchMock = vi.fn().mockResolvedValue(
+      createModelResponse(
+        {
+          direction: "provide_response",
+          reasoningSummary: "客户发送商品图片，等待进一步判断",
+          outcome: "response_needed",
+        },
+        {
+          completion_tokens: 26,
+          prompt_tokens: 118,
+          total_tokens: 144,
+        },
+      ),
+    );
+    const resultRepository = createResultRepository();
     const service = new ChatAgentPreflightService({
       apiKey: "test-key",
       fetch: fetchMock,
-      recordStore,
       repository,
+      resultRepository,
     });
 
     const response = await service.assess(9001, request);
@@ -183,7 +159,7 @@ describe("ChatAgentPreflightService", () => {
       ]),
       role: "user",
     });
-    expect(recordStore.complete).toHaveBeenCalledWith(
+    expect(resultRepository.insert).toHaveBeenCalledWith(
       expect.objectContaining({
         tokenUsage: {
           completion_tokens: 26,
@@ -194,7 +170,7 @@ describe("ChatAgentPreflightService", () => {
     );
   });
 
-  it("reuses a persisted assessment without invoking the model", async () => {
+  it("reuses a persisted assessment without loading context or invoking the model", async () => {
     const persistedResult: StoredChatAgentPreflightResult = {
       assessment: {
         direction: "provide_response",
@@ -203,18 +179,16 @@ describe("ChatAgentPreflightService", () => {
       },
       source: "model",
     };
-    const recordStore = createRecordStore(persistedResult);
+    const repository = createMessageRepository([
+      createMessage({ senderType: "customer", seq: 20 }),
+    ]);
+    const resultRepository = createResultRepository(persistedResult);
     const fetchMock = vi.fn();
     const service = new ChatAgentPreflightService({
       apiKey: "test-key",
       fetch: fetchMock,
-      recordStore,
-      repository: {
-        listMessageContext: vi.fn().mockResolvedValue({
-          messages: [createMessage({ senderType: "customer", seq: 20 })],
-          targetMessageId: request.triggerMessageId,
-        }),
-      },
+      repository,
+      resultRepository,
     });
 
     const response = await service.assess(9001, request);
@@ -226,67 +200,54 @@ describe("ChatAgentPreflightService", () => {
       nextAction: "confirm",
       source: "model",
     });
+    expect(repository.listMessageContext).not.toHaveBeenCalled();
     expect(fetchMock).not.toHaveBeenCalled();
-    expect(recordStore.complete).not.toHaveBeenCalled();
+    expect(resultRepository.insert).not.toHaveBeenCalled();
   });
 
-  it("keeps one shared model request running when a concurrent caller aborts", async () => {
+  it("cancels the model request without saving a result when the caller aborts", async () => {
     const fetchStarted = createDeferred<void>();
-    const fetchResult = createDeferred<Response>();
-    const fetchMock = vi.fn(async () => {
+    const fetchMock = vi.fn((_: unknown, init?: RequestInit) => {
       fetchStarted.resolve();
-      return fetchResult.promise;
+      return new Promise<Response>((_, reject) => {
+        init?.signal?.addEventListener(
+          "abort",
+          () => reject(new DOMException("The operation was aborted", "AbortError")),
+          { once: true },
+        );
+      });
     });
-    const repository = {
-      listMessageContext: vi.fn().mockResolvedValue({
-        messages: [createMessage({ senderType: "customer", seq: 20 })],
-        targetMessageId: request.triggerMessageId,
-      }),
-    };
-    const recordStore = createRecordStore();
+    const resultRepository = createResultRepository();
     const service = new ChatAgentPreflightService({
       apiKey: "test-key",
       fetch: fetchMock,
-      recordStore,
-      repository,
+      repository: createMessageRepository([
+        createMessage({ senderType: "customer", seq: 20 }),
+      ]),
+      resultRepository,
     });
     const abortController = new AbortController();
 
-    const first = service.assess(9001, request, abortController.signal);
+    const operation = service.assess(9001, request, abortController.signal);
     await fetchStarted.promise;
-    const second = service.assess(9001, request);
     abortController.abort();
-    await expect(first).rejects.toMatchObject({ name: "AbortError" });
-    fetchResult.resolve(createValidModelResponse());
 
-    const secondResponse = await second;
-
-    expect(secondResponse).toMatchObject({
-      assessment: { outcome: "response_needed" },
-      source: "model",
-    });
-    expect(fetchMock).toHaveBeenCalledTimes(1);
-    expect(repository.listMessageContext).toHaveBeenCalledTimes(1);
-    expect(recordStore.claim).toHaveBeenCalledTimes(1);
-    expect(recordStore.complete).toHaveBeenCalledTimes(1);
+    await expect(operation).rejects.toMatchObject({ name: "AbortError" });
+    expect(resultRepository.insert).not.toHaveBeenCalled();
   });
 
-  it("returns the conservative fallback when the automatic preflight budget is exhausted", async () => {
-    const limiter = {
-      reserve: vi.fn().mockResolvedValue(false),
-    };
+  it("returns and reuses the conservative fallback when the automatic budget is exhausted", async () => {
+    const limiter = { reserve: vi.fn().mockResolvedValue(false) };
     const fetchMock = vi.fn();
+    const resultRepository = createResultRepository();
     const service = new ChatAgentPreflightService({
       apiKey: "test-key",
       automaticUsageLimiter: limiter,
       fetch: fetchMock,
-      recordStore: createRecordStore(),
-      repository: {
-        listMessageContext: vi.fn().mockResolvedValue({
-          messages: [createMessage({ senderType: "customer", seq: 20 })],
-          targetMessageId: request.triggerMessageId,
-        }),
-      },
+      repository: createMessageRepository([
+        createMessage({ senderType: "customer", seq: 20 }),
+      ]),
+      resultRepository,
     });
 
     const response = await service.assess(9001, request);
@@ -309,29 +270,44 @@ describe("ChatAgentPreflightService", () => {
     expect(limiter.reserve).toHaveBeenCalledTimes(1);
   });
 
-  it("falls back when the model response is invalid", async () => {
-    const repository = {
-      listMessageContext: vi.fn().mockResolvedValue({
-        messages: [createMessage({ senderType: "customer", seq: 20 })],
-        targetMessageId: request.triggerMessageId,
-      }),
+  it("continues with the model when the automatic limiter is unavailable", async () => {
+    const limiter = {
+      reserve: vi.fn().mockRejectedValue(new Error("Redis unavailable")),
     };
-    const recordStore = createRecordStore();
+    const fetchMock = vi.fn().mockResolvedValue(createValidModelResponse());
     const service = new ChatAgentPreflightService({
       apiKey: "test-key",
-      fetch: vi
-        .fn()
-        .mockResolvedValue(
-          new Response(
-            JSON.stringify({
-              choices: [{ message: { content: "not json" } }],
-              usage: { completion_tokens: 3, prompt_tokens: 80, total_tokens: 83 },
-            }),
-            { status: 200 },
-          ),
+      automaticUsageLimiter: limiter,
+      fetch: fetchMock,
+      repository: createMessageRepository([
+        createMessage({ senderType: "customer", seq: 20 }),
+      ]),
+      resultRepository: createResultRepository(),
+    });
+
+    const response = await service.assess(9001, request);
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(response.source).toBe("model");
+  });
+
+  it("saves a fallback with usage when the model response is invalid", async () => {
+    const resultRepository = createResultRepository();
+    const service = new ChatAgentPreflightService({
+      apiKey: "test-key",
+      fetch: vi.fn().mockResolvedValue(
+        new Response(
+          JSON.stringify({
+            choices: [{ message: { content: "not json" } }],
+            usage: { completion_tokens: 3, prompt_tokens: 80, total_tokens: 83 },
+          }),
+          { status: 200 },
         ),
-      recordStore,
-      repository,
+      ),
+      repository: createMessageRepository([
+        createMessage({ senderType: "customer", seq: 20 }),
+      ]),
+      resultRepository,
     });
 
     const response = await service.assess(9001, request);
@@ -339,14 +315,12 @@ describe("ChatAgentPreflightService", () => {
     expect(response).toMatchObject({
       assessment: {
         direction: "handle_request",
-        reasoningSummary: "客户发来新消息，尚未形成明确处理结论",
         outcome: "response_needed",
       },
       source: "fallback",
     });
-    expect(recordStore.complete).toHaveBeenCalledWith(
+    expect(resultRepository.insert).toHaveBeenCalledWith(
       expect.objectContaining({
-        errorCode: "invalid_response",
         tokenUsage: {
           completion_tokens: 3,
           prompt_tokens: 80,
@@ -357,74 +331,64 @@ describe("ChatAgentPreflightService", () => {
   });
 });
 
-function createRecordStore(
-  completedResult?: StoredChatAgentPreflightResult,
-): ChatAgentPreflightRecordStore & {
-  claim: ReturnType<typeof vi.fn>;
-  complete: ReturnType<typeof vi.fn>;
-  findCompleted: ReturnType<typeof vi.fn>;
-} {
-  let record:
-    | { claimToken: string; status: "running" }
-    | { result: StoredChatAgentPreflightResult; status: "completed" }
-    | undefined = completedResult
-    ? { result: completedResult, status: "completed" }
-    : undefined;
+type ResultRepository = Pick<
+  MysqlChatAgentPreflightRepository,
+  "find" | "insert"
+>;
 
-  return {
-    claim: vi.fn(async (input) => {
-      if (record?.status === "completed") {
-        return { kind: "completed" as const, result: record.result };
-      }
-
-      if (record?.status === "running") {
-        return { kind: "running" as const };
-      }
-
-      record = { claimToken: input.claimToken, status: "running" };
-      return { kind: "claimed" as const };
-    }),
-    complete: vi.fn(async (input) => {
-      if (
-        record?.status !== "running" ||
-        record.claimToken !== input.claimToken
-      ) {
-        return false;
-      }
-
-      record = { result: input.result, status: "completed" };
+function createResultRepository(initial?: StoredChatAgentPreflightResult) {
+  let stored = initial;
+  const find = vi.fn(
+    async (_input: Parameters<ResultRepository["find"]>[0]) => stored,
+  );
+  const insert = vi.fn(
+    async (input: Parameters<ResultRepository["insert"]>[0]) => {
+      if (stored) return false;
+      stored = input.result;
       return true;
+    },
+  );
+
+  return { find, insert };
+}
+
+function createMessageRepository(messages: WorkbenchMessageDto[]) {
+  return {
+    listMessageContext: vi.fn().mockResolvedValue({
+      messages,
+      targetMessageId: request.triggerMessageId,
     }),
-    findCompleted: vi.fn(async () =>
-      record?.status === "completed" ? record.result : undefined,
-    ),
   };
 }
 
-function createValidModelResponse() {
-  const assessment: ChatAgentAssessment = {
-    direction: "provide_response",
-    reasoningSummary: "客户仍在等待问题处理",
-    outcome: "response_needed",
-  };
-
+function createModelResponse(
+  assessment: ChatAgentAssessment,
+  usage?: Record<string, unknown>,
+) {
   return new Response(
     JSON.stringify({
       choices: [{ message: { content: JSON.stringify(assessment) } }],
+      ...(usage ? { usage } : {}),
     }),
     { status: 200 },
   );
 }
 
+function createValidModelResponse() {
+  return createModelResponse({
+    direction: "provide_response",
+    reasoningSummary: "客户仍在等待问题处理",
+    outcome: "response_needed",
+  });
+}
+
 function createDeferred<T>() {
   let resolve!: (value: T | PromiseLike<T>) => void;
-  let reject!: (reason?: unknown) => void;
-  const promise = new Promise<T>((resolvePromise, rejectPromise) => {
-    resolve = resolvePromise;
-    reject = rejectPromise;
+  const promise = new Promise<T>((promiseResolve) => {
+    resolve = promiseResolve;
   });
 
-  return { promise, reject, resolve };
+  return { promise, resolve };
 }
 
 function createMessage(

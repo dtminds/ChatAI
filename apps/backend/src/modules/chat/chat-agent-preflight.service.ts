@@ -1,4 +1,3 @@
-import { randomUUID } from "node:crypto";
 import type {
   ChatAgentAssessment,
   ChatAgentPreflightRequest,
@@ -13,7 +12,7 @@ import { BadRequestError } from "../../shared/errors.js";
 import { noopLogger, type AppLogger } from "../../shared/logger.js";
 import type { DailyUsageLimiter } from "../../usage-limit/daily-usage-limiter.js";
 import type {
-  ChatAgentPreflightRecordStore,
+  MysqlChatAgentPreflightRepository,
   StoredChatAgentPreflightResult,
 } from "./chat-agent-preflight.repository.js";
 import type { WorkbenchRepository } from "./workbench-repository.js";
@@ -28,12 +27,8 @@ const CONTEXT_LOOKAHEAD_MESSAGE_LIMIT = MAX_CONTEXT_MESSAGES;
 const MAX_CONTEXT_TEXT_CHARACTERS = 12_000;
 const MAX_CONTEXT_IMAGES = 4;
 const REQUEST_TIMEOUT_MS = 3_000;
-const PREFLIGHT_CLAIM_GRACE_MS = 2_000;
-const PREFLIGHT_RESULT_WAIT_GRACE_MS = 500;
-const PREFLIGHT_RESULT_POLL_MS = 250;
 const PREFLIGHT_RATE_LIMIT_SECONDS = 60;
 const PREFLIGHT_RATE_LIMIT = 3;
-const MAX_LOCAL_RATE_LIMIT_BUCKETS = 1_000;
 
 type PreflightContentPart =
   | { text: string; type: "text" }
@@ -53,7 +48,10 @@ type ChatAgentPreflightServiceOptions = {
   fetch?: typeof fetch;
   logger?: AppLogger;
   model?: string;
-  recordStore: ChatAgentPreflightRecordStore;
+  resultRepository: Pick<
+    MysqlChatAgentPreflightRepository,
+    "find" | "insert"
+  >;
   repository: Pick<WorkbenchRepository, "listMessageContext">;
   timeoutMs?: number;
 };
@@ -69,14 +67,9 @@ export class ChatAgentPreflightService {
   private readonly automaticUsageLimiter?: ChatAgentPreflightServiceOptions["automaticUsageLimiter"];
   private readonly cacheKeys: ReturnType<typeof buildCacheKeys>;
   private readonly fetch: typeof fetch;
-  private readonly inFlightByMessage = new Map<
-    string,
-    Promise<ChatAgentPreflightResponse>
-  >();
   private readonly logger: AppLogger;
-  private readonly localRateLimitBuckets = new Map<string, number[]>();
   private readonly model: string;
-  private readonly recordStore: ChatAgentPreflightRecordStore;
+  private readonly resultRepository: ChatAgentPreflightServiceOptions["resultRepository"];
   private readonly repository: ChatAgentPreflightServiceOptions["repository"];
   private readonly timeoutMs: number;
 
@@ -88,7 +81,7 @@ export class ChatAgentPreflightService {
     this.logger = options.logger ?? noopLogger;
     this.model =
       options.model ?? VOLCENGINE_ARK_CHAT_AGENT_PREFLIGHT_MODEL;
-    this.recordStore = options.recordStore;
+    this.resultRepository = options.resultRepository;
     this.repository = options.repository;
     this.timeoutMs = options.timeoutMs ?? REQUEST_TIMEOUT_MS;
   }
@@ -98,25 +91,16 @@ export class ChatAgentPreflightService {
     input: ChatAgentPreflightRequest,
     requestSignal?: AbortSignal,
   ): Promise<ChatAgentPreflightResponse> {
-    const messageKey = `${uid}:${input.conversationId}:${input.triggerMessageId}`;
-    let operation = this.inFlightByMessage.get(messageKey);
+    const stored = await this.resultRepository.find({
+      conversationId: input.conversationId,
+      triggerMessageId: input.triggerMessageId,
+      uid,
+    });
 
-    if (!operation) {
-      operation = this.assessOnce(uid, input).finally(() => {
-        if (this.inFlightByMessage.get(messageKey) === operation) {
-          this.inFlightByMessage.delete(messageKey);
-        }
-      });
-      this.inFlightByMessage.set(messageKey, operation);
+    if (stored) {
+      return buildStoredResponse(input, stored);
     }
 
-    return waitForSharedOperation(operation, requestSignal);
-  }
-
-  private async assessOnce(
-    uid: number,
-    input: ChatAgentPreflightRequest,
-  ): Promise<ChatAgentPreflightResponse> {
     const messageContext = await this.repository.listMessageContext({
       after: CONTEXT_LOOKAHEAD_MESSAGE_LIMIT,
       before: CONTEXT_LOOKBACK_MESSAGE_LIMIT,
@@ -157,77 +141,29 @@ export class ChatAgentPreflightService {
       messageContext.messages,
       input.triggerMessageId,
     );
-    const claimToken = randomUUID();
-    const claimLeaseMs = this.timeoutMs + PREFLIGHT_CLAIM_GRACE_MS;
-    const claim = await this.recordStore.claim({
-      claimToken,
-      conversationId: input.conversationId,
-      leaseExpiresAt: new Date(Date.now() + claimLeaseMs),
-      now: new Date(),
-      triggerMessageId: input.triggerMessageId,
+
+    return this.runAssessment(
       uid,
-    });
-
-    if (claim.kind === "completed") {
-      return buildStoredResponse(input, claim.result);
-    }
-
-    if (claim.kind === "running") {
-      const completed = await this.waitForCompletedResult(uid, input, claimLeaseMs);
-
-      if (completed) {
-        return buildStoredResponse(input, completed);
-      }
-
-      const retryClaimToken = randomUUID();
-      const retryClaim = await this.recordStore.claim({
-        claimToken: retryClaimToken,
-        conversationId: input.conversationId,
-        leaseExpiresAt: new Date(Date.now() + claimLeaseMs),
-        now: new Date(),
-        triggerMessageId: input.triggerMessageId,
-        uid,
-      });
-
-      if (retryClaim.kind === "completed") {
-        return buildStoredResponse(input, retryClaim.result);
-      }
-
-      if (retryClaim.kind === "running") {
-        return buildResponse(input, fallbackAssessment, "fallback");
-      }
-
-      return this.runClaimedAssessment(
-        uid,
-        input,
-        context,
-        messageContext.messages,
-        retryClaimToken,
-      );
-    }
-
-    return this.runClaimedAssessment(uid, input, context, messageContext.messages, claimToken);
+      input,
+      context,
+      messageContext.messages,
+      requestSignal,
+    );
   }
 
-  private async runClaimedAssessment(
+  private async runAssessment(
     uid: number,
     input: ChatAgentPreflightRequest,
     context: PreflightContextMessage[],
     messages: WorkbenchMessageDto[],
-    claimToken: string,
+    requestSignal?: AbortSignal,
   ) {
     if (!this.apiKey) {
-      return this.completeClaim(uid, input, claimToken, fallbackAssessment, {
-        errorCode: "model_unavailable",
-        errorMessage: "Chat agent preflight model is not configured",
-      });
+      return this.persistResult(uid, input, fallbackAssessment);
     }
 
     if (context.length === 0) {
-      return this.completeClaim(uid, input, claimToken, fallbackAssessment, {
-        errorCode: "empty_context",
-        errorMessage: "Chat agent preflight context is empty",
-      });
+      return this.persistResult(uid, input, fallbackAssessment);
     }
 
     if (
@@ -237,14 +173,14 @@ export class ChatAgentPreflightService {
         getLatestAgentMessageBucket(messages),
       ))
     ) {
-      return this.completeClaim(uid, input, claimToken, fallbackAssessment, {
-        errorCode: "rate_limited",
-        errorMessage: "Chat agent preflight automatic budget is exhausted",
-      });
+      return this.persistResult(uid, input, fallbackAssessment);
     }
 
     const timeoutController = new AbortController();
     const timeout = setTimeout(() => timeoutController.abort(), this.timeoutMs);
+    const signal = requestSignal
+      ? AbortSignal.any([requestSignal, timeoutController.signal])
+      : timeoutController.signal;
     let tokenUsage: Record<string, unknown> | undefined;
 
     try {
@@ -263,7 +199,7 @@ export class ChatAgentPreflightService {
             "Content-Type": "application/json",
           },
           method: "POST",
-          signal: timeoutController.signal,
+          signal,
         },
       );
 
@@ -281,21 +217,21 @@ export class ChatAgentPreflightService {
       );
 
       if (!assessment) {
-        return this.completeClaim(uid, input, claimToken, fallbackAssessment, {
-          errorCode: "invalid_response",
-          errorMessage: "Chat agent preflight returned an invalid response",
+        return this.persistResult(uid, input, fallbackAssessment, {
           model: this.model,
           tokenUsage,
         });
       }
 
-      return this.completeClaim(uid, input, claimToken, assessment, {
+      return this.persistResult(uid, input, assessment, {
         model: this.model,
         source: "model",
         tokenUsage,
       });
     } catch (error) {
-      const timedOut = timeoutController.signal.aborted;
+      if (requestSignal?.aborted) {
+        throw createAbortError(requestSignal);
+      }
 
       this.logger.warn(
         {
@@ -305,9 +241,7 @@ export class ChatAgentPreflightService {
         },
         "Chat agent preflight fell back to generic confirmation",
       );
-      return this.completeClaim(uid, input, claimToken, fallbackAssessment, {
-        errorCode: timedOut ? "model_timeout" : "model_error",
-        errorMessage: error instanceof Error ? error.message : String(error),
+      return this.persistResult(uid, input, fallbackAssessment, {
         model: this.model,
         tokenUsage,
       });
@@ -316,28 +250,22 @@ export class ChatAgentPreflightService {
     }
   }
 
-  private async completeClaim(
+  private async persistResult(
     uid: number,
     input: ChatAgentPreflightRequest,
-    claimToken: string,
     assessment: ChatAgentAssessment,
     metadata: {
-      errorCode?: string;
-      errorMessage?: string;
       model?: string;
       source?: StoredChatAgentPreflightResult["source"];
       tokenUsage?: Record<string, unknown>;
-    },
+    } = {},
   ) {
     const result: StoredChatAgentPreflightResult = {
       assessment,
       source: metadata.source ?? "fallback",
     };
-    const completed = await this.recordStore.complete({
-      claimToken,
+    const inserted = await this.resultRepository.insert({
       conversationId: input.conversationId,
-      errorCode: metadata.errorCode,
-      errorMessage: metadata.errorMessage,
       model: metadata.model,
       result,
       tokenUsage: metadata.tokenUsage,
@@ -345,49 +273,17 @@ export class ChatAgentPreflightService {
       uid,
     });
 
-    if (!completed) {
-      const persisted = await this.recordStore.findCompleted({
-        conversationId: input.conversationId,
-        triggerMessageId: input.triggerMessageId,
-        uid,
-      });
-
-      if (persisted) {
-        return buildStoredResponse(input, persisted);
-      }
-
-      throw new Error("Chat agent preflight claim was lost before completion");
+    if (inserted) {
+      return buildStoredResponse(input, result);
     }
 
-    return buildStoredResponse(input, result);
-  }
-
-  private async waitForCompletedResult(
-    uid: number,
-    input: ChatAgentPreflightRequest,
-    claimLeaseMs: number,
-  ) {
-    const deadline = Date.now() + claimLeaseMs + PREFLIGHT_RESULT_WAIT_GRACE_MS;
-
-    while (Date.now() < deadline) {
-      const completed = await this.recordStore.findCompleted({
-        conversationId: input.conversationId,
-        triggerMessageId: input.triggerMessageId,
-        uid,
-      });
-
-      if (completed) {
-        return completed;
-      }
-
-      await delay(Math.min(PREFLIGHT_RESULT_POLL_MS, deadline - Date.now()));
-    }
-
-    return this.recordStore.findCompleted({
+    const persisted = await this.resultRepository.find({
       conversationId: input.conversationId,
       triggerMessageId: input.triggerMessageId,
       uid,
     });
+
+    return buildStoredResponse(input, persisted ?? result);
   }
 
   private async reserveAutomaticPreflight(
@@ -418,39 +314,7 @@ export class ChatAgentPreflightService {
         },
         "Chat agent preflight rate limiter unavailable",
       );
-    }
-
-    return this.reserveLocalAutomaticPreflight(
-      this.cacheKeys.chatAgentPreflightRate(uid, conversationId, bucket),
-    );
-  }
-
-  private reserveLocalAutomaticPreflight(key: string) {
-    const now = Date.now();
-    const windowStart = now - PREFLIGHT_RATE_LIMIT_SECONDS * 1_000;
-    const timestamps = (this.localRateLimitBuckets.get(key) ?? []).filter(
-      (timestamp) => timestamp > windowStart,
-    );
-
-    if (timestamps.length >= PREFLIGHT_RATE_LIMIT) {
-      this.localRateLimitBuckets.set(key, timestamps);
-      return false;
-    }
-
-    this.localRateLimitBuckets.set(key, [...timestamps, now]);
-    this.pruneLocalRateLimitBuckets(windowStart);
-    return true;
-  }
-
-  private pruneLocalRateLimitBuckets(windowStart: number) {
-    if (this.localRateLimitBuckets.size <= MAX_LOCAL_RATE_LIMIT_BUCKETS) {
-      return;
-    }
-
-    for (const [key, timestamps] of this.localRateLimitBuckets) {
-      if (!timestamps.some((timestamp) => timestamp > windowStart)) {
-        this.localRateLimitBuckets.delete(key);
-      }
+      return true;
     }
   }
 }
@@ -633,8 +497,7 @@ function applyContextBudget(
   messages: PreflightContextMessage[],
   triggerMessageId: string,
 ) {
-  const lastAgentIndex = findLastIndex(
-    messages,
+  const lastAgentIndex = messages.findLastIndex(
     (message) => message.role === "assistant",
   );
   const protectedStart = Math.min(lastAgentIndex + 1, messages.length - 1);
@@ -779,15 +642,6 @@ function resolveNextAction(
   return assessment.outcome === "no_response_needed" ? "wait" : "confirm";
 }
 
-function findLastIndex<T>(items: T[], predicate: (item: T) => boolean) {
-  for (let index = items.length - 1; index >= 0; index -= 1) {
-    const item = items[index];
-    if (item !== undefined && predicate(item)) return index;
-  }
-
-  return -1;
-}
-
 function getLatestAgentMessageBucket(messages: WorkbenchMessageDto[]) {
   for (let index = messages.length - 1; index >= 0; index -= 1) {
     const message = messages[index];
@@ -798,45 +652,6 @@ function getLatestAgentMessageBucket(messages: WorkbenchMessageDto[]) {
   }
 
   return "initial";
-}
-
-function delay(durationMs: number) {
-  return new Promise<void>((resolve) => {
-    setTimeout(resolve, durationMs);
-  });
-}
-
-function waitForSharedOperation<T>(
-  operation: Promise<T>,
-  signal?: AbortSignal,
-): Promise<T> {
-  if (!signal) {
-    return operation;
-  }
-
-  if (signal.aborted) {
-    return Promise.reject(createAbortError(signal));
-  }
-
-  return new Promise<T>((resolve, reject) => {
-    const onAbort = () => {
-      cleanup();
-      reject(createAbortError(signal));
-    };
-    const cleanup = () => signal.removeEventListener("abort", onAbort);
-
-    signal.addEventListener("abort", onAbort, { once: true });
-    operation.then(
-      (value) => {
-        cleanup();
-        resolve(value);
-      },
-      (error: unknown) => {
-        cleanup();
-        reject(error);
-      },
-    );
-  });
 }
 
 function createAbortError(signal: AbortSignal) {

@@ -8,7 +8,7 @@ import {
 } from "@/pages/chat/api/chat-agent-preflight";
 import type { ChatMessage, Message } from "@/pages/chat/chat-types";
 
-type PreflightPhase = "idle" | "analyzing" | "confirmation";
+type PreflightPhase = "idle" | "confirmation";
 
 type PreflightState = {
   phase: PreflightPhase;
@@ -102,11 +102,6 @@ export function useChatAgentPreflight({
     const generation = ++generationRef.current;
     const controller = new AbortController();
     const timeout = window.setTimeout(() => {
-      setState({
-        phase: "analyzing",
-        triggerMessage,
-      });
-
       void requestChatAgentPreflight(
         { conversationId, triggerMessageId },
         controller.signal,
@@ -202,11 +197,9 @@ export function useChatAgentPreflight({
         : undefined,
     isActive: state.phase !== "idle",
     label:
-      state.phase === "analyzing"
-        ? "正在理解客户诉求"
-        : state.response?.assessment.outcome === "response_needed"
-          ? state.response.assessment.reasoningSummary
-          : undefined,
+      state.response?.assessment.outcome === "response_needed"
+        ? state.response.assessment.reasoningSummary
+        : undefined,
     phase: state.phase,
   };
 }

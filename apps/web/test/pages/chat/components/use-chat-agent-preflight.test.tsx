@@ -47,7 +47,8 @@ describe("useChatAgentPreflight", () => {
     await act(async () => {
       await vi.advanceTimersByTimeAsync(1);
     });
-    expect(result.current.phase).toBe("analyzing");
+    expect(result.current.phase).toBe("idle");
+    expect(result.current.isActive).toBe(false);
     expect(requestChatAgentPreflightMock).toHaveBeenCalledWith(
       { conversationId: "144", triggerMessageId: "7003" },
       expect.any(AbortSignal),

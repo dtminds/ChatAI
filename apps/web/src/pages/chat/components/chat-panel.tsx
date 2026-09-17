@@ -27,8 +27,6 @@ import {
 } from "@/pages/chat/components/chat-ai-assistant-status-bar";
 import {
   ChatAIAssistantDebugMenu,
-  getChatAIAssistantDebugScenarioView,
-  type ChatAIAssistantDebugScenario,
 } from "@/pages/chat/components/chat-ai-assistant-debug-menu";
 import { ChatAgentHostingStatusBar } from "@/pages/chat/components/chat-agent-hosting-status-bar";
 import { ChatAgentClarificationPrompt } from "@/pages/chat/components/chat-agent-clarification-prompt";
@@ -89,7 +87,10 @@ import { useShallow } from "zustand/react/shallow";
 const WORKBENCH_SIDEBAR_COLLAPSED_STORAGE_KEY =
   "chatai.workbenchSidebarCollapsed";
 
-type AgentTurnTimelineState = "hidden" | "visible" | "exiting";
+type AgentTurnTimelineState =
+  | { kind: "hidden"; terminalSettled: boolean }
+  | { expanded: boolean; kind: "visible" }
+  | { kind: "exiting" };
 
 export type ChatAuxiliaryPanel = "history" | "tickets" | null;
 
@@ -375,8 +376,6 @@ export function ChatPanel({
   const [isDesktopSidebarCollapsed, setIsDesktopSidebarCollapsed] = useState(
     readDesktopSidebarCollapsedPreference,
   );
-  const [aiAssistantDebugScenario, setAIAssistantDebugScenario] =
-    useState<ChatAIAssistantDebugScenario | null>(null);
   const [approvedOverwriteLookupKey, setApprovedOverwriteLookupKey] =
     useState<string>();
   const [composerDraftText, setComposerDraftText] = useState("");
@@ -388,11 +387,13 @@ export function ChatPanel({
     messageId: latestCustomerMessageId,
   });
   const [agentTurnTimelineState, setAgentTurnTimelineState] =
-    useState<AgentTurnTimelineState>("hidden");
-  const [isAgentTurnHistoryExpanded, setIsAgentTurnHistoryExpanded] =
-    useState(false);
-  const [isAgentTurnTerminalSettled, setIsAgentTurnTerminalSettled] =
-    useState(true);
+    useState<AgentTurnTimelineState>({
+      kind: "hidden",
+      terminalSettled: true,
+    });
+  const isAgentTurnHistoryExpanded =
+    agentTurnTimelineState.kind === "visible" &&
+    agentTurnTimelineState.expanded;
   const hasBlockingAgentInteraction = Boolean(
     agentTurnMock.approval || agentTurnMock.clarification,
   );
@@ -402,44 +403,57 @@ export function ChatPanel({
   );
 
   useLayoutEffect(() => {
-    setAgentTurnTimelineState("hidden");
-    setIsAgentTurnHistoryExpanded(false);
-    setIsAgentTurnTerminalSettled(false);
+    setAgentTurnTimelineState({ kind: "hidden", terminalSettled: false });
   }, [activeConversationId, agentTurnMock.turnId]);
 
   useLayoutEffect(() => {
+    const hideTimeline = (terminalSettled: boolean) => {
+      if (
+        agentTurnTimelineState.kind === "hidden" &&
+        agentTurnTimelineState.terminalSettled === terminalSettled
+      ) {
+        return;
+      }
+
+      setAgentTurnTimelineState({ kind: "hidden", terminalSettled });
+    };
+
     if (hasBlockingAgentInteraction) {
-      setAgentTurnTimelineState("hidden");
-      setIsAgentTurnHistoryExpanded(false);
-      setIsAgentTurnTerminalSettled(false);
+      hideTimeline(false);
       return;
     }
 
     if (agentTurnMock.isRunning) {
-      setAgentTurnTimelineState(
-        agentTurnMock.hasActivities ? "visible" : "hidden",
-      );
-      setIsAgentTurnHistoryExpanded(false);
-      setIsAgentTurnTerminalSettled(false);
+      if (agentTurnMock.hasActivities) {
+        if (
+          agentTurnTimelineState.kind !== "visible" ||
+          agentTurnTimelineState.expanded
+        ) {
+          setAgentTurnTimelineState({ kind: "visible", expanded: false });
+        }
+      } else {
+        hideTimeline(false);
+      }
       return;
     }
 
     if (agentTurnMock.isTerminal) {
       if (
-        agentTurnTimelineState === "visible" &&
-        !isAgentTurnHistoryExpanded
+        agentTurnTimelineState.kind === "visible" &&
+        !agentTurnTimelineState.expanded
       ) {
-        setAgentTurnTimelineState("exiting");
-      } else if (agentTurnTimelineState === "hidden") {
-        setIsAgentTurnTerminalSettled(true);
+        setAgentTurnTimelineState({ kind: "exiting" });
+      } else if (
+        agentTurnTimelineState.kind === "hidden" &&
+        !agentTurnTimelineState.terminalSettled
+      ) {
+        setAgentTurnTimelineState({ kind: "hidden", terminalSettled: true });
       }
       return;
     }
 
     if (!agentTurnMock.isActive) {
-      setAgentTurnTimelineState("hidden");
-      setIsAgentTurnHistoryExpanded(false);
-      setIsAgentTurnTerminalSettled(true);
+      hideTimeline(true);
     }
   }, [
     agentTurnMock.hasActivities,
@@ -448,38 +462,39 @@ export function ChatPanel({
     agentTurnMock.isTerminal,
     agentTurnTimelineState,
     hasBlockingAgentInteraction,
-    isAgentTurnHistoryExpanded,
   ]);
 
   const showAgentTurnTimeline = Boolean(
-    agentTurnTimelineState !== "hidden" &&
+    agentTurnTimelineState.kind !== "hidden" &&
       agentTurnMock.hasActivities &&
       !hasBlockingAgentInteraction,
   );
   const isAgentTurnTerminalTransitioning = Boolean(
-    agentTurnMock.isTerminal && !isAgentTurnTerminalSettled,
+    agentTurnMock.isTerminal &&
+      (agentTurnTimelineState.kind === "exiting" ||
+        (agentTurnTimelineState.kind === "hidden" &&
+          !agentTurnTimelineState.terminalSettled)),
   );
   const canExpandAgentTurnHistory = Boolean(
     agentTurnMock.hasActivities &&
-      !agentTurnMock.isRunning &&
-      !hasBlockingAgentInteraction &&
-      !isAgentTurnTerminalTransitioning,
+    !agentTurnMock.isRunning &&
+    !hasBlockingAgentInteraction &&
+    !isAgentTurnHistoryExpanded &&
+    !isAgentTurnTerminalTransitioning,
   );
   const handleExpandAgentTurnHistory = () => {
     if (!canExpandAgentTurnHistory) return;
-    setIsAgentTurnHistoryExpanded(true);
-    setAgentTurnTimelineState("visible");
+    setAgentTurnTimelineState({ kind: "visible", expanded: true });
   };
   const handleCollapseAgentTurnHistory = () => {
     if (!isAgentTurnHistoryExpanded) return;
-    setAgentTurnTimelineState("exiting");
+    setAgentTurnTimelineState({ kind: "exiting" });
   };
   const handleAgentTurnTimelineExitComplete = () => {
-    setAgentTurnTimelineState("hidden");
-    setIsAgentTurnHistoryExpanded(false);
-    if (agentTurnMock.isTerminal) {
-      setIsAgentTurnTerminalSettled(true);
-    }
+    setAgentTurnTimelineState({
+      kind: "hidden",
+      terminalSettled: agentTurnMock.isTerminal,
+    });
   };
   const smartReplyState = useWorkbenchStore(
     useShallow((state) => ({
@@ -538,7 +553,6 @@ export function ChatPanel({
       message: ChatMessage;
     }) => {
       if (import.meta.env.DEV) {
-        setAIAssistantDebugScenario(null);
         void agentTurnMock.startScenario(
           direction === "handle_request" ? "order_reply" : "knowledge_reply",
         );
@@ -569,8 +583,7 @@ export function ChatPanel({
         sourceSmartReplyTurn ||
         isSendingDraft ||
         isConversationLoading ||
-        multiSelectMode ||
-        aiAssistantDebugScenario,
+        multiSelectMode,
     ),
     conversationId:
       activeConversation?.mode === "single" ? activeConversationId : undefined,
@@ -619,7 +632,6 @@ export function ChatPanel({
         }
       : sourceSmartReplyTurn;
   const isSmartReplySuggestionMode =
-    !aiAssistantDebugScenario &&
     !agentTurnMock.isActive &&
     smartReplyUIPhase !== "draft_confirmation" &&
     smartReplyComposer.isSuggestionMode;
@@ -627,19 +639,14 @@ export function ChatPanel({
     isSmartReplySuggestionMode || agentTurnMock.isReplyReady;
   const hasComposerStatusOverlay =
     Boolean(agentHostingStatus) || aiAssistantStatusVisible;
-  const staticAIAssistantDebugView = aiAssistantDebugScenario
-    ? getChatAIAssistantDebugScenarioView(aiAssistantDebugScenario)
-    : null;
   const presentedAgentTurnView = isAgentTurnTerminalTransitioning
     ? {
         label: "思考中",
         status: "thinking" as const,
       }
     : agentTurnMock.view;
-  const aiAssistantDebugView =
-    presentedAgentTurnView ?? staticAIAssistantDebugView;
   const resolvedAIAssistantStatus =
-    aiAssistantDebugView?.status ??
+    presentedAgentTurnView?.status ??
     (chatAgentPreflight.phase === "confirmation"
       ? "confirmation"
       : smartReplyUIPhase === "applying"
@@ -647,10 +654,8 @@ export function ChatPanel({
         : smartReplyTurn
           ? getSmartReplyStatusBarStatus(smartReplyTurn.phase)
           : aiAssistantStatus);
-  const resolvedAIAssistantStatusLabel = aiAssistantDebugView
-    ? aiAssistantDebugView.label
-    : chatAgentPreflight.phase === "confirmation" &&
-        chatAgentPreflight.label
+  const resolvedAIAssistantStatusLabel =
+    chatAgentPreflight.phase === "confirmation" && chatAgentPreflight.label
       ? chatAgentPreflight.label
       : smartReplyUIPhase === "applying"
         ? SMART_REPLY_INLINE_LOADING_HINT
@@ -762,7 +767,6 @@ export function ChatPanel({
   }, [activeConversation?.id, isMobileLayout]);
 
   useEffect(() => {
-    setAIAssistantDebugScenario(null);
     setApprovedOverwriteLookupKey(undefined);
     setComposerDraftText("");
   }, [activeConversation?.id]);
@@ -882,12 +886,6 @@ export function ChatPanel({
     },
     [chatAgentPreflight.dismiss, onTriggerSmartReply],
   );
-  const handleAIAssistantDebugStatusChange = (
-    scenario: ChatAIAssistantDebugScenario,
-  ) => {
-    agentTurnMock.reset({ clearComposer: agentTurnMock.isReplyReady });
-    setAIAssistantDebugScenario(scenario);
-  };
   const handleAgentTurnMockScenarioSelect = (
     scenario: Parameters<typeof agentTurnMock.startScenario>[0],
   ) => {
@@ -897,7 +895,6 @@ export function ChatPanel({
       return;
     }
 
-    setAIAssistantDebugScenario(null);
     void agentTurnMock.startScenario(scenario);
   };
   const handleSendAgentTurnMockReply = (segments: ComposerSegment[]) => {
@@ -914,51 +911,26 @@ export function ChatPanel({
       ? isAgentTurnTerminalTransitioning
         ? []
         : agentTurnMock.actions
-      : aiAssistantDebugScenario === "thinking-cancellable"
-      ? [
-          {
-            id: "stop",
-            label: "停止",
-            onSelect: () => setAIAssistantDebugScenario("waiting"),
-            tone: "quiet",
-          },
-        ]
-      : aiAssistantDebugScenario === "confirmation"
+      : chatAgentPreflight.phase === "confirmation"
         ? [
             {
-              id: "ignore",
+              id: "ignore-preflight",
               label: "忽略",
-              onSelect: () => setAIAssistantDebugScenario("waiting"),
+              onSelect: chatAgentPreflight.dismiss,
               tone: "quiet",
             },
             {
-              id: "approve",
-              label: "批准",
-              onSelect: () =>
-                setAIAssistantDebugScenario("thinking-cancellable"),
+              disabled: !canStartPreflightAgentTurn,
+              id: "start-preflight",
+              label: getChatAgentPreflightActionLabel(
+                chatAgentPreflight.direction,
+              ),
+              onSelect: canStartPreflightAgentTurn
+                ? chatAgentPreflight.accept
+                : undefined,
               tone: "primary",
             },
           ]
-        : chatAgentPreflight.phase === "confirmation"
-          ? [
-              {
-                id: "ignore-preflight",
-                label: "忽略",
-                onSelect: chatAgentPreflight.dismiss,
-                tone: "quiet",
-              },
-              {
-                disabled: !canStartPreflightAgentTurn,
-                id: "start-preflight",
-                label: getChatAgentPreflightActionLabel(
-                  chatAgentPreflight.direction,
-                ),
-                onSelect: canStartPreflightAgentTurn
-                  ? chatAgentPreflight.accept
-                  : undefined,
-                tone: "primary",
-              },
-            ]
         : smartReplyTurn?.phase === "draft_confirmation"
           ? [
               {
@@ -1015,7 +987,7 @@ export function ChatPanel({
     ? {
         disabled:
           isAgentTurnHistoryExpanded ||
-          agentTurnTimelineState !== "hidden",
+          agentTurnTimelineState.kind !== "hidden",
         onExpand: handleExpandAgentTurnHistory,
       }
     : undefined;
@@ -1258,11 +1230,6 @@ export function ChatPanel({
                                 onMockScenarioSelect={
                                   handleAgentTurnMockScenarioSelect
                                 }
-                                onValueChange={handleAIAssistantDebugStatusChange}
-                                value={
-                                  aiAssistantDebugScenario ??
-                                  resolvedAIAssistantStatus
-                                }
                               />
                             </div>
                             {showAgentTurnTimeline ? (
@@ -1270,7 +1237,7 @@ export function ChatPanel({
                                 <ChatAgentTurnTimeline
                                   events={agentTurnMock.events}
                                   motion={
-                                    agentTurnTimelineState === "exiting"
+                                    agentTurnTimelineState.kind === "exiting"
                                       ? "exit"
                                       : "enter"
                                   }

@@ -3,6 +3,7 @@
 import { describe, expect, it } from "vitest";
 import type { AgentTurnEvent } from "@chatai/contracts";
 import {
+  reduceAgentTurnMockEnvelope,
   reduceAgentTurnMockState,
   type AgentTurnMockState,
 } from "@/pages/chat/components/use-agent-turn-mock";
@@ -10,8 +11,6 @@ import {
 const initialState: AgentTurnMockState = {
   events: [],
   phase: "running",
-  toolCalls: {},
-  toolSummaries: {},
   turnId: "turn-1",
 };
 
@@ -37,8 +36,20 @@ describe("agent turn mock reducer", () => {
       type: "decision.requested",
     };
 
-    const afterToolCall = reduceAgentTurnMockState(initialState, toolCall);
-    const result = reduceAgentTurnMockState(afterToolCall, decision);
+    const afterToolCall = reduceAgentTurnMockEnvelope(initialState, {
+      event: toolCall,
+      eventId: "turn-1:1",
+      occurredAt: "2026-09-17T00:00:00.000Z",
+      sequence: 1,
+      turnId: "turn-1",
+    });
+    const result = reduceAgentTurnMockEnvelope(afterToolCall, {
+      event: decision,
+      eventId: "turn-1:2",
+      occurredAt: "2026-09-17T00:00:01.000Z",
+      sequence: 2,
+      turnId: "turn-1",
+    });
 
     expect(result).toMatchObject({
       label: "申请退款",
@@ -47,9 +58,6 @@ describe("agent turn mock reducer", () => {
         decisionId: "decision-call-1",
       },
       phase: "awaiting_decision",
-      toolCalls: {
-        "call-1": toolCall,
-      },
     });
   });
 

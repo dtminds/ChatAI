@@ -1171,7 +1171,7 @@ describe("ChatPanel", () => {
     expect(screen.getByText("0.0s")).toBeInTheDocument();
   });
 
-  it("switches the AI assistant bar state from the development debug menu", async () => {
+  it("starts a Backend Mock Agent Turn from the development debug menu", async () => {
     const user = userEvent.setup();
     const assistantAccount = {
       ...account,
@@ -1181,59 +1181,27 @@ describe("ChatPanel", () => {
       ...createConversation(),
       bizStatus: 1,
     };
-    const { rerender } = render(
+    render(
       createStatusBarPanel({
         activeAccount: assistantAccount,
         activeConversation: conversation,
       }),
     );
 
-    const openDebugMenu = () =>
-      user.click(
-        screen.getByRole("button", {
-          name: "切换 AI 辅助条调试状态",
-        }),
-      );
-    await openDebugMenu();
     await user.click(
-      screen.getByRole("menuitemradio", { name: "思考中" }),
-    );
-    await screen.findByText("AI 正在思考");
-
-    await openDebugMenu();
-    await user.click(
-      screen.getByRole("menuitemradio", { name: "待确认 · 退款" }),
-    );
-    await screen.findByLabelText("确认退款 100 元");
-
-    await user.click(screen.getByRole("button", { name: "忽略" }));
-    await screen.findByText("客户", { selector: "strong" });
-
-    await openDebugMenu();
-    await user.click(
-      screen.getByRole("menuitemradio", { name: "思考中 · 查询订单" }),
-    );
-    await screen.findByLabelText("正在查询订单信息");
-
-    await openDebugMenu();
-    await user.click(
-      screen.getByRole("menuitemradio", { name: "思考中 · 可取消" }),
-    );
-    await screen.findByLabelText("正在执行售后 SOP");
-    await user.click(screen.getByRole("button", { name: "停止" }));
-    await screen.findByText("客户", { selector: "strong" });
-
-    rerender(
-      createStatusBarPanel({
-        activeAccount: assistantAccount,
-        activeConversation: {
-          ...conversation,
-          id: "conversation-2",
-        },
+      screen.getByRole("button", {
+        name: "切换 AI 辅助条调试状态",
       }),
     );
+    await user.click(screen.getByRole("menuitem", { name: "售后人工审批" }));
 
-    await screen.findByText("客户", { selector: "strong" });
+    await waitFor(() => {
+      expect(startAgentTurnMock).toHaveBeenCalledWith({
+        conversationId: conversation.id,
+        messageId: undefined,
+        scenario: "after_sales_approval",
+      });
+    });
   });
 
   it("keeps a completed Agent reply active when sending the draft fails", async () => {

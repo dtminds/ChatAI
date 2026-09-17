@@ -6,9 +6,6 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuLabel,
-  DropdownMenuRadioGroup,
-  DropdownMenuRadioItem,
-  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import {
@@ -18,26 +15,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
-import type { ChatAIAssistantStatus } from "@/pages/chat/components/chat-ai-assistant-status-bar";
 import type { AgentTurnMockScenario } from "@chatai/contracts";
-
-export type ChatAIAssistantDebugScenario =
-  | "waiting"
-  | "thinking"
-  | "thinking-order"
-  | "thinking-cancellable"
-  | "confirmation";
-
-const STATUS_OPTIONS: Array<{
-  label: string;
-  value: ChatAIAssistantDebugScenario;
-}> = [
-  { label: "等待", value: "waiting" },
-  { label: "思考中", value: "thinking" },
-  { label: "思考中 · 查询订单", value: "thinking-order" },
-  { label: "思考中 · 可取消", value: "thinking-cancellable" },
-  { label: "待确认 · 退款", value: "confirmation" },
-];
 
 const MOCK_OPTIONS: Array<{
   label: string;
@@ -57,15 +35,11 @@ export function ChatAIAssistantDebugMenu({
   disabled,
   mockScenario,
   onMockScenarioSelect,
-  onValueChange,
-  value,
 }: {
   className?: string;
   disabled?: boolean;
   mockScenario?: AgentTurnMockScenario;
   onMockScenarioSelect?: (scenario: AgentTurnMockScenario) => void;
-  onValueChange: (value: ChatAIAssistantDebugScenario) => void;
-  value: ChatAIAssistantDebugScenario;
 }) {
   if (!import.meta.env.DEV) {
     return null;
@@ -103,22 +77,6 @@ export function ChatAIAssistantDebugMenu({
         </Tooltip>
       </TooltipProvider>
       <DropdownMenuContent align="end" side="top" sideOffset={8}>
-        <DropdownMenuLabel>静态状态</DropdownMenuLabel>
-        <DropdownMenuRadioGroup
-          onValueChange={(nextValue) => {
-            if (isChatAIAssistantDebugScenario(nextValue)) {
-              onValueChange(nextValue);
-            }
-          }}
-          value={value}
-        >
-          {STATUS_OPTIONS.map((option) => (
-            <DropdownMenuRadioItem key={option.value} value={option.value}>
-              {option.label}
-            </DropdownMenuRadioItem>
-          ))}
-        </DropdownMenuRadioGroup>
-        <DropdownMenuSeparator />
         <DropdownMenuLabel>Backend Mock</DropdownMenuLabel>
         {MOCK_OPTIONS.map((option) => (
           <DropdownMenuItem
@@ -134,47 +92,4 @@ export function ChatAIAssistantDebugMenu({
       </DropdownMenuContent>
     </DropdownMenu>
   );
-}
-
-export function getChatAIAssistantDebugScenarioView(
-  scenario: ChatAIAssistantDebugScenario,
-): {
-  hasThinkingAction: boolean;
-  label?: string;
-  status: ChatAIAssistantStatus;
-} {
-  if (scenario === "thinking-order") {
-    return {
-      hasThinkingAction: false,
-      label: "正在查询订单信息",
-      status: "thinking",
-    };
-  }
-
-  if (scenario === "thinking-cancellable") {
-    return {
-      hasThinkingAction: true,
-      label: "正在执行售后 SOP",
-      status: "thinking",
-    };
-  }
-
-  if (scenario === "confirmation") {
-    return {
-      hasThinkingAction: false,
-      label: "确认退款 100 元",
-      status: "confirmation",
-    };
-  }
-
-  return {
-    hasThinkingAction: false,
-    status: scenario,
-  };
-}
-
-function isChatAIAssistantDebugScenario(
-  value: string,
-): value is ChatAIAssistantDebugScenario {
-  return STATUS_OPTIONS.some((option) => option.value === value);
 }

@@ -14,12 +14,9 @@ import type {
 import {
   BadRequestError,
   NotFoundError,
-  TooManyRequestsError,
 } from "../../shared/errors.js";
 
 const DEFAULT_STEP_DELAY_MS = 700;
-const MAX_RETAINED_TURNS = 100;
-const TURN_RETENTION_MS = 30 * 60 * 1_000;
 
 type ToolStep = {
   approvalMode: "auto" | "human";
@@ -70,8 +67,6 @@ type TurnRecord = {
   callIndex: number;
   conversationId: string;
   events: AgentTurnEventEnvelope[];
-  expiryTimer?: ReturnType<typeof setTimeout>;
-  expiresAt: number;
   id: string;
   ownerSubUserId: string;
   pendingClarification?: PendingClarification;
@@ -101,8 +96,6 @@ export class AgentTurnMockService {
     ownerSubUserId: string,
     conversationId: string,
   ): LatestAgentTurnResponse {
-    this.pruneExpiredTurns();
-
     let latest: TurnRecord | undefined;
     for (const record of this.turns.values()) {
       if (
@@ -126,15 +119,7 @@ export class AgentTurnMockService {
     ownerSubUserId: string,
     request: StartAgentTurnRequest,
   ): StartAgentTurnResponse {
-    this.pruneExpiredTurns();
     this.releaseSupersededTurns(ownerSubUserId, request.conversationId);
-
-    if (this.turns.size >= MAX_RETAINED_TURNS) {
-      throw new TooManyRequestsError(
-        "AGENT_TURN_MOCK_CAPACITY_EXCEEDED",
-        "模拟 Agent Turn 数量已达上限",
-      );
-    }
 
     const turnId = `turn-${randomUUID()}`;
     const scenario = request.mock?.scenario ?? pickRandomScenario();
@@ -142,7 +127,6 @@ export class AgentTurnMockService {
       callIndex: 0,
       conversationId: request.conversationId,
       events: [],
-      expiresAt: Date.now() + TURN_RETENTION_MS,
       id: turnId,
       ownerSubUserId,
       rejected: false,
@@ -161,10 +145,6 @@ export class AgentTurnMockService {
       type: "turn.started",
     });
     this.schedule(record, () => this.advance(record));
-    record.expiryTimer = setTimeout(() => {
-      record.expiryTimer = undefined;
-      this.expireTurn(record);
-    }, TURN_RETENTION_MS);
 
     return { turnId };
   }
@@ -473,16 +453,6 @@ export class AgentTurnMockService {
     record.timers.add(timer);
   }
 
-  private expireTurn(record: TurnRecord) {
-    if (this.turns.get(record.id) !== record) return;
-
-    if (!isTerminalStatus(record.status)) {
-      this.failTurn(record, "AGENT_TURN_EXPIRED", "模拟 Agent Turn 已过期");
-    }
-
-    this.releaseTurn(record);
-  }
-
   private getOwnedTurn(turnId: string, ownerSubUserId: string) {
     const record = this.turns.get(turnId);
 
@@ -491,19 +461,6 @@ export class AgentTurnMockService {
     }
 
     return record;
-  }
-
-  private pruneExpiredTurns() {
-    const now = Date.now();
-    for (const record of [...this.turns.values()]) {
-      if (record.expiresAt > now) {
-        continue;
-      }
-      if (!isTerminalStatus(record.status)) {
-        this.failTurn(record, "AGENT_TURN_EXPIRED", "模拟 Agent Turn 已过期");
-      }
-      this.releaseTurn(record);
-    }
   }
 
   private releaseSupersededTurns(
@@ -555,10 +512,6 @@ export class AgentTurnMockService {
 
   private releaseTurn(record: TurnRecord) {
     this.clearWorkTimers(record);
-    if (record.expiryTimer) {
-      clearTimeout(record.expiryTimer);
-      record.expiryTimer = undefined;
-    }
     record.subscribers.clear();
     if (this.turns.get(record.id) === record) {
       this.turns.delete(record.id);

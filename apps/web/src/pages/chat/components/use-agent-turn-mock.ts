@@ -70,16 +70,12 @@ export type AgentTurnMockState = {
   pendingDecision?: PendingDecision;
   phase: AgentTurnMockPhase;
   reason?: string;
-  toolCalls: Record<string, AgentTurnMockToolCall>;
-  toolSummaries: Record<string, string>;
   turnId?: string;
 };
 
 const INITIAL_STATE: AgentTurnMockState = {
   events: [],
   phase: "idle",
-  toolCalls: {},
-  toolSummaries: {},
 };
 
 export type AgentTurnMockView = {
@@ -173,8 +169,6 @@ export function useAgentTurnMock({
       events: [],
       label: "正在启动 Agent",
       phase: "running",
-      toolCalls: {},
-      toolSummaries: {},
     });
 
     try {
@@ -351,14 +345,14 @@ export function useAgentTurnMock({
   const approval = useMemo<AgentTurnMockApproval | undefined>(() => {
     if (!state.pendingDecision) return undefined;
 
-    const toolCall = state.toolCalls[state.pendingDecision.callId];
+    const toolCall = findToolCall(state.events, state.pendingDecision.callId);
     if (!toolCall) return undefined;
 
     return {
       decisionId: state.pendingDecision.decisionId,
       toolCall,
     };
-  }, [state.pendingDecision, state.toolCalls]);
+  }, [state.events, state.pendingDecision]);
   const hasActivities = state.events.some(
     ({ event }) =>
       event.type === "activity.updated" || event.type === "tool_call",
@@ -440,20 +434,14 @@ export function reduceAgentTurnMockState(
           clarification?.callId === event.callId
             ? "awaiting_clarification"
             : "running",
-        toolCalls: {
-          ...state.toolCalls,
-          [event.callId]: event,
-        },
-        toolSummaries: {
-          ...state.toolSummaries,
-          [event.callId]: summary,
-        },
       };
     }
     case "decision.requested":
       return {
         ...state,
-        label: state.toolSummaries[event.callId] || "需要你确认",
+        label:
+          findToolCall(state.events, event.callId)?.summary?.trim() ||
+          "需要你确认",
         pendingDecision: {
           callId: event.callId,
           decisionId: event.decisionId,
@@ -463,7 +451,9 @@ export function reduceAgentTurnMockState(
     case "decision.resolved":
       return {
         ...state,
-        label: state.toolSummaries[event.callId] || "正在继续处理",
+        label:
+          findToolCall(state.events, event.callId)?.summary?.trim() ||
+          "正在继续处理",
         pendingDecision: undefined,
         phase: "running",
       };
@@ -627,6 +617,17 @@ function isTerminalAgentTurnMockPhase(phase: AgentTurnMockPhase) {
     phase === "failed" ||
     phase === "idle"
   );
+}
+
+function findToolCall(
+  events: readonly AgentTurnEventEnvelope[],
+  callId: string,
+): AgentTurnMockToolCall | undefined {
+  const envelope = events.find(
+    ({ event }) => event.type === "tool_call" && event.callId === callId,
+  );
+
+  return envelope?.event.type === "tool_call" ? envelope.event : undefined;
 }
 
 function isAgentTurnKfClarificationInput(

@@ -1,6 +1,7 @@
 import type {
-  CustomerResponseAssistanceState,
   CustomerResponseAssistanceMutationResponse,
+  CustomerResponseAssistanceMutationRequest,
+  CustomerResponseAssistanceState,
   CustomerResponseAssessment,
   CustomerResponsePreflightRequest,
   CustomerResponsePreflightResponse,
@@ -94,6 +95,82 @@ export class CustomerResponsePreflightService {
     this.timeoutMs = options.timeoutMs ?? REQUEST_TIMEOUT_MS;
   }
 
+  async mutateAssistance(
+    uid: number,
+    employeeId: string,
+    input: CustomerResponseAssistanceMutationRequest,
+  ): Promise<CustomerResponseAssistanceMutationResponse> {
+    const key = this.cacheKeys.customerResponseAssistance(
+      uid,
+      input.conversationId,
+    );
+
+    if (input.action === "deactivate") {
+      await deleteAssistanceState(this.cache, key);
+
+      return {
+        active: Boolean(await readAssistanceState(this.cache, key)),
+        conversationId: input.conversationId,
+      };
+    }
+
+    const now = Date.now();
+    const state: CustomerResponseAssistanceState = {
+      activatedAt: new Date(now).toISOString(),
+      activatedByEmployeeId: employeeId,
+      conversationId: input.conversationId,
+      expiresAt: new Date(
+        now + this.assistanceTtlSeconds * 1_000,
+      ).toISOString(),
+      lastActivityAt: new Date(now).toISOString(),
+    };
+
+    await writeAssistanceState(
+      this.cache,
+      key,
+      state,
+      this.assistanceTtlSeconds,
+    );
+    const verified = await readAssistanceState(this.cache, key);
+
+    return {
+      active: Boolean(
+        verified &&
+          verified.activatedByEmployeeId === state.activatedByEmployeeId &&
+          verified.lastActivityAt === state.lastActivityAt,
+      ),
+      conversationId: input.conversationId,
+    };
+  }
+
+  async refreshAssistance(uid: number, conversationId: string) {
+    const key = this.cacheKeys.customerResponseAssistance(uid, conversationId);
+    const current = await readAssistanceState(this.cache, key);
+
+    if (!current) {
+      return false;
+    }
+
+    const now = Date.now();
+    const refreshed: CustomerResponseAssistanceState = {
+      ...current,
+      expiresAt: new Date(
+        now + this.assistanceTtlSeconds * 1_000,
+      ).toISOString(),
+      lastActivityAt: new Date(now).toISOString(),
+    };
+
+    await writeAssistanceState(
+      this.cache,
+      key,
+      refreshed,
+      this.assistanceTtlSeconds,
+    );
+    const verified = await readAssistanceState(this.cache, key);
+
+    return verified?.lastActivityAt === refreshed.lastActivityAt;
+  }
+
   async assess(
     uid: number,
     input: CustomerResponsePreflightRequest,
@@ -124,6 +201,11 @@ export class CustomerResponsePreflightService {
       );
     }
 
+    const assistanceActive = await this.refreshAssistance(
+      uid,
+      input.conversationId,
+    );
+
     if (hasNonSystemMessageAfter(messageContext.messages, input.triggerMessageId)) {
       return buildResponse(
         input,
@@ -132,6 +214,7 @@ export class CustomerResponsePreflightService {
           reasonSummary: "消息已有后续处理",
         },
         "fallback",
+        assistanceActive,
       );
     }
 
@@ -142,7 +225,7 @@ export class CustomerResponsePreflightService {
     );
     const cachedResponse = await readCachedResponse(this.cache, resultCacheKey);
     if (cachedResponse) {
-      return cachedResponse;
+      return withCurrentNextAction(cachedResponse, assistanceActive);
     }
 
     const context = buildCustomerResponsePreflightContext(
@@ -151,7 +234,7 @@ export class CustomerResponsePreflightService {
     );
 
     if (!this.apiKey || context.length === 0) {
-      return buildResponse(input, fallbackAssessment, "fallback");
+      return buildResponse(input, fallbackAssessment, "fallback", assistanceActive);
     }
 
     if (
@@ -161,7 +244,13 @@ export class CustomerResponsePreflightService {
         getLatestAgentMessageBucket(messageContext.messages),
       ))
     ) {
-      return buildResponse(input, fallbackAssessment, "fallback");
+      return buildResponse(
+        input,
+        fallbackAssessment,
+        "fallback",
+        assistanceActive,
+        true,
+      );
     }
 
     const timeoutController = new AbortController();
@@ -205,7 +294,7 @@ export class CustomerResponsePreflightService {
         throw new Error("invalid preflight response");
       }
 
-      const result = buildResponse(input, assessment, "model");
+      const result = buildResponse(input, assessment, "model", assistanceActive);
       await writeCachedResponse(this.cache, resultCacheKey, result);
       return result;
     } catch (error) {
@@ -221,7 +310,7 @@ export class CustomerResponsePreflightService {
         },
         "Customer response preflight fell back to generic confirmation",
       );
-      return buildResponse(input, fallbackAssessment, "fallback");
+      return buildResponse(input, fallbackAssessment, "fallback", assistanceActive);
     } finally {
       clearTimeout(timeout);
     }
@@ -322,6 +411,55 @@ async function writeCachedResponse(
     await cache.set(key, JSON.stringify(response), PREFLIGHT_RESULT_TTL_SECONDS);
   } catch {
     // Cache failures must not turn a valid model assessment into a request failure.
+  }
+}
+
+async function readAssistanceState(
+  cache: CustomerResponsePreflightServiceOptions["cache"],
+  key: string,
+) {
+  if (!cache) return undefined;
+
+  try {
+    const value = await cache.get(key);
+    if (!value) return undefined;
+
+    const parsed: unknown = JSON.parse(value);
+    if (!Value.Check(CustomerResponseAssistanceStateSchema, parsed)) {
+      return undefined;
+    }
+
+    return Date.parse(parsed.expiresAt) > Date.now() ? parsed : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+async function writeAssistanceState(
+  cache: CustomerResponsePreflightServiceOptions["cache"],
+  key: string,
+  state: CustomerResponseAssistanceState,
+  ttlSeconds: number,
+) {
+  if (!cache) return;
+
+  try {
+    await cache.set(key, JSON.stringify(state), ttlSeconds);
+  } catch {
+    // Cache failures must not turn a preflight or send action into a failure.
+  }
+}
+
+async function deleteAssistanceState(
+  cache: CustomerResponsePreflightServiceOptions["cache"],
+  key: string,
+) {
+  if (!cache) return;
+
+  try {
+    await cache.del(key);
+  } catch {
+    // Cache failures are reflected by the read-back state in the response.
   }
 }
 
@@ -618,13 +756,52 @@ function buildResponse(
   input: CustomerResponsePreflightRequest,
   assessment: CustomerResponseAssessment,
   source: CustomerResponsePreflightResponse["source"],
+  assistanceActive = false,
+  forceConfirmation = false,
 ): CustomerResponsePreflightResponse {
   return {
     assessment,
     conversationId: input.conversationId,
     evaluatedThroughMessageId: input.triggerMessageId,
+    nextAction: resolveNextAction(
+      assessment,
+      source,
+      assistanceActive,
+      forceConfirmation,
+    ),
     source,
   };
+}
+
+function withCurrentNextAction(
+  response: CustomerResponsePreflightResponse,
+  assistanceActive: boolean,
+): CustomerResponsePreflightResponse {
+  return {
+    ...response,
+    nextAction: resolveNextAction(
+      response.assessment,
+      response.source,
+      assistanceActive,
+    ),
+  };
+}
+
+function resolveNextAction(
+  assessment: CustomerResponseAssessment,
+  source: CustomerResponsePreflightResponse["source"],
+  assistanceActive: boolean,
+  forceConfirmation = false,
+): CustomerResponsePreflightResponse["nextAction"] {
+  if (assessment.outcome === "no_response_needed") {
+    return "wait";
+  }
+
+  if (forceConfirmation || source === "fallback") {
+    return "confirm";
+  }
+
+  return assistanceActive ? "start_agent_turn" : "confirm";
 }
 
 function findLastIndex<T>(items: T[], predicate: (item: T) => boolean) {

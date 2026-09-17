@@ -5,6 +5,7 @@ import type {
 } from "@chatai/contracts";
 import {
   isCustomerResponsePreflightEnabled,
+  mutateCustomerResponseAssistance,
   requestCustomerResponsePreflight,
 } from "@/pages/chat/api/customer-response-preflight";
 import type { ChatMessage, Message } from "@/pages/chat/chat-types";
@@ -26,6 +27,7 @@ export function useCustomerResponsePreflight({
   enabled,
   messages,
   onAccept,
+  onAutoStart,
 }: {
   blocked: boolean;
   conversationId?: string;
@@ -34,11 +36,20 @@ export function useCustomerResponsePreflight({
   onAccept: (input: {
     direction: CustomerResponseDirection;
     message: ChatMessage;
-  }) => void;
+  }) => void | Promise<void>;
+  onAutoStart?: (input: {
+    direction: CustomerResponseDirection;
+    message: ChatMessage;
+  }) => void | Promise<void>;
 }) {
   const [state, setState] = useState<PreflightState>(INITIAL_STATE);
+  const [isAccepting, setIsAccepting] = useState(false);
   const generationRef = useRef(0);
   const handledMessageIdsRef = useRef(new Set<string>());
+  const onAcceptRef = useRef(onAccept);
+  const onAutoStartRef = useRef(onAutoStart);
+  onAcceptRef.current = onAccept;
+  onAutoStartRef.current = onAutoStart;
   const latestCustomerMessage = useMemo(
     () => getLatestUnansweredCustomerMessage(messages),
     [messages],
@@ -53,6 +64,7 @@ export function useCustomerResponsePreflight({
   useEffect(() => {
     generationRef.current += 1;
     handledMessageIdsRef.current = new Set();
+    setIsAccepting(false);
     setState(INITIAL_STATE);
   }, [conversationId]);
 
@@ -63,6 +75,7 @@ export function useCustomerResponsePreflight({
 
     if (!active || blocked) {
       generationRef.current += 1;
+      setIsAccepting(false);
       setState((current) =>
         current.phase === "idle" ? current : INITIAL_STATE,
       );
@@ -119,6 +132,20 @@ export function useCustomerResponsePreflight({
             return;
           }
 
+          if (response.nextAction === "start_agent_turn") {
+            const start = onAutoStartRef.current;
+
+            if (start) {
+              generationRef.current += 1;
+              setState(INITIAL_STATE);
+              void start({
+                direction: response.assessment.direction,
+                message: triggerMessage,
+              });
+              return;
+            }
+          }
+
           setState({
             phase: "confirmation",
             response,
@@ -147,6 +174,7 @@ export function useCustomerResponsePreflight({
               },
               conversationId,
               evaluatedThroughMessageId: triggerMessageId,
+              nextAction: "confirm",
               source: "fallback",
             },
             triggerMessage,
@@ -174,8 +202,10 @@ export function useCustomerResponsePreflight({
 
   const accept = useCallback(() => {
     if (
+      isAccepting ||
       state.response?.assessment.outcome !== "response_needed" ||
-      !state.triggerMessage
+      !state.triggerMessage ||
+      !conversationId
     ) {
       return;
     }
@@ -183,10 +213,30 @@ export function useCustomerResponsePreflight({
     const { direction } = state.response.assessment;
     const message = state.triggerMessage;
     handledMessageIdsRef.current.add(state.response.evaluatedThroughMessageId);
-    generationRef.current += 1;
+    const generation = ++generationRef.current;
     setState(INITIAL_STATE);
-    onAccept({ direction, message });
-  }, [onAccept, state.response, state.triggerMessage]);
+    setIsAccepting(true);
+
+    void mutateCustomerResponseAssistance({
+      action: "activate",
+      conversationId,
+    })
+      .catch(() => undefined)
+      .then(() => {
+        if (
+          generationRef.current !== generation ||
+          latestCustomerMessageRef.current?.seq !== message.seq
+        ) {
+          setIsAccepting(false);
+          return;
+        }
+
+        setIsAccepting(false);
+        void Promise.resolve(onAcceptRef.current({ direction, message })).catch(
+          () => undefined,
+        );
+      });
+  }, [conversationId, isAccepting, state.response, state.triggerMessage]);
 
   return {
     accept,
@@ -196,6 +246,7 @@ export function useCustomerResponsePreflight({
         ? state.response.assessment.direction
         : undefined,
     isActive: state.phase !== "idle",
+    isAccepting,
     label:
       state.phase === "analyzing"
         ? "正在理解客户诉求"

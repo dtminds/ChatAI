@@ -179,6 +179,7 @@ describe("CustomerResponsePreflightService", () => {
       },
       conversationId: request.conversationId,
       evaluatedThroughMessageId: request.triggerMessageId,
+      nextAction: "confirm",
       source: "model",
     };
     const cache = {
@@ -203,6 +204,83 @@ describe("CustomerResponsePreflightService", () => {
     expect(response).toEqual(cachedResponse);
     expect(fetchMock).not.toHaveBeenCalled();
     expect(cache.set).not.toHaveBeenCalled();
+  });
+
+  it("recomputes the next action from the persisted assistance state", async () => {
+    const values = new Map<string, string>();
+    const cache = {
+      del: vi.fn().mockImplementation(async (...keys: string[]) => {
+        for (const key of keys) values.delete(key);
+      }),
+      get: vi.fn().mockImplementation(async (key: string) => {
+        return values.get(key) ?? null;
+      }),
+      set: vi.fn().mockImplementation(async (key: string, value: string) => {
+        values.set(key, value);
+      }),
+    };
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          choices: [
+            {
+              message: {
+                content: JSON.stringify({
+                  direction: "handle_request",
+                  intentSummary: "客户希望查询订单物流",
+                  outcome: "response_needed",
+                }),
+              },
+            },
+          ],
+        }),
+        { status: 200 },
+      ),
+    );
+    const repository = {
+      listMessageContext: vi.fn().mockResolvedValue({
+        messages: [createMessage({ senderType: "customer", seq: 20 })],
+        targetMessageId: request.triggerMessageId,
+      }),
+    };
+    const service = new CustomerResponsePreflightService({
+      apiKey: "test-key",
+      assistanceTtlSeconds: 600,
+      cache,
+      fetch: fetchMock,
+      repository,
+    });
+
+    const firstResponse = await service.assess(9001, request);
+    expect(firstResponse.nextAction).toBe("confirm");
+
+    expect(
+      await service.mutateAssistance(9001, "employee-1", {
+        action: "activate",
+        conversationId: request.conversationId,
+      }),
+    ).toEqual({
+      active: true,
+      conversationId: request.conversationId,
+    });
+
+    const activeResponse = await service.assess(9001, request);
+    expect(activeResponse.nextAction).toBe("start_agent_turn");
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+
+    expect(
+      await service.mutateAssistance(9001, "employee-1", {
+        action: "deactivate",
+        conversationId: request.conversationId,
+      }),
+    ).toEqual({
+      active: false,
+      conversationId: request.conversationId,
+    });
+
+    const inactiveResponse = await service.assess(9001, request);
+    expect(inactiveResponse.nextAction).toBe("confirm");
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
   it("returns the conservative fallback when the automatic preflight budget is exhausted", async () => {

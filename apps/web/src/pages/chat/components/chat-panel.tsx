@@ -526,6 +526,31 @@ export function ChatPanel({
       canUseConversationActions: canSendMessage,
       conversation: activeConversation,
     }).canUse && !agentHostingStatus;
+  const canStartPreflightAgentTurn = import.meta.env.DEV
+    ? Boolean(activeConversationId)
+    : Boolean(onTriggerSmartReply);
+  const startAgentTurnForPreflight = useCallback(
+    ({
+      direction,
+      message,
+    }: {
+      direction: CustomerResponseDirection;
+      message: ChatMessage;
+    }) => {
+      if (import.meta.env.DEV) {
+        setAIAssistantDebugScenario(null);
+        void agentTurnMock.startScenario(
+          direction === "handle_request" ? "order_reply" : "knowledge_reply",
+        );
+        return;
+      }
+
+      onTriggerSmartReply?.(message, {
+        confirmedComposerOverwrite: true,
+      });
+    },
+    [agentTurnMock.startScenario, onTriggerSmartReply],
+  );
   const sourceSmartReplyTurn = aiAssistantStatusVisible
     ? resolveSmartReplyAssistantTurn({
         activeMessageKey: smartReplyState.activeMessageKey,
@@ -552,13 +577,10 @@ export function ChatPanel({
     enabled:
       activeConversation?.mode === "single" &&
       aiAssistantStatusVisible &&
-      Boolean(onTriggerSmartReply),
+      canStartPreflightAgentTurn,
     messages,
-    onAccept: ({ message }) => {
-      onTriggerSmartReply?.(message, {
-        confirmedComposerOverwrite: true,
-      });
-    },
+    onAccept: startAgentTurnForPreflight,
+    onAutoStart: startAgentTurnForPreflight,
   });
   const smartReplyComposer = useSmartReplyComposer({
     approvedOverwriteLookupKey,
@@ -928,12 +950,14 @@ export function ChatPanel({
                 tone: "quiet",
               },
               {
-                disabled: !onTriggerSmartReply,
+                disabled:
+                  !canStartPreflightAgentTurn ||
+                  customerResponsePreflight.isAccepting,
                 id: "start-preflight",
                 label: getCustomerResponsePreflightActionLabel(
                   customerResponsePreflight.direction,
                 ),
-                onSelect: onTriggerSmartReply
+                onSelect: canStartPreflightAgentTurn
                   ? customerResponsePreflight.accept
                   : undefined,
                 tone: "primary",

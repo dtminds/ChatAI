@@ -18,6 +18,11 @@ export function buildCacheKeys(prefix: string) {
       messageId: string | number,
     ) =>
       `${normalizedPrefix}chat:customer-response-preflight:result:${uid}:${conversationId}:${messageId}`,
+    customerResponseAssistance: (
+      uid: string | number,
+      conversationId: string | number,
+    ) =>
+      `${normalizedPrefix}chat:customer-response-preflight:assistance:${uid}:${conversationId}`,
     seatAccess: (subUserId: string | number) =>
       `${normalizedPrefix}seat-access:${subUserId}`,
   };

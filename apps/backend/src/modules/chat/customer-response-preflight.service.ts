@@ -1,10 +1,13 @@
 import type {
+  CustomerResponseAssistanceState,
+  CustomerResponseAssistanceMutationResponse,
   CustomerResponseAssessment,
   CustomerResponsePreflightRequest,
   CustomerResponsePreflightResponse,
   WorkbenchMessageDto,
 } from "@chatai/contracts";
 import {
+  CustomerResponseAssistanceStateSchema,
   CustomerResponseAssessmentSchema,
   CustomerResponsePreflightResponseSchema,
 } from "@chatai/contracts";
@@ -30,6 +33,7 @@ const REQUEST_TIMEOUT_MS = 3_000;
 const PREFLIGHT_RESULT_TTL_SECONDS = 12 * 60 * 60;
 const PREFLIGHT_RATE_LIMIT_SECONDS = 60;
 const PREFLIGHT_RATE_LIMIT = 3;
+const CUSTOMER_RESPONSE_ASSISTANCE_TTL_SECONDS = 10 * 60;
 const MAX_LOCAL_RATE_LIMIT_BUCKETS = 1_000;
 
 type PreflightContentPart =
@@ -46,12 +50,13 @@ type PreflightContextMessage = {
 type CustomerResponsePreflightServiceOptions = {
   apiKey?: string;
   automaticUsageLimiter?: Pick<DailyUsageLimiter, "reserve">;
-  cache?: Pick<CachePort, "get" | "set">;
+  cache?: Pick<CachePort, "del" | "get" | "set">;
   cacheKeys?: ReturnType<typeof buildCacheKeys>;
   fetch?: typeof fetch;
   logger?: AppLogger;
   model?: string;
   repository: Pick<WorkbenchRepository, "listMessageContext">;
+  assistanceTtlSeconds?: number;
   timeoutMs?: number;
 };
 
@@ -71,6 +76,7 @@ export class CustomerResponsePreflightService {
   private readonly localRateLimitBuckets = new Map<string, number[]>();
   private readonly model: string;
   private readonly repository: CustomerResponsePreflightServiceOptions["repository"];
+  private readonly assistanceTtlSeconds: number;
   private readonly timeoutMs: number;
 
   constructor(options: CustomerResponsePreflightServiceOptions) {
@@ -83,6 +89,8 @@ export class CustomerResponsePreflightService {
     this.model =
       options.model ?? VOLCENGINE_ARK_CUSTOMER_RESPONSE_PREFLIGHT_MODEL;
     this.repository = options.repository;
+    this.assistanceTtlSeconds =
+      options.assistanceTtlSeconds ?? CUSTOMER_RESPONSE_ASSISTANCE_TTL_SECONDS;
     this.timeoutMs = options.timeoutMs ?? REQUEST_TIMEOUT_MS;
   }
 

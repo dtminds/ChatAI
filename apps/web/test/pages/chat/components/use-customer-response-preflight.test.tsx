@@ -116,6 +116,64 @@ describe("useCustomerResponsePreflight", () => {
       triggerMessageId: "7004",
     });
   });
+
+  it("does not restart the debounce when the same message is recreated", async () => {
+    vi.useFakeTimers();
+    const message = createCustomerMessage(7003);
+    const deferred = createDeferred<CustomerResponsePreflightResponse>();
+    requestCustomerResponsePreflightMock.mockReturnValue(deferred.promise);
+    const { rerender } = renderHook(
+      ({ messages }: { messages: ChatMessage[] }) =>
+        useCustomerResponsePreflight({
+          blocked: false,
+          conversationId: "144",
+          enabled: true,
+          messages,
+          onAccept: vi.fn(),
+        }),
+      { initialProps: { messages: [message] } },
+    );
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1_500);
+    });
+    expect(requestCustomerResponsePreflightMock).toHaveBeenCalledTimes(1);
+
+    rerender({
+      messages: [
+        {
+          ...message,
+          content: { text: "更新后的展示", type: "text" },
+        },
+      ],
+    });
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1_500);
+    });
+    expect(requestCustomerResponsePreflightMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("returns to waiting when the backend rejects a stale trigger", async () => {
+    vi.useFakeTimers();
+    requestCustomerResponsePreflightMock.mockRejectedValue({ status: 400 });
+    const { result } = renderHook(() =>
+      useCustomerResponsePreflight({
+        blocked: false,
+        conversationId: "144",
+        enabled: true,
+        messages: [createCustomerMessage(7003)],
+        onAccept: vi.fn(),
+      }),
+    );
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1_500);
+    });
+
+    expect(result.current.phase).toBe("idle");
+    expect(result.current.isActive).toBe(false);
+  });
 });
 
 function createCustomerMessage(seq: number): ChatMessage {

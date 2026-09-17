@@ -1,5 +1,6 @@
 import type {
   CustomerResponsePreflightRequest,
+  CustomerResponsePreflightResponse,
   WorkbenchMessageDto,
 } from "@chatai/contracts";
 import { describe, expect, it, vi } from "vitest";
@@ -26,7 +27,7 @@ describe("CustomerResponsePreflightService", () => {
     const response = await service.assess(9001, request);
 
     expect(repository.listMessageContext).toHaveBeenCalledWith({
-      after: 0,
+      after: 20,
       before: 19,
       conversationId: request.conversationId,
       messageId: request.triggerMessageId,
@@ -36,6 +37,39 @@ describe("CustomerResponsePreflightService", () => {
       assessment: { outcome: "response_needed" },
       source: "fallback",
     });
+  });
+
+  it("does not assess an older customer message after later conversation activity", async () => {
+    const repository = {
+      listMessageContext: vi.fn().mockResolvedValue({
+        messages: [
+          createMessage({ senderType: "customer", seq: 20 }),
+          createMessage({
+            createdAt: 2_000,
+            senderType: "agent",
+            seq: 21,
+          }),
+        ],
+        targetMessageId: request.triggerMessageId,
+      }),
+    };
+    const fetchMock = vi.fn();
+    const service = new CustomerResponsePreflightService({
+      apiKey: "test-key",
+      fetch: fetchMock,
+      repository,
+    });
+
+    const response = await service.assess(9001, request);
+
+    expect(response).toMatchObject({
+      assessment: {
+        outcome: "no_response_needed",
+        reasonSummary: "消息已有后续处理",
+      },
+      source: "fallback",
+    });
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 
   it("keeps the latest 20 messages in the model context", () => {
@@ -134,6 +168,75 @@ describe("CustomerResponsePreflightService", () => {
       ]),
       role: "user",
     });
+  });
+
+  it("reuses a cached assessment without invoking the model", async () => {
+    const cachedResponse: CustomerResponsePreflightResponse = {
+      assessment: {
+        direction: "provide_response",
+        intentSummary: "客户询问退款到账时间",
+        outcome: "response_needed",
+      },
+      conversationId: request.conversationId,
+      evaluatedThroughMessageId: request.triggerMessageId,
+      source: "model",
+    };
+    const cache = {
+      get: vi.fn().mockResolvedValue(JSON.stringify(cachedResponse)),
+      set: vi.fn(),
+    };
+    const fetchMock = vi.fn();
+    const service = new CustomerResponsePreflightService({
+      apiKey: "test-key",
+      cache,
+      fetch: fetchMock,
+      repository: {
+        listMessageContext: vi.fn().mockResolvedValue({
+          messages: [createMessage({ senderType: "customer", seq: 20 })],
+          targetMessageId: request.triggerMessageId,
+        }),
+      },
+    });
+
+    const response = await service.assess(9001, request);
+
+    expect(response).toEqual(cachedResponse);
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(cache.set).not.toHaveBeenCalled();
+  });
+
+  it("returns the conservative fallback when the automatic preflight budget is exhausted", async () => {
+    const limiter = {
+      reserve: vi.fn().mockResolvedValue(false),
+    };
+    const fetchMock = vi.fn();
+    const service = new CustomerResponsePreflightService({
+      apiKey: "test-key",
+      automaticUsageLimiter: limiter,
+      fetch: fetchMock,
+      repository: {
+        listMessageContext: vi.fn().mockResolvedValue({
+          messages: [createMessage({ senderType: "customer", seq: 20 })],
+          targetMessageId: request.triggerMessageId,
+        }),
+      },
+    });
+
+    const response = await service.assess(9001, request);
+
+    expect(response).toMatchObject({
+      assessment: {
+        direction: "handle_request",
+        outcome: "response_needed",
+      },
+      source: "fallback",
+    });
+    expect(limiter.reserve).toHaveBeenCalledWith({
+      key: "chatai:chat:customer-response-preflight:rate:9001:144:initial",
+      limit: 3,
+      ttlSeconds: 60,
+    });
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 
   it("falls back when the model response is invalid", async () => {

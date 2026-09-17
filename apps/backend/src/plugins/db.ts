@@ -65,7 +65,10 @@ export const dbPlugin = fp(async (app) => {
   app.decorate(
     "customerResponsePreflightService",
     new CustomerResponsePreflightService({
+      automaticUsageLimiter: app.dailyUsageLimiter,
       apiKey: process.env.VOLCENGINE_ARK_API_KEY,
+      cache: app.cache,
+      cacheKeys: app.cacheKeys,
       logger: app.log,
       repository,
     }),

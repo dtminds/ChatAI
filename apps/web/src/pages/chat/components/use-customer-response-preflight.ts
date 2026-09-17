@@ -43,6 +43,8 @@ export function useCustomerResponsePreflight({
     () => getLatestUnansweredCustomerMessage(messages),
     [messages],
   );
+  const latestCustomerMessageRef = useRef<ChatMessage | undefined>(undefined);
+  latestCustomerMessageRef.current = latestCustomerMessage;
   const triggerMessageId = latestCustomerMessage?.seq
     ? String(latestCustomerMessage.seq)
     : undefined;
@@ -93,12 +95,15 @@ export function useCustomerResponsePreflight({
       return;
     }
 
+    const triggerMessage = latestCustomerMessageRef.current;
+    if (!triggerMessage) return;
+
     const generation = ++generationRef.current;
     const controller = new AbortController();
     const timeout = window.setTimeout(() => {
       setState({
         phase: "analyzing",
-        triggerMessage: latestCustomerMessage,
+        triggerMessage,
       });
 
       void requestCustomerResponsePreflight(
@@ -117,11 +122,17 @@ export function useCustomerResponsePreflight({
           setState({
             phase: "confirmation",
             response,
-            triggerMessage: latestCustomerMessage,
+            triggerMessage,
           });
         })
-        .catch(() => {
+        .catch((error) => {
           if (generationRef.current !== generation || controller.signal.aborted) {
+            return;
+          }
+
+          if (isClientRejectedPreflight(error)) {
+            handledMessageIdsRef.current.add(triggerMessageId);
+            setState(INITIAL_STATE);
             return;
           }
 
@@ -138,7 +149,7 @@ export function useCustomerResponsePreflight({
               evaluatedThroughMessageId: triggerMessageId,
               source: "fallback",
             },
-            triggerMessage: latestCustomerMessage,
+            triggerMessage,
           });
         });
     }, PREFLIGHT_DEBOUNCE_MS);
@@ -151,7 +162,6 @@ export function useCustomerResponsePreflight({
     active,
     blocked,
     conversationId,
-    latestCustomerMessage,
     triggerMessageId,
   ]);
 
@@ -194,6 +204,15 @@ export function useCustomerResponsePreflight({
           : undefined,
     phase: state.phase,
   };
+}
+
+function isClientRejectedPreflight(error: unknown) {
+  if (!error || typeof error !== "object" || !("status" in error)) {
+    return false;
+  }
+
+  const status = (error as { status?: unknown }).status;
+  return typeof status === "number" && status >= 400 && status < 500;
 }
 
 function getLatestUnansweredCustomerMessage(messages: Message[]) {

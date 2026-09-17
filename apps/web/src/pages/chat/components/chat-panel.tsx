@@ -396,6 +396,10 @@ export function ChatPanel({
   const hasBlockingAgentInteraction = Boolean(
     agentTurnMock.approval || agentTurnMock.clarification,
   );
+  const hasBlockingAgentTurn = Boolean(
+    (agentTurnMock.isActive && !agentTurnMock.isTerminal) ||
+      agentTurnMock.isReplyReady,
+  );
 
   useLayoutEffect(() => {
     setAgentTurnTimelineState("hidden");
@@ -536,8 +540,7 @@ export function ChatPanel({
     : undefined;
   const customerResponsePreflight = useCustomerResponsePreflight({
     blocked: Boolean(
-      agentTurnMock.isActive ||
-        agentTurnMock.isTerminal ||
+      hasBlockingAgentTurn ||
         sourceSmartReplyTurn ||
         isSendingDraft ||
         isConversationLoading ||
@@ -552,7 +555,9 @@ export function ChatPanel({
       Boolean(onTriggerSmartReply),
     messages,
     onAccept: ({ message }) => {
-      onTriggerSmartReply?.(message);
+      onTriggerSmartReply?.(message, {
+        confirmedComposerOverwrite: true,
+      });
     },
   });
   const smartReplyComposer = useSmartReplyComposer({

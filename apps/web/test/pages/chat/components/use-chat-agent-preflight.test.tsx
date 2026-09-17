@@ -202,9 +202,7 @@ function createResponse(
       reasoningSummary: "客户需要补充信息",
       outcome: "response_needed",
     },
-    conversationId: "144",
     evaluatedThroughMessageId: "7003",
-    nextAction: "confirm",
     source: "model",
   };
 }

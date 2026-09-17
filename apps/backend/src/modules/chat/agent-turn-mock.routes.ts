@@ -1,10 +1,10 @@
 import {
   ResolveAgentTurnDecisionRequestSchema,
   ResolveAgentTurnKfClarificationRequestSchema,
-  StartAgentTurnRequestSchema,
+  StartAgentTurnMockRequestSchema,
   type ResolveAgentTurnDecisionRequest,
   type ResolveAgentTurnKfClarificationRequest,
-  type StartAgentTurnRequest,
+  type StartAgentTurnMockRequest,
 } from "@chatai/contracts";
 import { Type, type Static } from "@sinclair/typebox";
 import type { FastifyInstance, FastifyRequest } from "fastify";
@@ -50,11 +50,11 @@ export async function registerAgentTurnMockRoutes(
 ) {
   app.addHook("onClose", async () => service.dispose());
 
-  app.post<{ Body: StartAgentTurnRequest }>(
-    "/api/server/agent-turns",
+  app.post<{ Body: StartAgentTurnMockRequest }>(
+    "/api/server/debug/agent-turn-mock/turns",
     {
       preHandler: app.authenticate,
-      schema: { body: StartAgentTurnRequestSchema },
+      schema: { body: StartAgentTurnMockRequestSchema },
     },
     async (request) => {
       assertAgentTurnWriteAccess(request);

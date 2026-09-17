@@ -195,9 +195,7 @@ describe("ChatAgentPreflightService", () => {
 
     expect(response).toEqual({
       assessment: persistedResult.assessment,
-      conversationId: request.conversationId,
       evaluatedThroughMessageId: request.triggerMessageId,
-      nextAction: "confirm",
       source: "model",
     });
     expect(repository.listMessageContext).not.toHaveBeenCalled();

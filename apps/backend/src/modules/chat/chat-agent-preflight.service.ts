@@ -622,9 +622,7 @@ function buildResponse(
 ): ChatAgentPreflightResponse {
   return {
     assessment,
-    conversationId: input.conversationId,
     evaluatedThroughMessageId: input.triggerMessageId,
-    nextAction: resolveNextAction(assessment),
     source,
   };
 }
@@ -634,12 +632,6 @@ function buildStoredResponse(
   result: StoredChatAgentPreflightResult,
 ) {
   return buildResponse(input, result.assessment, result.source);
-}
-
-function resolveNextAction(
-  assessment: ChatAgentAssessment,
-): ChatAgentPreflightResponse["nextAction"] {
-  return assessment.outcome === "no_response_needed" ? "wait" : "confirm";
 }
 
 function getLatestAgentMessageBucket(messages: WorkbenchMessageDto[]) {

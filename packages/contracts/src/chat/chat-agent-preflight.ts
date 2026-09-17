@@ -26,15 +26,6 @@ export type ChatAgentAssessment = Static<
   typeof ChatAgentAssessmentSchema
 >;
 
-export const ChatAgentPreflightNextActionSchema = Type.Union([
-  Type.Literal("wait"),
-  Type.Literal("confirm"),
-]);
-
-export type ChatAgentPreflightNextAction = Static<
-  typeof ChatAgentPreflightNextActionSchema
->;
-
 export const ChatAgentPreflightRequestSchema = Type.Object({
   conversationId: Type.String({ minLength: 1 }),
   triggerMessageId: Type.String({ pattern: "^[0-9]+$" }),
@@ -46,9 +37,7 @@ export type ChatAgentPreflightRequest = Static<
 
 export const ChatAgentPreflightResponseSchema = Type.Object({
   assessment: ChatAgentAssessmentSchema,
-  conversationId: Type.String({ minLength: 1 }),
   evaluatedThroughMessageId: Type.String({ pattern: "^[0-9]+$" }),
-  nextAction: ChatAgentPreflightNextActionSchema,
   source: Type.Union([Type.Literal("model"), Type.Literal("fallback")]),
 });
 

@@ -8,7 +8,7 @@ import type {
   LatestAgentTurnResponse,
   ResolveAgentTurnDecisionRequest,
   ResolveAgentTurnKfClarificationRequest,
-  StartAgentTurnRequest,
+  StartAgentTurnMockRequest,
   StartAgentTurnResponse,
 } from "@chatai/contracts";
 import {
@@ -117,12 +117,11 @@ export class AgentTurnMockService {
 
   start(
     ownerSubUserId: string,
-    request: StartAgentTurnRequest,
+    request: StartAgentTurnMockRequest,
   ): StartAgentTurnResponse {
     this.releaseSupersededTurns(ownerSubUserId, request.conversationId);
 
     const turnId = `turn-${randomUUID()}`;
-    const scenario = request.mock?.scenario ?? pickRandomScenario();
     const record: TurnRecord = {
       callIndex: 0,
       conversationId: request.conversationId,
@@ -132,9 +131,9 @@ export class AgentTurnMockService {
       rejected: false,
       sequence: 0,
       status: "running",
-      stepDelayMs: request.mock?.stepDelayMs ?? DEFAULT_STEP_DELAY_MS,
+      stepDelayMs: request.stepDelayMs ?? DEFAULT_STEP_DELAY_MS,
       stepIndex: 0,
-      steps: createScenarioSteps(scenario),
+      steps: createScenarioSteps(request.scenario),
       subscribers: new Set(),
       timers: new Set(),
     };
@@ -529,20 +528,6 @@ function toSnapshotStatus(status: TurnStatus) {
   }
 
   return status;
-}
-
-function pickRandomScenario(): AgentTurnMockScenario {
-  const scenarios: AgentTurnMockScenario[] = [
-    "knowledge_reply",
-    "order_reply",
-    "order_binding_approval",
-    "after_sales_approval",
-    "operator_clarification",
-    "tool_failure",
-    "no_reply",
-  ];
-
-  return scenarios[Math.floor(Math.random() * scenarios.length)] ?? "knowledge_reply";
 }
 
 function createScenarioSteps(scenario: AgentTurnMockScenario): ScenarioStep[] {

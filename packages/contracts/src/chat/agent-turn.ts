@@ -1,40 +1,19 @@
 import { Type, type Static } from "@sinclair/typebox";
 import type { WorkbenchOutgoingMessageSegment } from "./dto.js";
 
-export const AgentTurnMockScenarioSchema = Type.Union([
-  Type.Literal("knowledge_reply"),
-  Type.Literal("order_reply"),
-  Type.Literal("order_binding_approval"),
-  Type.Literal("after_sales_approval"),
-  Type.Literal("operator_clarification"),
-  Type.Literal("tool_failure"),
-  Type.Literal("no_reply"),
+export const AgentTurnTriggerSchema = Type.Union([
+  Type.Object({
+    messageId: Type.String({ minLength: 1 }),
+    type: Type.Literal("customer_message"),
+  }),
+  Type.Object({
+    instruction: Type.Optional(Type.String({ maxLength: 1_000, minLength: 1 })),
+    messageId: Type.Optional(Type.String({ minLength: 1 })),
+    type: Type.Literal("agent_request"),
+  }),
 ]);
 
-export type AgentTurnMockScenario = Static<typeof AgentTurnMockScenarioSchema>;
-
-export const StartAgentTurnRequestSchema = Type.Object({
-  conversationId: Type.String({ minLength: 1 }),
-  mock: Type.Optional(
-    Type.Object({
-      scenario: Type.Optional(AgentTurnMockScenarioSchema),
-      stepDelayMs: Type.Optional(Type.Integer({ maximum: 5_000, minimum: 0 })),
-    }),
-  ),
-  trigger: Type.Union([
-    Type.Object({
-      messageId: Type.String({ minLength: 1 }),
-      type: Type.Literal("customer_message"),
-    }),
-    Type.Object({
-      instruction: Type.Optional(Type.String({ maxLength: 1_000, minLength: 1 })),
-      messageId: Type.Optional(Type.String({ minLength: 1 })),
-      type: Type.Literal("agent_request"),
-    }),
-  ]),
-});
-
-export type StartAgentTurnRequest = Static<typeof StartAgentTurnRequestSchema>;
+export type AgentTurnTrigger = Static<typeof AgentTurnTriggerSchema>;
 
 export const StartAgentTurnResponseSchema = Type.Object({
   turnId: Type.String({ minLength: 1 }),
@@ -92,7 +71,6 @@ export type ResolveAgentTurnKfClarificationRequest = Static<
   typeof ResolveAgentTurnKfClarificationRequestSchema
 >;
 
-export type AgentTurnTrigger = StartAgentTurnRequest["trigger"];
 export type AgentTurnToolCategory = "business" | "control";
 export type AgentTurnApprovalMode = "auto" | "human";
 

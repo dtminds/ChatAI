@@ -16,7 +16,8 @@ describe("AgentTurnMockService", () => {
     service = new AgentTurnMockService();
     const { turnId } = service.start("101", {
       conversationId: "144",
-      mock: { scenario: "knowledge_reply", stepDelayMs: 100 },
+      scenario: "knowledge_reply",
+      stepDelayMs: 100,
       trigger: { messageId: "7003", type: "customer_message" },
     });
     const received: AgentTurnEventEnvelope[] = [];
@@ -63,7 +64,8 @@ describe("AgentTurnMockService", () => {
     service = new AgentTurnMockService();
     const { turnId } = service.start("101", {
       conversationId: "144",
-      mock: { scenario: "after_sales_approval", stepDelayMs: 100 },
+      scenario: "after_sales_approval",
+      stepDelayMs: 100,
       trigger: { type: "agent_request" },
     });
     const received: AgentTurnEventEnvelope[] = [];
@@ -106,7 +108,8 @@ describe("AgentTurnMockService", () => {
     service = new AgentTurnMockService();
     const { turnId } = service.start("101", {
       conversationId: "144",
-      mock: { scenario: "order_binding_approval", stepDelayMs: 100 },
+      scenario: "order_binding_approval",
+      stepDelayMs: 100,
       trigger: { type: "agent_request" },
     });
     const received: AgentTurnEventEnvelope[] = [];
@@ -171,7 +174,8 @@ describe("AgentTurnMockService", () => {
     service = new AgentTurnMockService();
     const { turnId } = service.start("101", {
       conversationId: "144",
-      mock: { scenario: "operator_clarification", stepDelayMs: 100 },
+      scenario: "operator_clarification",
+      stepDelayMs: 100,
       trigger: { type: "agent_request" },
     });
     const received: AgentTurnEventEnvelope[] = [];
@@ -224,7 +228,8 @@ describe("AgentTurnMockService", () => {
     service = new AgentTurnMockService();
     const { turnId } = service.start("101", {
       conversationId: "144",
-      mock: { scenario: "operator_clarification", stepDelayMs: 100 },
+      scenario: "operator_clarification",
+      stepDelayMs: 100,
       trigger: { type: "agent_request" },
     });
     const received: AgentTurnEventEnvelope[] = [];
@@ -257,7 +262,8 @@ describe("AgentTurnMockService", () => {
     service = new AgentTurnMockService();
     const { turnId } = service.start("101", {
       conversationId: "144",
-      mock: { scenario: "no_reply", stepDelayMs: 10 },
+      scenario: "no_reply",
+      stepDelayMs: 10,
       trigger: { type: "agent_request" },
     });
 
@@ -289,7 +295,8 @@ describe("AgentTurnMockService", () => {
     service = new AgentTurnMockService();
     const first = service.start("101", {
       conversationId: "144",
-      mock: { scenario: "order_reply", stepDelayMs: 10 },
+      scenario: "order_reply",
+      stepDelayMs: 10,
       trigger: { type: "agent_request" },
     });
     const firstEvents: string[] = [];
@@ -299,7 +306,8 @@ describe("AgentTurnMockService", () => {
 
     const second = service.start("101", {
       conversationId: "144",
-      mock: { scenario: "knowledge_reply", stepDelayMs: 10 },
+      scenario: "knowledge_reply",
+      stepDelayMs: 10,
       trigger: { type: "agent_request" },
     });
 

@@ -4,7 +4,7 @@ import type {
   LatestAgentTurnResponse,
   ResolveAgentTurnDecisionRequest,
   ResolveAgentTurnKfClarificationRequest,
-  StartAgentTurnRequest,
+  StartAgentTurnMockRequest,
   StartAgentTurnResponse,
 } from "@chatai/contracts";
 import { http } from "@/lib/request";
@@ -20,20 +20,18 @@ export function startAgentTurnMock(input: {
   messageId?: string;
   scenario: AgentTurnMockScenario;
 }) {
-  const request: StartAgentTurnRequest = {
+  const request: StartAgentTurnMockRequest = {
     conversationId: input.conversationId,
-    mock: {
-      scenario: input.scenario,
-      stepDelayMs: 700,
-    },
+    scenario: input.scenario,
+    stepDelayMs: 700,
     trigger: {
       ...(input.messageId ? { messageId: input.messageId } : {}),
       type: "agent_request",
     },
   };
 
-  return http.post<StartAgentTurnResponse, StartAgentTurnRequest>(
-    "/server/agent-turns",
+  return http.post<StartAgentTurnResponse, StartAgentTurnMockRequest>(
+    "/server/debug/agent-turn-mock/turns",
     request,
   );
 }

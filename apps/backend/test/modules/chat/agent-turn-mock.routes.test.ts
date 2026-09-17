@@ -25,10 +25,11 @@ describe("agent turn mock routes", () => {
         method: "POST",
         payload: {
           conversationId: "144",
-          mock: { scenario: "order_reply", stepDelayMs: 0 },
+          scenario: "order_reply",
+          stepDelayMs: 0,
           trigger: { messageId: "7003", type: "customer_message" },
         },
-        url: "/api/server/agent-turns",
+        url: "/api/server/debug/agent-turn-mock/turns",
       });
       expect(started.statusCode).toBe(200);
       expect(assertConversationOperable).toHaveBeenCalledWith("101", "144");

@@ -77,7 +77,17 @@ export function subscribeAgentTurnMockEvents(
     `${resolveApiBaseUrl()}/server/agent-turns/${encodeURIComponent(turnId)}/events`,
     { withCredentials: true },
   );
+  let isClosed = false;
+  const close = () => {
+    if (isClosed) return;
+    isClosed = true;
+    source.removeEventListener("agent-turn", handleEvent as EventListener);
+    source.onerror = null;
+    source.close();
+  };
   const handleEvent = (event: MessageEvent<string>) => {
+    if (isClosed) return;
+
     const envelope = JSON.parse(event.data) as AgentTurnEventEnvelope;
     handlers.onEvent(envelope);
 
@@ -86,20 +96,18 @@ export function subscribeAgentTurnMockEvents(
       envelope.event.type === "turn.cancelled" ||
       envelope.event.type === "turn.failed"
     ) {
-      source.close();
+      close();
     }
   };
 
   source.addEventListener("agent-turn", handleEvent as EventListener);
   source.onerror = () => {
-    source.close();
+    if (isClosed) return;
+    close();
     handlers.onError();
   };
 
-  return () => {
-    source.removeEventListener("agent-turn", handleEvent as EventListener);
-    source.close();
-  };
+  return close;
 }
 
 function resolveApiBaseUrl() {

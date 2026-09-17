@@ -9,7 +9,7 @@
 
 在真实 Agent Orchestrator 接入前，由 Backend Mock 驱动完整 Agent Turn，使前端能够基于真实的异步事件验证：
 
-- thinking 活动和中间状态摘要
+- 模型请求期间的通用 thinking 运行状态
 - 自动放行的 Tool Call
 - 等待客服批准的 Tool Call
 - 等待客服澄清并以完整指令恢复的 Tool Call
@@ -209,6 +209,10 @@ turn.completed
 turn.cancelled
 turn.failed
 ```
+
+当前 Mock 不生成 `activity.updated(kind="thinking")`。模型请求尚未返回下一项可观察动作时，前端只展示通用的「思考中」运行状态，不在过程列表中伪造思考摘要。工具结果与下一轮 Tool Call 之间保留异步等待，但该等待不产生 Timeline 活动。
+
+`activity.updated` 仅作为未来模型支持可展示 reasoning summary 时的可选扩展保留；前端不得依赖该事件一定存在。
 
 `tool_call.approvalMode` 明确表示该次调用是自动放行还是需要人工确认。前端不得根据工具名称、读写类型或参数自行推导审批策略。
 

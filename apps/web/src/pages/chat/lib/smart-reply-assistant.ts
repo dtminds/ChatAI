@@ -30,6 +30,10 @@ export type SmartReplyAssistantPhase =
   | "skipped"
   | "failed";
 
+export type SmartReplyAssistantUIPhase =
+  | SmartReplyAssistantPhase
+  | "applying";
+
 export type SmartReplyAssistantTurn = {
   isComposerEditable: boolean;
   label: string;
@@ -40,6 +44,39 @@ export type SmartReplyAssistantTurn = {
   showComposer: boolean;
   suggestion?: SmartReplySuggestion;
 };
+
+export function resolveSmartReplyAssistantUIPhase({
+  composerHasContent,
+  hasAppliedSuggestion,
+  isOverwriteApproved,
+  isOverwriteConfirmationRequested,
+  turn,
+}: {
+  composerHasContent: boolean;
+  hasAppliedSuggestion: boolean;
+  isOverwriteApproved: boolean;
+  isOverwriteConfirmationRequested: boolean;
+  turn?: SmartReplyAssistantTurn;
+}): SmartReplyAssistantUIPhase | undefined {
+  if (!turn) return undefined;
+
+  if (
+    turn.phase === "draft_confirmation" ||
+    isOverwriteConfirmationRequested ||
+    (turn.phase === "confirmation" &&
+      !hasAppliedSuggestion &&
+      !isOverwriteApproved &&
+      composerHasContent)
+  ) {
+    return "draft_confirmation";
+  }
+
+  if (turn.phase === "confirmation" && !hasAppliedSuggestion) {
+    return "applying";
+  }
+
+  return turn.phase;
+}
 
 type SmartReplyAssistantInput = {
   activeMessageKey?: string;

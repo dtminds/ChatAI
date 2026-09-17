@@ -571,8 +571,7 @@ export function useSmartReplyComposer({
     canEdit,
     clearTransientState,
     dialog,
-    hasAppliedSuggestion:
-      Boolean(turn) && appliedSuggestion?.lookupKey === turn?.lookupKey,
+    hasAppliedSuggestion: hasAppliedCurrentSuggestion,
     isSuggestionMode,
     notice,
     onSendDraft: handleSend,

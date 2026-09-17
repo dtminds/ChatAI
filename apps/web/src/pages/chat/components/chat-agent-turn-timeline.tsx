@@ -14,6 +14,7 @@ import {
   useState,
 } from "react";
 import type { AgentTurnEventEnvelope } from "@chatai/contracts";
+import { ShinyText } from "@/components/ui/shiny-text";
 import { cn } from "@/lib/utils";
 import {
   projectAgentTurnTimeline,
@@ -106,27 +107,25 @@ function TimelineActivity({
     [activity.input, activity.output, activity.error].some(
       (value) => value !== undefined,
     );
-  const inlineSummary =
-    activity.kind !== "thinking" && activity.summary !== activity.label
-      ? activity.summary
-      : undefined;
+  const displayLabel = activity.summary?.trim() || activity.label;
   const decisionLabel = getDecisionLabel(activity);
 
   return (
-    <div className="grid grid-cols-[18px_minmax(0,1fr)] gap-2.5 py-1">
+    <div className="chat-agent-turn-timeline-activity-enter grid grid-cols-[18px_minmax(0,1fr)] gap-2.5 py-1">
       <div className="flex justify-center pt-px">
         <ActivityIcon activity={activity} />
       </div>
       <div className="min-w-0">
         <div className="flex min-h-5 min-w-0 items-center gap-2">
-          <span className="shrink-0 text-[13px] leading-4 font-medium text-foreground">
-            {activity.label}
-          </span>
-          {inlineSummary ? (
-            <span className="min-w-0 truncate text-xs leading-4 text-muted-foreground">
-              {inlineSummary}
+          {activity.status === "running" ? (
+            <ShinyText className="min-w-0 truncate text-[13px] leading-4 font-medium">
+              {displayLabel}
+            </ShinyText>
+          ) : (
+            <span className="min-w-0 truncate text-[13px] leading-4 font-medium text-foreground">
+              {displayLabel}
             </span>
-          ) : null}
+          )}
           {hasRawDetail ? (
             <button
               aria-expanded={isRawDetailExpanded}

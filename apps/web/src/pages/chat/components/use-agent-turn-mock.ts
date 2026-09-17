@@ -70,8 +70,6 @@ export type AgentTurnMockState = {
   pendingDecision?: PendingDecision;
   phase: AgentTurnMockPhase;
   reason?: string;
-  stepKey?: string;
-  stepStartedAt: number;
   toolCalls: Record<string, AgentTurnMockToolCall>;
   toolSummaries: Record<string, string>;
   turnId?: string;
@@ -80,7 +78,6 @@ export type AgentTurnMockState = {
 const INITIAL_STATE: AgentTurnMockState = {
   events: [],
   phase: "idle",
-  stepStartedAt: 0,
   toolCalls: {},
   toolSummaries: {},
 };
@@ -109,21 +106,32 @@ export function useAgentTurnMock({
   const closeStreamRef = useRef<() => void>(() => {});
   const generationRef = useRef(0);
 
-  const reset = useCallback((options?: { clearComposer?: boolean }) => {
-    generationRef.current += 1;
-    closeStreamRef.current();
-    closeStreamRef.current = () => {};
-    setState(INITIAL_STATE);
-    setAppliedFinishCallId(undefined);
-    setIsResolvingDecision(false);
-    setIsResolvingClarification(false);
+  const reset = useCallback(
+    (options?: { cancelActive?: boolean; clearComposer?: boolean }) => {
+      if (
+        options?.cancelActive !== false &&
+        state.turnId &&
+        !isTerminalAgentTurnMockPhase(state.phase)
+      ) {
+        void cancelAgentTurnMock(state.turnId).catch(() => {});
+      }
 
-    if (options?.clearComposer) {
-      composerRef.current?.dispatchCommand(REPLACE_COMPOSER_COMMAND, {
-        segments: [],
-      });
-    }
-  }, [composerRef]);
+      generationRef.current += 1;
+      closeStreamRef.current();
+      closeStreamRef.current = () => {};
+      setState(INITIAL_STATE);
+      setAppliedFinishCallId(undefined);
+      setIsResolvingDecision(false);
+      setIsResolvingClarification(false);
+
+      if (options?.clearComposer) {
+        composerRef.current?.dispatchCommand(REPLACE_COMPOSER_COMMAND, {
+          segments: [],
+        });
+      }
+    },
+    [composerRef, state.phase, state.turnId],
+  );
 
   useEffect(() => {
     const generation = ++generationRef.current;
@@ -165,8 +173,6 @@ export function useAgentTurnMock({
       events: [],
       label: "正在启动 Agent",
       phase: "running",
-      stepKey: "starting",
-      stepStartedAt: Date.now(),
       toolCalls: {},
       toolSummaries: {},
     });
@@ -178,7 +184,10 @@ export function useAgentTurnMock({
         scenario,
       });
 
-      if (generationRef.current !== generation) return;
+      if (generationRef.current !== generation) {
+        void cancelAgentTurnMock(turnId).catch(() => {});
+        return;
+      }
 
       setState((current) => ({ ...current, turnId }));
       closeStreamRef.current = subscribeAgentTurnMockEvents(turnId, {
@@ -313,8 +322,6 @@ export function useAgentTurnMock({
       pendingDecision: undefined,
       phase: "idle",
       reason: undefined,
-      stepKey: undefined,
-      stepStartedAt: 0,
     }));
     setAppliedFinishCallId(undefined);
     setIsResolvingDecision(false);
@@ -380,7 +387,6 @@ export function useAgentTurnMock({
     resolveApproval: resolveDecision,
     resolveClarification,
     startScenario,
-    stepStartedAt: state.stepStartedAt,
     terminate,
     turnId: state.turnId,
     view,
@@ -535,22 +541,11 @@ export function reduceAgentTurnMockEnvelope(
   }
 
   const next = reduceAgentTurnMockState(state, envelope.event);
-  const nextStepKey = getAgentWorkStepKey(
-    state,
-    next,
-    envelope.event,
-    envelope.eventId,
-  );
-  const startsNewStep = Boolean(nextStepKey && nextStepKey !== state.stepKey);
   return {
     ...next,
     events: [...state.events, envelope].sort(
       (left, right) => left.sequence - right.sequence,
     ),
-    stepKey: nextStepKey ?? state.stepKey,
-    stepStartedAt: startsNewStep
-      ? parseEventTime(envelope.occurredAt)
-      : state.stepStartedAt,
     turnId: envelope.turnId,
   };
 }
@@ -625,43 +620,13 @@ function projectAgentTurnMockView(
   };
 }
 
-function getAgentWorkStepKey(
-  previous: AgentTurnMockState,
-  next: AgentTurnMockState,
-  event: AgentTurnEvent,
-  eventId: string,
-) {
-  if (next.phase !== "running") return undefined;
-
-  if (event.type === "turn.started") {
-    return "turn:start";
-  }
-  if (event.type === "decision.resolved") {
-    return `resume:decision:${event.callId}:${eventId}`;
-  }
-  if (event.type === "activity.updated") {
-    return event.activity.status === "running"
-      ? `activity:${event.activity.id}`
-      : undefined;
-  }
-  if (event.type === "tool_call") {
-    return `tool:${event.callId}`;
-  }
-  if (event.type === "tool_result") {
-    if (previous.phase === "awaiting_clarification") {
-      return `resume:clarification:${event.callId}:${eventId}`;
-    }
-    if (event.status === "failed") {
-      return `recovery:${event.callId}:${eventId}`;
-    }
-  }
-
-  return undefined;
-}
-
-function parseEventTime(occurredAt: string) {
-  const timestamp = Date.parse(occurredAt);
-  return Number.isFinite(timestamp) ? timestamp : Date.now();
+function isTerminalAgentTurnMockPhase(phase: AgentTurnMockPhase) {
+  return (
+    phase === "reply_ready" ||
+    phase === "completed" ||
+    phase === "failed" ||
+    phase === "idle"
+  );
 }
 
 function isAgentTurnKfClarificationInput(

@@ -3,7 +3,7 @@ import type {
   ReactNode,
   RefObject,
 } from "react";
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useState } from "react";
 import { Cancel01Icon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import type { LexicalEditor } from "lexical";
@@ -76,6 +76,7 @@ import {
 import { hasConversationHandoff } from "@/pages/chat/lib/conversation-handoff-preview";
 import { resolveConversationAIAssistantEligibility } from "@/pages/chat/lib/conversation-ai-assistant";
 import {
+  resolveSmartReplyAssistantUIPhase,
   resolveSmartReplyAssistantTurn,
   SMART_REPLY_DRAFT_CONFIRMATION_LABEL,
   type SmartReplyAssistantPhase,
@@ -227,7 +228,7 @@ type ChatPanelProps = {
   ) => void;
   onTranscribeVoice?: (message: ChatMessage) => Promise<string>;
   retryingMessageIds?: ReadonlySet<string>;
-  onSendDraft: (segments: ComposerSegment[]) => void;
+  onSendDraft: (segments: ComposerSegment[]) => boolean | Promise<boolean>;
   onDismissScopeTransitionError: () => void;
   onQuickReplyActiveChange?: (isActive: boolean) => void;
   quickReplyPanel?: ReactNode;
@@ -542,18 +543,22 @@ export function ChatPanel({
     quotedMessage,
     turn: sourceSmartReplyTurn,
   });
-  const shouldConfirmComposerOverwrite = Boolean(
-    sourceSmartReplyTurn &&
-      (sourceSmartReplyTurn.phase === "draft_confirmation" ||
-        smartReplyComposer.overwriteConfirmationLookupKey ===
-          sourceSmartReplyTurn.lookupKey ||
-        (sourceSmartReplyTurn.phase === "confirmation" &&
-          !smartReplyComposer.hasAppliedSuggestion &&
-          approvedOverwriteLookupKey !== sourceSmartReplyTurn.lookupKey &&
-          (smartReplyState.composerHasContent ||
-            composerDraftText.trim().length > 0 ||
-            quotedMessage !== null))),
-  );
+  const smartReplyUIPhase = resolveSmartReplyAssistantUIPhase({
+    composerHasContent: Boolean(
+      smartReplyState.composerHasContent ||
+        composerDraftText.trim().length > 0 ||
+        quotedMessage,
+    ),
+    hasAppliedSuggestion: smartReplyComposer.hasAppliedSuggestion,
+    isOverwriteApproved:
+      approvedOverwriteLookupKey === sourceSmartReplyTurn?.lookupKey,
+    isOverwriteConfirmationRequested:
+      smartReplyComposer.overwriteConfirmationLookupKey ===
+      sourceSmartReplyTurn?.lookupKey,
+    turn: sourceSmartReplyTurn,
+  });
+  const shouldConfirmComposerOverwrite =
+    smartReplyUIPhase === "draft_confirmation";
   const smartReplyTurn =
     sourceSmartReplyTurn && shouldConfirmComposerOverwrite
       ? {
@@ -567,7 +572,7 @@ export function ChatPanel({
   const isSmartReplySuggestionMode =
     !aiAssistantDebugScenario &&
     !agentTurnMock.isActive &&
-    !shouldConfirmComposerOverwrite &&
+    smartReplyUIPhase !== "draft_confirmation" &&
     smartReplyComposer.isSuggestionMode;
   const isSuggestionComposerMode =
     isSmartReplySuggestionMode || agentTurnMock.isReplyReady;
@@ -584,55 +589,20 @@ export function ChatPanel({
     : agentTurnMock.view;
   const aiAssistantDebugView =
     presentedAgentTurnView ?? staticAIAssistantDebugView;
-  const isAwaitingSuggestionApply = Boolean(
-    sourceSmartReplyTurn &&
-      sourceSmartReplyTurn.phase === "confirmation" &&
-      !shouldConfirmComposerOverwrite &&
-      !smartReplyComposer.hasAppliedSuggestion,
-  );
   const resolvedAIAssistantStatus =
     aiAssistantDebugView?.status ??
-    (isAwaitingSuggestionApply
+    (smartReplyUIPhase === "applying"
       ? "thinking"
       : smartReplyTurn
         ? getSmartReplyStatusBarStatus(smartReplyTurn.phase)
         : aiAssistantStatus);
   const resolvedAIAssistantStatusLabel = aiAssistantDebugView
     ? aiAssistantDebugView.label
-    : isAwaitingSuggestionApply
+    : smartReplyUIPhase === "applying"
       ? SMART_REPLY_INLINE_LOADING_HINT
       : smartReplyTurn
         ? smartReplyTurn.label
         : aiAssistantStatusLabel;
-  const previousAIAssistantStatusRef = useRef(resolvedAIAssistantStatus);
-  const previousSuggestionModeRef = useRef(isSmartReplySuggestionMode);
-  const previousConfirmOverwriteRef = useRef(shouldConfirmComposerOverwrite);
-
-  let delayStatusBarTransitionMs = 0;
-  const statusChanged =
-    previousAIAssistantStatusRef.current !== resolvedAIAssistantStatus;
-  const suggestionModeChanged =
-    previousSuggestionModeRef.current !== isSmartReplySuggestionMode;
-  const confirmOverwriteChanged =
-    previousConfirmOverwriteRef.current !== shouldConfirmComposerOverwrite;
-
-  if (statusChanged || suggestionModeChanged || confirmOverwriteChanged) {
-    const isEnteringThinkingFromWaiting =
-      resolvedAIAssistantStatus === "thinking" &&
-      previousAIAssistantStatusRef.current === "waiting" &&
-      !suggestionModeChanged &&
-      !confirmOverwriteChanged;
-
-    if (!isEnteringThinkingFromWaiting) {
-      delayStatusBarTransitionMs = 200;
-    }
-  }
-
-  useEffect(() => {
-    previousAIAssistantStatusRef.current = resolvedAIAssistantStatus;
-    previousSuggestionModeRef.current = isSmartReplySuggestionMode;
-    previousConfirmOverwriteRef.current = shouldConfirmComposerOverwrite;
-  });
 
   const hasActiveFileUpload = fileUploadQueue.length > 0;
   const hasActiveConversation = activeConversation !== undefined;
@@ -862,14 +832,17 @@ export function ChatPanel({
       return;
     }
 
-    agentTurnMock.reset({ clearComposer: agentTurnMock.isReplyReady });
     setAIAssistantDebugScenario(null);
     void agentTurnMock.startScenario(scenario);
   };
   const handleSendAgentTurnMockReply = (segments: ComposerSegment[]) => {
-    void Promise.resolve(onSendDraft(segments)).finally(() => {
-      agentTurnMock.markReplyHandled();
-    });
+    void Promise.resolve(onSendDraft(segments))
+      .then((didSend) => {
+        if (didSend) {
+          agentTurnMock.markReplyHandled();
+        }
+      })
+      .catch(() => {});
   };
   const resolvedAIAssistantActions: readonly ChatAIAssistantAction[] =
     presentedAgentTurnView
@@ -922,7 +895,7 @@ export function ChatPanel({
                 tone: "primary",
               },
             ]
-          : !isAwaitingSuggestionApply &&
+          : smartReplyUIPhase !== "applying" &&
             smartReplyTurn &&
             (smartReplyTurn.phase === "confirmation" ||
               smartReplyTurn.phase === "failed")
@@ -1173,7 +1146,8 @@ export function ChatPanel({
                                 <ChatAIAssistantStatusBar
                                   actions={displayedAIAssistantActions}
                                   customerName={activeConversation.customerName}
-                                  delayTransitionMs={delayStatusBarTransitionMs}
+                                  delayTransitionMs={200}
+                                  immediateWaitingToThinking
                                   key={activeConversation.id}
                                   label={resolvedAIAssistantStatusLabel}
                                   processControl={agentTurnProcessControl}
@@ -1182,11 +1156,6 @@ export function ChatPanel({
                                     smartReplyTurn?.reason
                                   }
                                   status={resolvedAIAssistantStatus}
-                                  thinkingStartedAt={
-                                    agentTurnMock.isActive
-                                      ? agentTurnMock.stepStartedAt
-                                      : undefined
-                                  }
                                   waitingForCustomer={Boolean(
                                     presentedAgentTurnView?.waitingForCustomer ||
                                       (smartReplyTurn &&

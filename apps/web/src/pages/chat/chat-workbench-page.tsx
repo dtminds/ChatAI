@@ -1995,11 +1995,11 @@ function ChatWorkbenchContent({
         : undefined;
 
     if (normalizedSegments.length === 0 || !canSendMessage) {
-      return;
+      return false;
     }
 
     if (isSendingDraftRef.current) {
-      return;
+      return false;
     }
 
     isSendingDraftRef.current = true;
@@ -2044,7 +2044,7 @@ function ChatWorkbenchContent({
         !isMountedRef.current ||
         activeConversationIdRef.current !== sendConversationId
       ) {
-        return;
+        return result.ok;
       }
 
       if (!result.ok) {
@@ -2056,7 +2056,7 @@ function ChatWorkbenchContent({
           ),
         );
         composerRef.current?.focus();
-        return;
+        return false;
       }
 
       clearComposer({
@@ -2064,6 +2064,7 @@ function ChatWorkbenchContent({
       });
       scrollMessageViewportToBottom();
       void requestActiveConversationRead({ force: true });
+      return true;
     } finally {
       isSendingDraftRef.current = false;
       if (isMountedRef.current) {

@@ -98,22 +98,22 @@ export function ChatAIAssistantStatusBar({
   className,
   customerName,
   delayTransitionMs = 0,
+  immediateWaitingToThinking = false,
   label,
   processControl,
   reason,
   status = "waiting",
-  thinkingStartedAt,
   waitingForCustomer = false,
 }: {
   actions?: readonly ChatAIAssistantAction[];
   className?: string;
   customerName?: string;
   delayTransitionMs?: number;
+  immediateWaitingToThinking?: boolean;
   label?: string;
   processControl?: ChatAIAssistantProcessControl;
   reason?: string;
   status?: ChatAIAssistantStatus;
-  thinkingStartedAt?: number;
   waitingForCustomer?: boolean;
 }) {
   const targetLabel =
@@ -130,6 +130,7 @@ export function ChatAIAssistantStatusBar({
   );
   const previousStatusRef = useRef(status);
   const delayTimerRef = useRef<number | null>(null);
+  const delayedStatusRef = useRef<ChatAIAssistantStatus | null>(null);
   const nextViewRef = useRef<StatusBarView | null>(null);
   const beamTheme = useAppearanceStore((state): BeamTheme =>
     state.themePreference === "dark" ||
@@ -144,6 +145,7 @@ export function ChatAIAssistantStatusBar({
         window.clearTimeout(delayTimerRef.current);
         delayTimerRef.current = null;
       }
+      delayedStatusRef.current = null;
     };
   }, []);
 
@@ -159,7 +161,13 @@ export function ChatAIAssistantStatusBar({
     const prefersReducedMotion =
       typeof window !== "undefined" &&
       window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
-    const resolvedDelayMs = prefersReducedMotion ? 0 : Math.max(0, delayTransitionMs);
+    const resolvedDelayMs =
+      prefersReducedMotion ||
+      (immediateWaitingToThinking &&
+        visibleView.status === "waiting" &&
+        status === "thinking")
+        ? 0
+        : Math.max(0, delayTransitionMs);
 
     if (outgoingView) {
       if (outgoingView.status === status) {
@@ -167,6 +175,7 @@ export function ChatAIAssistantStatusBar({
           window.clearTimeout(delayTimerRef.current);
           delayTimerRef.current = null;
         }
+        delayedStatusRef.current = null;
         setOutgoingView(null);
         setVisibleView(nextView);
         return;
@@ -184,12 +193,21 @@ export function ChatAIAssistantStatusBar({
     }
 
     if (visibleView.status !== status) {
+      if (
+        delayTimerRef.current !== null &&
+        delayedStatusRef.current === status
+      ) {
+        return;
+      }
+
       if (resolvedDelayMs > 0) {
         if (delayTimerRef.current !== null) {
           window.clearTimeout(delayTimerRef.current);
         }
+        delayedStatusRef.current = status;
         delayTimerRef.current = window.setTimeout(() => {
           delayTimerRef.current = null;
+          delayedStatusRef.current = null;
           const latestTarget = nextViewRef.current ?? nextView;
           setOutgoingView(visibleView);
           setVisibleView(latestTarget);
@@ -201,6 +219,7 @@ export function ChatAIAssistantStatusBar({
         window.clearTimeout(delayTimerRef.current);
         delayTimerRef.current = null;
       }
+      delayedStatusRef.current = null;
       setOutgoingView(visibleView);
       setVisibleView(nextView);
       return;
@@ -210,6 +229,7 @@ export function ChatAIAssistantStatusBar({
       window.clearTimeout(delayTimerRef.current);
       delayTimerRef.current = null;
     }
+    delayedStatusRef.current = null;
 
     if (
       visibleView.label !== targetLabel ||
@@ -220,6 +240,7 @@ export function ChatAIAssistantStatusBar({
     }
   }, [
     delayTransitionMs,
+    immediateWaitingToThinking,
     reason,
     status,
     targetLabel,
@@ -277,9 +298,7 @@ export function ChatAIAssistantStatusBar({
             beamTheme={beamTheme}
             customerName={customerName}
             processControl={undefined}
-            thinkingStartedAt={
-              thinkingStartedAt ?? internalThinkingStartedAt
-            }
+            thinkingStartedAt={internalThinkingStartedAt}
             view={outgoingView}
           />
         </div>
@@ -307,7 +326,7 @@ export function ChatAIAssistantStatusBar({
           beamTheme={beamTheme}
           customerName={customerName}
           processControl={processControl}
-          thinkingStartedAt={thinkingStartedAt ?? internalThinkingStartedAt}
+          thinkingStartedAt={internalThinkingStartedAt}
           view={visibleView}
         />
       </div>

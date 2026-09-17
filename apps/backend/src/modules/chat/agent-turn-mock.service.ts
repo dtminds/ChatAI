@@ -21,11 +21,6 @@ const DEFAULT_STEP_DELAY_MS = 700;
 const MAX_RETAINED_TURNS = 100;
 const TURN_RETENTION_MS = 30 * 60 * 1_000;
 
-type ThinkingStep = {
-  kind: "thinking";
-  summary: string;
-};
-
 type ToolStep = {
   approvalMode: "auto" | "human";
   input: unknown;
@@ -50,7 +45,7 @@ type FinishStep = {
   kind: "finish";
 };
 
-type ScenarioStep = ThinkingStep | ToolStep | ClarificationStep | FinishStep;
+type ScenarioStep = ToolStep | ClarificationStep | FinishStep;
 
 type PendingDecision = {
   callId: string;
@@ -72,10 +67,10 @@ type TurnStatus =
   | "failed";
 
 type TurnRecord = {
-  activityIndex: number;
   callIndex: number;
   conversationId: string;
   events: AgentTurnEventEnvelope[];
+  expiryTimer?: ReturnType<typeof setTimeout>;
   expiresAt: number;
   id: string;
   ownerSubUserId: string;
@@ -132,6 +127,7 @@ export class AgentTurnMockService {
     request: StartAgentTurnRequest,
   ): StartAgentTurnResponse {
     this.pruneExpiredTurns();
+    this.releaseSupersededTurns(ownerSubUserId, request.conversationId);
 
     if (this.turns.size >= MAX_RETAINED_TURNS) {
       throw new TooManyRequestsError(
@@ -143,7 +139,6 @@ export class AgentTurnMockService {
     const turnId = `turn-${randomUUID()}`;
     const scenario = request.mock?.scenario ?? pickRandomScenario();
     const record: TurnRecord = {
-      activityIndex: 0,
       callIndex: 0,
       conversationId: request.conversationId,
       events: [],
@@ -166,7 +161,10 @@ export class AgentTurnMockService {
       type: "turn.started",
     });
     this.schedule(record, () => this.advance(record));
-    this.schedule(record, () => this.expireTurn(record), TURN_RETENTION_MS);
+    record.expiryTimer = setTimeout(() => {
+      record.expiryTimer = undefined;
+      this.expireTurn(record);
+    }, TURN_RETENTION_MS);
 
     return { turnId };
   }
@@ -250,7 +248,7 @@ export class AgentTurnMockService {
         status: "succeeded",
         type: "tool_result",
       });
-      this.advance(record);
+      this.schedule(record, () => this.advance(record));
     });
 
     return { ok: true as const };
@@ -297,35 +295,15 @@ export class AgentTurnMockService {
       );
     }
 
-    if (record.pendingClarification) {
-      this.emit(record, {
-        callId: record.pendingClarification.callId,
-        output: { reason: "operator_terminated" },
-        status: "cancelled",
-        type: "tool_result",
-      });
-    }
-
-    record.pendingClarification = undefined;
-    record.pendingDecision = undefined;
-    record.status = "cancelled";
-    this.emit(record, {
-      reason: "operator_terminated",
-      type: "turn.cancelled",
-    });
+    this.cancelRecord(record);
 
     return { ok: true as const };
   }
 
   dispose() {
-    for (const record of this.turns.values()) {
-      for (const timer of record.timers) {
-        clearTimeout(timer);
-      }
-      record.timers.clear();
-      record.subscribers.clear();
+    for (const record of [...this.turns.values()]) {
+      this.releaseTurn(record);
     }
-    this.turns.clear();
   }
 
   private advance(record: TurnRecord) {
@@ -338,32 +316,6 @@ export class AgentTurnMockService {
 
     if (!step) {
       this.failTurn(record, "MOCK_SCENARIO_INCOMPLETE", "模拟场景未正常结束");
-      return;
-    }
-
-    if (step.kind === "thinking") {
-      const activityId = `thinking-${++record.activityIndex}`;
-      this.emit(record, {
-        activity: {
-          id: activityId,
-          kind: "thinking",
-          status: "running",
-          summary: step.summary,
-        },
-        type: "activity.updated",
-      });
-      this.schedule(record, () => {
-        this.emit(record, {
-          activity: {
-            id: activityId,
-            kind: "thinking",
-            status: "succeeded",
-            summary: step.summary,
-          },
-          type: "activity.updated",
-        });
-        this.advance(record);
-      });
       return;
     }
 
@@ -432,7 +384,7 @@ export class AgentTurnMockService {
             status: "succeeded",
             type: "tool_result",
           });
-      this.advance(record);
+      this.schedule(record, () => this.advance(record));
     });
   }
 
@@ -479,6 +431,7 @@ export class AgentTurnMockService {
   }
 
   private failTurn(record: TurnRecord, code: string, message: string) {
+    this.clearWorkTimers(record);
     record.status = "failed";
     this.emit(record, {
       error: { code, message },
@@ -509,6 +462,12 @@ export class AgentTurnMockService {
   ) {
     const timer = setTimeout(() => {
       record.timers.delete(timer);
+      if (
+        this.turns.get(record.id) !== record ||
+        isTerminalStatus(record.status)
+      ) {
+        return;
+      }
       task();
     }, delayMs);
     record.timers.add(timer);
@@ -521,12 +480,7 @@ export class AgentTurnMockService {
       this.failTurn(record, "AGENT_TURN_EXPIRED", "模拟 Agent Turn 已过期");
     }
 
-    for (const timer of record.timers) {
-      clearTimeout(timer);
-    }
-    record.timers.clear();
-    record.subscribers.clear();
-    this.turns.delete(record.id);
+    this.releaseTurn(record);
   }
 
   private getOwnedTurn(turnId: string, ownerSubUserId: string) {
@@ -541,18 +495,73 @@ export class AgentTurnMockService {
 
   private pruneExpiredTurns() {
     const now = Date.now();
-    for (const [turnId, record] of this.turns) {
+    for (const record of [...this.turns.values()]) {
       if (record.expiresAt > now) {
         continue;
-      }
-      for (const timer of record.timers) {
-        clearTimeout(timer);
       }
       if (!isTerminalStatus(record.status)) {
         this.failTurn(record, "AGENT_TURN_EXPIRED", "模拟 Agent Turn 已过期");
       }
-      record.subscribers.clear();
-      this.turns.delete(turnId);
+      this.releaseTurn(record);
+    }
+  }
+
+  private releaseSupersededTurns(
+    ownerSubUserId: string,
+    conversationId: string,
+  ) {
+    for (const record of [...this.turns.values()]) {
+      if (
+        record.ownerSubUserId !== ownerSubUserId ||
+        record.conversationId !== conversationId
+      ) {
+        continue;
+      }
+
+      if (!isTerminalStatus(record.status)) {
+        this.cancelRecord(record);
+      }
+      this.releaseTurn(record);
+    }
+  }
+
+  private cancelRecord(record: TurnRecord) {
+    this.clearWorkTimers(record);
+
+    if (record.pendingClarification) {
+      this.emit(record, {
+        callId: record.pendingClarification.callId,
+        output: { reason: "operator_terminated" },
+        status: "cancelled",
+        type: "tool_result",
+      });
+    }
+
+    record.pendingClarification = undefined;
+    record.pendingDecision = undefined;
+    record.status = "cancelled";
+    this.emit(record, {
+      reason: "operator_terminated",
+      type: "turn.cancelled",
+    });
+  }
+
+  private clearWorkTimers(record: TurnRecord) {
+    for (const timer of record.timers) {
+      clearTimeout(timer);
+    }
+    record.timers.clear();
+  }
+
+  private releaseTurn(record: TurnRecord) {
+    this.clearWorkTimers(record);
+    if (record.expiryTimer) {
+      clearTimeout(record.expiryTimer);
+      record.expiryTimer = undefined;
+    }
+    record.subscribers.clear();
+    if (this.turns.get(record.id) === record) {
+      this.turns.delete(record.id);
     }
   }
 }
@@ -587,26 +596,21 @@ function createScenarioSteps(scenario: AgentTurnMockScenario): ScenarioStep[] {
   switch (scenario) {
     case "knowledge_reply":
       return [
-        thinking("正在理解客户的问题"),
         tool("knowledge.search", "正在查询知识库", { query: "护肤产品使用方法" }, {
           items: [{ title: "产品使用说明", excerpt: "建议洁面后早晚使用" }],
         }),
-        thinking("正在整理回复"),
         finish(() => replyFinish("已起草回复", "建议洁面后早晚使用，如有不适请先暂停使用。")),
       ];
     case "order_reply":
       return [
-        thinking("正在核对客户提供的信息"),
         tool("order.query", "正在查询订单", { orderNumber: "MOCK-20260916-001" }, {
           orderNumber: "MOCK-20260916-001",
           status: "已签收",
         }),
-        thinking("正在根据订单状态起草回复"),
         finish(() => replyFinish("已起草回复", "订单已经签收，请问具体遇到了什么售后问题？")),
       ];
     case "order_binding_approval":
       return [
-        thinking("正在核对客户提供的订单信息"),
         tool(
           "order.bind",
           "绑定订单",
@@ -614,7 +618,6 @@ function createScenarioSteps(scenario: AgentTurnMockScenario): ScenarioStep[] {
           { bound: true, orderId: "20984239842348" },
           "human",
         ),
-        thinking("正在整理处理结果"),
         finish(({ operatorInstruction, rejected }) => {
           if (operatorInstruction) {
             return replyFinish(
@@ -630,7 +633,6 @@ function createScenarioSteps(scenario: AgentTurnMockScenario): ScenarioStep[] {
       ];
     case "after_sales_approval":
       return [
-        thinking("正在核对订单和售后条件"),
         tool("order.query", "正在查询订单", { orderNumber: "MOCK-20260916-002" }, {
           orderNumber: "MOCK-20260916-002",
           refundable: true,
@@ -643,14 +645,12 @@ function createScenarioSteps(scenario: AgentTurnMockScenario): ScenarioStep[] {
           { afterSalesId: "AS-MOCK-001", status: "submitted" },
           "human",
         ),
-        thinking("正在整理处理结果"),
         finish(({ rejected }) => rejected
           ? replyFinish("已起草回复", "本次退款申请暂未执行，如需继续处理请告诉我。")
           : replyFinish("已起草回复", "退款申请已经提交，后续进度会及时同步给你。")),
       ];
     case "operator_clarification":
       return [
-        thinking("正在分析可行的处理方案"),
         clarification("需要你确认处理方式", {
           question: "物流停滞超过 48 小时，请确认下一步处理方式",
           suggestions: [
@@ -666,7 +666,6 @@ function createScenarioSteps(scenario: AgentTurnMockScenario): ScenarioStep[] {
             },
           ],
         }),
-        thinking("正在根据客服指令继续处理"),
         finish(({ clarificationInstruction }) =>
           replyFinish(
             "已根据客服指令起草回复",
@@ -678,14 +677,12 @@ function createScenarioSteps(scenario: AgentTurnMockScenario): ScenarioStep[] {
       ];
     case "tool_failure":
       return [
-        thinking("正在核对订单信息"),
         tool(
           "order.query.mock_failure",
           "正在查询订单",
           { orderNumber: "MOCK-ERROR" },
           null,
         ),
-        thinking("订单查询失败，正在查找替代处理方式"),
         tool("knowledge.search", "正在查询售后说明", { query: "无法查询订单时如何处理" }, {
           items: [{ title: "订单查询异常处理", excerpt: "请客户稍后重试或补充订单截图" }],
         }),
@@ -693,7 +690,6 @@ function createScenarioSteps(scenario: AgentTurnMockScenario): ScenarioStep[] {
       ];
     case "no_reply":
       return [
-        thinking("正在判断是否需要回复"),
         finish(() => ({
           outcome: "no_reply",
           reason: "当前消息已经由客服处理",
@@ -701,10 +697,6 @@ function createScenarioSteps(scenario: AgentTurnMockScenario): ScenarioStep[] {
         })),
       ];
   }
-}
-
-function thinking(summary: string): ThinkingStep {
-  return { kind: "thinking", summary };
 }
 
 function tool(

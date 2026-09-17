@@ -254,19 +254,33 @@ describe("ChatAIAssistantStatusBar", () => {
     ).toBeDisabled();
   });
 
-  it("uses an externally supplied start time for the active Agent step", () => {
+  it("restarts elapsed time after leaving and re-entering thinking", () => {
     vi.useFakeTimers();
-    const now = new Date("2026-09-16T10:00:05+08:00");
-    vi.setSystemTime(now);
-
-    render(
-      <ChatAIAssistantStatusBar
-        status="thinking"
-        thinkingStartedAt={now.getTime() - 2_500}
-      />,
+    vi.setSystemTime(new Date("2026-09-17T10:00:00+08:00"));
+    const { rerender } = render(
+      <ChatAIAssistantStatusBar status="thinking" />,
     );
 
+    act(() => {
+      vi.advanceTimersByTime(2_500);
+    });
     expect(screen.getByText("2.5s")).toBeInTheDocument();
+
+    rerender(
+      <ChatAIAssistantStatusBar
+        label="请确认是否执行退款"
+        status="confirmation"
+      />,
+    );
+    act(() => {
+      vi.advanceTimersByTime(800);
+    });
+
+    rerender(
+      <ChatAIAssistantStatusBar label="正在执行退款" status="thinking" />,
+    );
+
+    expect(screen.getByText("0.0s")).toBeInTheDocument();
   });
 
   it("uses the dark beam preset when the page theme is dark", () => {
@@ -444,6 +458,14 @@ describe("ChatAIAssistantStatusBar", () => {
       screen.queryByTestId("chat-ai-assistant-status-outgoing-layer"),
     ).not.toBeInTheDocument();
     expect(screen.getByRole("status")).toHaveTextContent("正在等待 客户甲 的消息");
+
+    rerender(
+      <ChatAIAssistantStatusBar
+        customerName="客户甲"
+        delayTransitionMs={0}
+        status="thinking"
+      />,
+    );
 
     act(() => {
       vi.advanceTimersByTime(200);

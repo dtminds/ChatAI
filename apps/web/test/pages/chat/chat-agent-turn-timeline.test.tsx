@@ -53,6 +53,55 @@ describe("ChatAgentTurnTimeline", () => {
     expect(screen.queryByText("已完成")).not.toBeInTheDocument();
   });
 
+  it("uses shiny text only while an activity is running", () => {
+    const started = envelope(1, {
+      trigger: { type: "agent_request" },
+      type: "turn.started",
+    });
+    const { rerender } = render(
+      <ChatAgentTurnTimeline
+        events={[
+          started,
+          envelope(2, {
+            activity: {
+              id: "thinking-1",
+              kind: "thinking",
+              status: "running",
+              summary: "正在核对订单信息",
+            },
+            type: "activity.updated",
+          }),
+        ]}
+      />,
+    );
+
+    expect(screen.getByText("正在核对订单信息")).toHaveAttribute(
+      "data-slot",
+      "shiny-text",
+    );
+
+    rerender(
+      <ChatAgentTurnTimeline
+        events={[
+          started,
+          envelope(2, {
+            activity: {
+              id: "thinking-1",
+              kind: "thinking",
+              status: "succeeded",
+              summary: "正在核对订单信息",
+            },
+            type: "activity.updated",
+          }),
+        ]}
+      />,
+    );
+
+    expect(screen.getByText("正在核对订单信息")).not.toHaveAttribute(
+      "data-slot",
+    );
+  });
+
   it("keeps tool data collapsed until the activity is expanded", async () => {
     const user = userEvent.setup();
 
@@ -98,10 +147,8 @@ describe("ChatAgentTurnTimeline", () => {
       />,
     );
 
-    expect(screen.getAllByText("绑定订单")).toHaveLength(1);
-    expect(screen.getByText("绑定订单").parentElement).toHaveTextContent(
-      "正在绑定客户订单",
-    );
+    expect(screen.getByText("正在绑定客户订单")).toBeInTheDocument();
+    expect(screen.queryByText("绑定订单")).not.toBeInTheDocument();
     expect(screen.queryByText("客服已允许执行")).not.toBeInTheDocument();
     expect(screen.getByLabelText("工具调用")).toBeInTheDocument();
     expect(screen.queryByText("已完成")).not.toBeInTheDocument();
@@ -162,9 +209,8 @@ describe("ChatAgentTurnTimeline", () => {
       />,
     );
 
-    expect(screen.getByText("生成回复").parentElement).toHaveTextContent(
-      "已起草回复",
-    );
+    expect(screen.getByText("已起草回复")).toBeInTheDocument();
+    expect(screen.queryByText("生成回复")).not.toBeInTheDocument();
     expect(
       screen.queryByText("订单已经完成绑定，可以继续处理后续业务。"),
     ).not.toBeInTheDocument();

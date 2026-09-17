@@ -32,16 +32,15 @@ describe("AgentTurnMockService", () => {
     );
     expect(received.map((item) => item.event.type)).toEqual([
       "turn.started",
-      "activity.updated",
-      "activity.updated",
       "tool_call",
       "tool_result",
-      "activity.updated",
-      "activity.updated",
       "tool_call",
       "tool_result",
       "turn.completed",
     ]);
+    expect(
+      received.some((item) => item.event.type === "activity.updated"),
+    ).toBe(false);
 
     const finishCall = received.find(
       (item) => item.event.type === "tool_call" && item.event.name === "turn.finish",
@@ -251,5 +250,66 @@ describe("AgentTurnMockService", () => {
 
     await vi.advanceTimersByTimeAsync(1_000);
     expect(received.at(-1)?.event.type).toBe("turn.cancelled");
+  });
+
+  it("does not complete a turn after it has been cancelled", async () => {
+    vi.useFakeTimers();
+    service = new AgentTurnMockService();
+    const { turnId } = service.start("101", {
+      conversationId: "144",
+      mock: { scenario: "no_reply", stepDelayMs: 10 },
+      trigger: { type: "agent_request" },
+    });
+
+    await vi.advanceTimersByTimeAsync(10);
+    expect(service.getLatest("101", "144")).toMatchObject({
+      status: "running",
+      turnId,
+    });
+
+    service.cancel(turnId, "101");
+    const cancelledEventCount = service.getLatest(
+      "101",
+      "144",
+    )?.events.length;
+
+    await vi.advanceTimersByTimeAsync(20);
+
+    expect(service.getLatest("101", "144")).toMatchObject({
+      status: "cancelled",
+      turnId,
+    });
+    expect(service.getLatest("101", "144")?.events).toHaveLength(
+      cancelledEventCount ?? 0,
+    );
+  });
+
+  it("terminates and releases the previous turn when the conversation starts a new one", async () => {
+    vi.useFakeTimers();
+    service = new AgentTurnMockService();
+    const first = service.start("101", {
+      conversationId: "144",
+      mock: { scenario: "order_reply", stepDelayMs: 10 },
+      trigger: { type: "agent_request" },
+    });
+    const firstEvents: string[] = [];
+    service.subscribe(first.turnId, "101", 1, (envelope) => {
+      firstEvents.push(envelope.event.type);
+    });
+
+    const second = service.start("101", {
+      conversationId: "144",
+      mock: { scenario: "knowledge_reply", stepDelayMs: 10 },
+      trigger: { type: "agent_request" },
+    });
+
+    expect(firstEvents).toEqual(["turn.cancelled"]);
+    expect(service.getLatest("101", "144")?.turnId).toBe(second.turnId);
+    expect(() => service?.subscribe(first.turnId, "101", 0, () => {})).toThrow(
+      "Agent Turn 不存在",
+    );
+
+    await vi.advanceTimersByTimeAsync(100);
+    expect(firstEvents).toEqual(["turn.cancelled"]);
   });
 });

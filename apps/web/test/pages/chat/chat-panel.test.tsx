@@ -2,6 +2,7 @@ import { createRef, type ReactNode, useState } from "react";
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { AgentTurnEvent, AgentTurnEventEnvelope } from "@chatai/contracts";
 import {
   CONTROLLED_TEXT_INSERTION_COMMAND,
   type LexicalEditor,
@@ -13,7 +14,16 @@ import {
   checkSmartReplyTextModeration,
   loadSmartReplyReferenceMessages,
 } from "@/pages/chat/api/workbench-gateway";
+import {
+  cancelAgentTurnMock,
+  getLatestAgentTurnMock,
+  resolveAgentTurnMockClarification,
+  resolveAgentTurnMockDecision,
+  startAgentTurnMock,
+  subscribeAgentTurnMockEvents,
+} from "@/pages/chat/api/agent-turn-mock";
 import type { Account, ChatMessage, Conversation } from "@/pages/chat/chat-types";
+import type { ComposerSegment } from "@/pages/chat/lib/composer-segments";
 import { useWorkbenchStore } from "@/store/workbench-store";
 
 vi.mock("@/pages/chat/api/workbench-gateway", async (importOriginal) => {
@@ -26,6 +36,15 @@ vi.mock("@/pages/chat/api/workbench-gateway", async (importOriginal) => {
     loadSmartReplyReferenceMessages: vi.fn(),
   };
 });
+
+vi.mock("@/pages/chat/api/agent-turn-mock", () => ({
+  cancelAgentTurnMock: vi.fn(),
+  getLatestAgentTurnMock: vi.fn(),
+  resolveAgentTurnMockClarification: vi.fn(),
+  resolveAgentTurnMockDecision: vi.fn(),
+  startAgentTurnMock: vi.fn(),
+  subscribeAgentTurnMockEvents: vi.fn(),
+}));
 
 vi.mock("@/pages/chat/ai-hosting/api/user-memory-service", () => ({
   createUserMemoryItem: vi.fn(),
@@ -66,11 +85,23 @@ describe("ChatPanel", () => {
   beforeEach(() => {
     window.localStorage.clear();
     useWorkbenchStore.setState(useWorkbenchStore.getInitialState(), true);
+    vi.mocked(cancelAgentTurnMock).mockResolvedValue({ ok: true });
+    vi.mocked(getLatestAgentTurnMock).mockResolvedValue(null);
+    vi.mocked(resolveAgentTurnMockClarification).mockResolvedValue({ ok: true });
+    vi.mocked(resolveAgentTurnMockDecision).mockResolvedValue({ ok: true });
+    vi.mocked(startAgentTurnMock).mockResolvedValue({ turnId: "turn-1" });
+    vi.mocked(subscribeAgentTurnMockEvents).mockReturnValue(vi.fn());
   });
 
   afterEach(() => {
     vi.mocked(checkSmartReplyTextModeration).mockReset();
     vi.mocked(loadSmartReplyReferenceMessages).mockReset();
+    vi.mocked(cancelAgentTurnMock).mockReset();
+    vi.mocked(getLatestAgentTurnMock).mockReset();
+    vi.mocked(resolveAgentTurnMockClarification).mockReset();
+    vi.mocked(resolveAgentTurnMockDecision).mockReset();
+    vi.mocked(startAgentTurnMock).mockReset();
+    vi.mocked(subscribeAgentTurnMockEvents).mockReset();
     vi.useRealTimers();
   });
 
@@ -1205,6 +1236,84 @@ describe("ChatPanel", () => {
     await screen.findByText("客户", { selector: "strong" });
   });
 
+  it("keeps a completed Agent reply active when sending the draft fails", async () => {
+    const user = userEvent.setup();
+    const assistantAccount = {
+      ...account,
+      seatAIAssistantEnabled: true,
+    };
+    const conversation = {
+      ...createConversation(),
+      bizStatus: 1,
+    };
+    const onSendDraft = vi.fn().mockResolvedValue(false);
+    let handlers:
+      | Parameters<typeof subscribeAgentTurnMockEvents>[1]
+      | undefined;
+    vi.mocked(subscribeAgentTurnMockEvents).mockImplementation(
+      (_turnId, nextHandlers) => {
+        handlers = nextHandlers;
+        return vi.fn();
+      },
+    );
+
+    render(
+      createStatusBarPanel({
+        activeAccount: assistantAccount,
+        activeConversation: conversation,
+        onSendDraft,
+      }),
+    );
+
+    await user.click(
+      screen.getByRole("button", { name: "切换 AI 辅助条调试状态" }),
+    );
+    await user.click(screen.getByRole("menuitem", { name: "知识库回复" }));
+    await waitFor(() => expect(handlers).toBeDefined());
+
+    const emit = (sequence: number, event: AgentTurnEvent) => {
+      act(() => {
+        handlers?.onEvent({
+          event,
+          eventId: `turn-1:${sequence}`,
+          occurredAt: `2026-09-17T10:00:0${sequence}.000Z`,
+          sequence,
+          turnId: "turn-1",
+        } satisfies AgentTurnEventEnvelope);
+      });
+    };
+    emit(1, {
+      approvalMode: "auto",
+      callId: "call-finish",
+      category: "control",
+      input: {
+        outcome: "reply",
+        reply: { segments: [{ text: "建议先少量试用", type: "text" }] },
+        summary: "已起草回复",
+      },
+      name: "turn.finish",
+      summary: "已起草回复",
+      type: "tool_call",
+    });
+    emit(2, {
+      finishCallId: "call-finish",
+      outcome: "reply",
+      type: "turn.completed",
+    });
+
+    const composer = await screen.findByRole("textbox", {
+      name: "编辑话术建议",
+    });
+    await waitFor(() => expect(composer).toHaveTextContent("建议先少量试用"));
+    await user.click(screen.getByRole("button", { name: "采纳并发送" }));
+
+    await waitFor(() => expect(onSendDraft).toHaveBeenCalledTimes(1));
+    expect(
+      screen.getByRole("textbox", { name: "编辑话术建议" }),
+    ).toHaveTextContent("建议先少量试用");
+    expect(screen.getByRole("button", { name: "采纳并发送" })).toBeEnabled();
+  });
+
   it("runs externally supplied AI assistant actions", async () => {
     const user = userEvent.setup();
     const onIgnore = vi.fn();
@@ -1635,6 +1744,143 @@ describe("ChatPanel", () => {
     await user.click(screen.getByRole("button", { name: "采纳并发送" }));
 
     expect(onSendSmartReply).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps regeneration in thinking until the new suggestion revision is applied", async () => {
+    const user = userEvent.setup();
+    const assistantAccount = {
+      ...account,
+      seatAIAssistantEnabled: true,
+    };
+    const conversation = {
+      ...createConversation(),
+      bizStatus: 1,
+    };
+    const customerMessage = {
+      author: "客户",
+      content: { text: "推荐一个产品", type: "text" },
+      conversationId: conversation.id,
+      isOwnMessage: false,
+      rawMsgtype: "text",
+      role: "customer",
+      sender: { id: "customer-1", name: "客户" },
+      sentAt: "2026-09-17T10:00:00+08:00",
+      seq: 12,
+      status: "sent",
+      uiMessageKey: "message-12",
+    } satisfies ChatMessage;
+    let resolveReferenceMessages:
+      | ((messages: ChatMessage[]) => void)
+      | undefined;
+    vi.mocked(loadSmartReplyReferenceMessages).mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveReferenceMessages = resolve;
+        }),
+    );
+    useWorkbenchStore.setState((state) => ({
+      smartReplyActiveMessageKeyByConversationId: {
+        ...state.smartReplyActiveMessageKeyByConversationId,
+        [conversation.id]: "12",
+      },
+      smartReplyByMessageIdByConversationId: {
+        ...state.smartReplyByMessageIdByConversationId,
+        [conversation.id]: {
+          "12": {
+            assistantName: "智能助手",
+            content: "旧建议",
+            generateStatus: 2,
+            pollComplete: true,
+            recordId: "record-old",
+            status: "ready",
+          },
+        },
+      },
+    }));
+
+    render(
+      createStatusBarPanel({
+        activeAccount: assistantAccount,
+        activeConversation: conversation,
+        messages: [customerMessage],
+        onTriggerSmartReply: vi.fn(),
+      }),
+    );
+
+    const composer = await screen.findByRole("textbox", {
+      name: "编辑话术建议",
+    });
+    await waitFor(() => expect(composer).toHaveTextContent("旧建议"));
+    await user.click(screen.getByRole("button", { name: "重新生成" }));
+
+    act(() => {
+      useWorkbenchStore.setState((state) => ({
+        smartReplyPendingMessageKeysByConversationId: {
+          ...state.smartReplyPendingMessageKeysByConversationId,
+          [conversation.id]: { "12": true },
+        },
+      }));
+    });
+    await screen.findByText("正在生成话术推荐");
+
+    act(() => {
+      useWorkbenchStore.setState((state) => ({
+        smartReplyByMessageIdByConversationId: {
+          ...state.smartReplyByMessageIdByConversationId,
+          [conversation.id]: {
+            "12": {
+              assistantName: "智能助手",
+              content: "新建议",
+              genAnswer:
+                '[{"msgtype":"text","text":"新建议"},{"msgtype":"weapp","transMsgInfoId":3050}]',
+              generateStatus: 2,
+              pollComplete: true,
+              recordId: "record-new",
+              refAttachIds: ["3050"],
+              status: "ready",
+            },
+          },
+        },
+        smartReplyPendingMessageKeysByConversationId: {
+          ...state.smartReplyPendingMessageKeysByConversationId,
+          [conversation.id]: {},
+        },
+      }));
+    });
+
+    expect(screen.getByText("正在生成话术推荐")).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "重新生成" }),
+    ).not.toBeInTheDocument();
+    expect(composer).toHaveTextContent("旧建议");
+
+    act(() => {
+      resolveReferenceMessages?.([
+        {
+          author: "客服",
+          content: {
+            appName: "品牌商城",
+            coverImageUrl: "https://example.com/product.png",
+            title: "产品详情",
+            type: "mini-program",
+          },
+          conversationId: conversation.id,
+          isOwnMessage: true,
+          rawMsgtype: "weapp",
+          role: "agent",
+          sender: { id: "agent-1", name: "客服" },
+          sentAt: "2026-09-17T09:00:00+08:00",
+          seq: 3050,
+          status: "sent",
+          uiMessageKey: "message-3050",
+        },
+      ]);
+    });
+
+    await waitFor(() => {
+      expect(composer).toHaveTextContent("新建议");
+      expect(screen.getByRole("button", { name: "重新生成" })).toBeEnabled();
+    });
   });
 
   it("keeps a skipped smart reply visible with its reason until dismissed", async () => {
@@ -2853,6 +3099,7 @@ function createStatusBarPanel({
   multiSelectMode = false,
   multiSelectToolbar,
   onDismissSmartReply,
+  onSendDraft = vi.fn(),
   onSendSmartReply,
   onTriggerSmartReply,
 }: {
@@ -2867,6 +3114,7 @@ function createStatusBarPanel({
   multiSelectMode?: boolean;
   multiSelectToolbar?: ReactNode;
   onDismissSmartReply?: (message: ChatMessage) => void;
+  onSendDraft?: (segments: ComposerSegment[]) => boolean | Promise<boolean>;
   onSendSmartReply?: (message: ChatMessage, payload: unknown) => void;
   onTriggerSmartReply?: (
     message: ChatMessage,
@@ -2930,7 +3178,7 @@ function createStatusBarPanel({
       onTriggerSmartReply={onTriggerSmartReply}
       onRefreshGroupMembers={vi.fn()}
       onRetryMessage={vi.fn()}
-      onSendDraft={vi.fn()}
+      onSendDraft={onSendDraft}
     />
   );
 }

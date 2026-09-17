@@ -3,7 +3,7 @@ import type {
   ReactNode,
   RefObject,
 } from "react";
-import { useEffect, useLayoutEffect, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useState } from "react";
 import { Cancel01Icon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import type { LexicalEditor } from "lexical";
@@ -36,6 +36,7 @@ import { ChatAgentToolApprovalPrompt } from "@/pages/chat/components/chat-agent-
 import { ChatAgentTurnTimeline } from "@/pages/chat/components/chat-agent-turn-timeline";
 import { ChatHandoffStatusBar } from "@/pages/chat/components/chat-handoff-status-bar";
 import { useSmartReplyComposer } from "@/pages/chat/components/use-smart-reply-composer";
+import { useCustomerResponsePreflight } from "@/pages/chat/components/use-customer-response-preflight";
 import { useAgentTurnMock } from "@/pages/chat/components/use-agent-turn-mock";
 import { REPLACE_COMPOSER_COMMAND } from "@/pages/chat/components/composer/lexical-commands";
 import { ChatHeader } from "@/pages/chat/components/chat-header";
@@ -60,6 +61,7 @@ import type {
 import type { TicketReminderDisplayMode } from "@/pages/chat/tickets/ticket-count-store";
 import { isConversationTicketSupported } from "@/pages/chat/tickets/conversation-ticket-policy";
 import type {
+  CustomerResponseDirection,
   SettingsSidebarItem,
   WorkbenchMaterialCollectionItemDto,
   WorkbenchSeatAgentMode,
@@ -532,6 +534,27 @@ export function ChatPanel({
         suggestions: smartReplyState.suggestions,
       })
     : undefined;
+  const customerResponsePreflight = useCustomerResponsePreflight({
+    blocked: Boolean(
+      agentTurnMock.isActive ||
+        agentTurnMock.isTerminal ||
+        sourceSmartReplyTurn ||
+        isSendingDraft ||
+        isConversationLoading ||
+        multiSelectMode ||
+        aiAssistantDebugScenario,
+    ),
+    conversationId:
+      activeConversation?.mode === "single" ? activeConversationId : undefined,
+    enabled:
+      activeConversation?.mode === "single" &&
+      aiAssistantStatusVisible &&
+      Boolean(onTriggerSmartReply),
+    messages,
+    onAccept: ({ message }) => {
+      onTriggerSmartReply?.(message);
+    },
+  });
   const smartReplyComposer = useSmartReplyComposer({
     approvedOverwriteLookupKey,
     composerRef,
@@ -591,18 +614,24 @@ export function ChatPanel({
     presentedAgentTurnView ?? staticAIAssistantDebugView;
   const resolvedAIAssistantStatus =
     aiAssistantDebugView?.status ??
-    (smartReplyUIPhase === "applying"
+    (customerResponsePreflight.phase === "analyzing"
       ? "thinking"
-      : smartReplyTurn
-        ? getSmartReplyStatusBarStatus(smartReplyTurn.phase)
-        : aiAssistantStatus);
+      : customerResponsePreflight.phase === "confirmation"
+        ? "confirmation"
+        : smartReplyUIPhase === "applying"
+          ? "thinking"
+          : smartReplyTurn
+            ? getSmartReplyStatusBarStatus(smartReplyTurn.phase)
+            : aiAssistantStatus);
   const resolvedAIAssistantStatusLabel = aiAssistantDebugView
     ? aiAssistantDebugView.label
-    : smartReplyUIPhase === "applying"
-      ? SMART_REPLY_INLINE_LOADING_HINT
-      : smartReplyTurn
-        ? smartReplyTurn.label
-        : aiAssistantStatusLabel;
+    : customerResponsePreflight.label
+      ? customerResponsePreflight.label
+      : smartReplyUIPhase === "applying"
+        ? SMART_REPLY_INLINE_LOADING_HINT
+        : smartReplyTurn
+          ? smartReplyTurn.label
+          : aiAssistantStatusLabel;
 
   const hasActiveFileUpload = fileUploadQueue.length > 0;
   const hasActiveConversation = activeConversation !== undefined;
@@ -818,6 +847,16 @@ export function ChatPanel({
     setApprovedOverwriteLookupKey(sourceSmartReplyTurn.lookupKey);
     onTriggerSmartReply(sourceSmartReplyTurn.message, { force: true });
   };
+  const handleTriggerSmartReplyFromMessage = useCallback(
+    (
+      message: ChatMessage,
+      options?: { force?: boolean },
+    ) => {
+      customerResponsePreflight.dismiss();
+      onTriggerSmartReply?.(message, options);
+    },
+    [customerResponsePreflight.dismiss, onTriggerSmartReply],
+  );
   const handleAIAssistantDebugStatusChange = (
     scenario: ChatAIAssistantDebugScenario,
   ) => {
@@ -827,6 +866,7 @@ export function ChatPanel({
   const handleAgentTurnMockScenarioSelect = (
     scenario: Parameters<typeof agentTurnMock.startScenario>[0],
   ) => {
+    customerResponsePreflight.dismiss();
     if (sourceSmartReplyTurn) {
       toast.error("请先处理当前话术建议");
       return;
@@ -874,6 +914,26 @@ export function ChatPanel({
               tone: "primary",
             },
           ]
+        : customerResponsePreflight.phase === "confirmation"
+          ? [
+              {
+                id: "ignore-preflight",
+                label: "忽略",
+                onSelect: customerResponsePreflight.dismiss,
+                tone: "quiet",
+              },
+              {
+                disabled: !onTriggerSmartReply,
+                id: "start-preflight",
+                label: getCustomerResponsePreflightActionLabel(
+                  customerResponsePreflight.direction,
+                ),
+                onSelect: onTriggerSmartReply
+                  ? customerResponsePreflight.accept
+                  : undefined,
+                tone: "primary",
+              },
+            ]
         : smartReplyTurn?.phase === "draft_confirmation"
           ? [
               {
@@ -1023,7 +1083,11 @@ export function ChatPanel({
                   onLoadOlderMessages={onLoadOlderMessages}
                   onOpenQuotedMessage={onOpenQuotedMessage}
                   onQuoteMessage={onQuoteMessage}
-                  onTriggerSmartReply={onTriggerSmartReply}
+                  onTriggerSmartReply={
+                    onTriggerSmartReply
+                      ? handleTriggerSmartReplyFromMessage
+                      : undefined
+                  }
                   onToggleMessageSelection={onToggleMessageSelection}
                   onRevokeMessage={onRevokeMessage}
                   onMessageViewportScroll={onMessageViewportScroll}
@@ -1441,6 +1505,20 @@ function getSmartReplyStatusBarStatus(
   }
 
   return "waiting";
+}
+
+function getCustomerResponsePreflightActionLabel(
+  direction?: CustomerResponseDirection,
+) {
+  if (direction === "provide_response") {
+    return "起草回复";
+  }
+
+  if (direction === "request_information") {
+    return "起草追问";
+  }
+
+  return "开始处理";
 }
 
 function noop() {}

@@ -13,7 +13,8 @@ import type { WorkbenchRepository } from "./workbench-repository.js";
 
 const VOLCENGINE_ARK_BASE_URL = "https://ark.cn-beijing.volces.com/api/v3";
 const NATURAL_CONVERSATION_GAP_MS = 12 * 60 * 60 * 1_000;
-const CONTEXT_LOOKBACK_MESSAGE_LIMIT = 100;
+const MAX_CONTEXT_MESSAGES = 20;
+const CONTEXT_LOOKBACK_MESSAGE_LIMIT = MAX_CONTEXT_MESSAGES - 1;
 const MAX_CONTEXT_TEXT_CHARACTERS = 12_000;
 const MAX_CONTEXT_IMAGES = 4;
 const REQUEST_TIMEOUT_MS = 3_000;
@@ -324,6 +325,10 @@ function applyContextBudget(
   let imageCount = 0;
 
   for (let index = messages.length - 1; index >= 0; index -= 1) {
+    if (selected.length >= MAX_CONTEXT_MESSAGES) {
+      break;
+    }
+
     const message = messages[index];
     if (!message) continue;
 

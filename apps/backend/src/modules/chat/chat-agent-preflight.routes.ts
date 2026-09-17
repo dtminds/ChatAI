@@ -1,6 +1,6 @@
 import {
-  CustomerResponsePreflightRequestSchema,
-  type CustomerResponsePreflightRequest,
+  ChatAgentPreflightRequestSchema,
+  type ChatAgentPreflightRequest,
 } from "@chatai/contracts";
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import { ForbiddenError } from "../../shared/errors.js";
@@ -8,14 +8,14 @@ import { withRequestId } from "../../shared/logger.js";
 import { getAuthenticatedWorkbenchScope } from "../workbench-platform-scope.js";
 import type { WorkbenchService } from "./workbench.service.js";
 
-export async function registerCustomerResponsePreflightRoutes(
+export async function registerChatAgentPreflightRoutes(
   app: FastifyInstance,
 ) {
-  app.post<{ Body: CustomerResponsePreflightRequest }>(
-    "/api/server/customer-response-preflight",
+  app.post<{ Body: ChatAgentPreflightRequest }>(
+    "/api/server/chat-agent/preflight",
     {
       preHandler: app.authenticate,
-      schema: { body: CustomerResponsePreflightRequestSchema },
+      schema: { body: ChatAgentPreflightRequestSchema },
     },
     async (request, reply) => {
       assertPreflightAccess(request);
@@ -37,7 +37,7 @@ export async function registerCustomerResponsePreflightRoutes(
       reply.raw.once("close", abortOnResponseClosed);
 
       try {
-        return await app.customerResponsePreflightService.assess(
+        return await app.chatAgentPreflightService.assess(
           request.user.uid,
           request.body,
           abortController.signal,

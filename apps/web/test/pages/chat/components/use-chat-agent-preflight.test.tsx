@@ -2,23 +2,23 @@
 
 import { act, renderHook } from "@testing-library/react";
 import type {
-  CustomerResponsePreflightResponse,
+  ChatAgentPreflightResponse,
 } from "@chatai/contracts";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { useCustomerResponsePreflight } from "@/pages/chat/components/use-customer-response-preflight";
+import { useChatAgentPreflight } from "@/pages/chat/components/use-chat-agent-preflight";
 import type { ChatMessage } from "@/pages/chat/chat-types";
 
-const { requestCustomerResponsePreflightMock } = vi.hoisted(() => ({
-  requestCustomerResponsePreflightMock: vi.fn(),
+const { requestChatAgentPreflightMock } = vi.hoisted(() => ({
+  requestChatAgentPreflightMock: vi.fn(),
 }));
 
-vi.mock("@/pages/chat/api/customer-response-preflight", () => ({
-  requestCustomerResponsePreflight: requestCustomerResponsePreflightMock,
+vi.mock("@/pages/chat/api/chat-agent-preflight", () => ({
+  requestChatAgentPreflight: requestChatAgentPreflightMock,
 }));
 
-describe("useCustomerResponsePreflight", () => {
+describe("useChatAgentPreflight", () => {
   afterEach(() => {
-    requestCustomerResponsePreflightMock.mockReset();
+    requestChatAgentPreflightMock.mockReset();
     vi.useRealTimers();
   });
 
@@ -26,11 +26,11 @@ describe("useCustomerResponsePreflight", () => {
     vi.useFakeTimers();
     const message = createCustomerMessage(7003);
     const response = createResponse("request_information");
-    const deferred = createDeferred<CustomerResponsePreflightResponse>();
-    requestCustomerResponsePreflightMock.mockReturnValue(deferred.promise);
+    const deferred = createDeferred<ChatAgentPreflightResponse>();
+    requestChatAgentPreflightMock.mockReturnValue(deferred.promise);
     const onAccept = vi.fn();
     const { result } = renderHook(() =>
-      useCustomerResponsePreflight({
+      useChatAgentPreflight({
         blocked: false,
         conversationId: "144",
         enabled: true,
@@ -42,13 +42,13 @@ describe("useCustomerResponsePreflight", () => {
     await act(async () => {
       await vi.advanceTimersByTimeAsync(1_499);
     });
-    expect(requestCustomerResponsePreflightMock).not.toHaveBeenCalled();
+    expect(requestChatAgentPreflightMock).not.toHaveBeenCalled();
 
     await act(async () => {
       await vi.advanceTimersByTimeAsync(1);
     });
     expect(result.current.phase).toBe("analyzing");
-    expect(requestCustomerResponsePreflightMock).toHaveBeenCalledWith(
+    expect(requestChatAgentPreflightMock).toHaveBeenCalledWith(
       { conversationId: "144", triggerMessageId: "7003" },
       expect.any(AbortSignal),
     );
@@ -79,15 +79,15 @@ describe("useCustomerResponsePreflight", () => {
     vi.useFakeTimers();
     const firstMessage = createCustomerMessage(7003);
     const secondMessage = createCustomerMessage(7004);
-    const firstDeferred = createDeferred<CustomerResponsePreflightResponse>();
-    const secondDeferred = createDeferred<CustomerResponsePreflightResponse>();
-    requestCustomerResponsePreflightMock.mockReturnValueOnce(
+    const firstDeferred = createDeferred<ChatAgentPreflightResponse>();
+    const secondDeferred = createDeferred<ChatAgentPreflightResponse>();
+    requestChatAgentPreflightMock.mockReturnValueOnce(
       firstDeferred.promise,
     );
-    requestCustomerResponsePreflightMock.mockReturnValue(secondDeferred.promise);
+    requestChatAgentPreflightMock.mockReturnValue(secondDeferred.promise);
     const { result, rerender } = renderHook(
       ({ messages }: { messages: ChatMessage[] }) =>
-        useCustomerResponsePreflight({
+        useChatAgentPreflight({
           blocked: false,
           conversationId: "144",
           enabled: true,
@@ -100,7 +100,7 @@ describe("useCustomerResponsePreflight", () => {
     await act(async () => {
       await vi.advanceTimersByTimeAsync(1_500);
     });
-    const firstSignal = requestCustomerResponsePreflightMock.mock.calls[0]?.[
+    const firstSignal = requestChatAgentPreflightMock.mock.calls[0]?.[
       1
     ] as AbortSignal;
 
@@ -112,8 +112,8 @@ describe("useCustomerResponsePreflight", () => {
     await act(async () => {
       await vi.advanceTimersByTimeAsync(1_500);
     });
-    expect(requestCustomerResponsePreflightMock).toHaveBeenCalledTimes(2);
-    expect(requestCustomerResponsePreflightMock.mock.calls[1]?.[0]).toEqual({
+    expect(requestChatAgentPreflightMock).toHaveBeenCalledTimes(2);
+    expect(requestChatAgentPreflightMock.mock.calls[1]?.[0]).toEqual({
       conversationId: "144",
       triggerMessageId: "7004",
     });
@@ -122,11 +122,11 @@ describe("useCustomerResponsePreflight", () => {
   it("does not restart the debounce when the same message is recreated", async () => {
     vi.useFakeTimers();
     const message = createCustomerMessage(7003);
-    const deferred = createDeferred<CustomerResponsePreflightResponse>();
-    requestCustomerResponsePreflightMock.mockReturnValue(deferred.promise);
+    const deferred = createDeferred<ChatAgentPreflightResponse>();
+    requestChatAgentPreflightMock.mockReturnValue(deferred.promise);
     const { rerender } = renderHook(
       ({ messages }: { messages: ChatMessage[] }) =>
-        useCustomerResponsePreflight({
+        useChatAgentPreflight({
           blocked: false,
           conversationId: "144",
           enabled: true,
@@ -139,7 +139,7 @@ describe("useCustomerResponsePreflight", () => {
     await act(async () => {
       await vi.advanceTimersByTimeAsync(1_500);
     });
-    expect(requestCustomerResponsePreflightMock).toHaveBeenCalledTimes(1);
+    expect(requestChatAgentPreflightMock).toHaveBeenCalledTimes(1);
 
     rerender({
       messages: [
@@ -153,14 +153,14 @@ describe("useCustomerResponsePreflight", () => {
     await act(async () => {
       await vi.advanceTimersByTimeAsync(1_500);
     });
-    expect(requestCustomerResponsePreflightMock).toHaveBeenCalledTimes(1);
+    expect(requestChatAgentPreflightMock).toHaveBeenCalledTimes(1);
   });
 
   it("returns to waiting when the backend rejects a stale trigger", async () => {
     vi.useFakeTimers();
-    requestCustomerResponsePreflightMock.mockRejectedValue({ status: 400 });
+    requestChatAgentPreflightMock.mockRejectedValue({ status: 400 });
     const { result } = renderHook(() =>
-      useCustomerResponsePreflight({
+      useChatAgentPreflight({
         blocked: false,
         conversationId: "144",
         enabled: true,
@@ -194,7 +194,7 @@ function createCustomerMessage(seq: number): ChatMessage {
 
 function createResponse(
   direction: "provide_response" | "request_information" | "handle_request",
-): CustomerResponsePreflightResponse {
+): ChatAgentPreflightResponse {
   return {
     assessment: {
       direction,

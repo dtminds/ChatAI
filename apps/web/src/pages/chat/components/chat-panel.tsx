@@ -36,7 +36,7 @@ import { ChatAgentToolApprovalPrompt } from "@/pages/chat/components/chat-agent-
 import { ChatAgentTurnTimeline } from "@/pages/chat/components/chat-agent-turn-timeline";
 import { ChatHandoffStatusBar } from "@/pages/chat/components/chat-handoff-status-bar";
 import { useSmartReplyComposer } from "@/pages/chat/components/use-smart-reply-composer";
-import { useCustomerResponsePreflight } from "@/pages/chat/components/use-customer-response-preflight";
+import { useChatAgentPreflight } from "@/pages/chat/components/use-chat-agent-preflight";
 import { useAgentTurnMock } from "@/pages/chat/components/use-agent-turn-mock";
 import { REPLACE_COMPOSER_COMMAND } from "@/pages/chat/components/composer/lexical-commands";
 import { ChatHeader } from "@/pages/chat/components/chat-header";
@@ -61,7 +61,7 @@ import type {
 import type { TicketReminderDisplayMode } from "@/pages/chat/tickets/ticket-count-store";
 import { isConversationTicketSupported } from "@/pages/chat/tickets/conversation-ticket-policy";
 import type {
-  CustomerResponseDirection,
+  ChatAgentDirection,
   SettingsSidebarItem,
   WorkbenchMaterialCollectionItemDto,
   WorkbenchSeatAgentMode,
@@ -534,7 +534,7 @@ export function ChatPanel({
       direction,
       message,
     }: {
-      direction: CustomerResponseDirection;
+      direction: ChatAgentDirection;
       message: ChatMessage;
     }) => {
       if (import.meta.env.DEV) {
@@ -563,7 +563,7 @@ export function ChatPanel({
         suggestions: smartReplyState.suggestions,
       })
     : undefined;
-  const customerResponsePreflight = useCustomerResponsePreflight({
+  const chatAgentPreflight = useChatAgentPreflight({
     blocked: Boolean(
       hasBlockingAgentTurn ||
         sourceSmartReplyTurn ||
@@ -640,7 +640,7 @@ export function ChatPanel({
     presentedAgentTurnView ?? staticAIAssistantDebugView;
   const resolvedAIAssistantStatus =
     aiAssistantDebugView?.status ??
-    (customerResponsePreflight.phase === "confirmation"
+    (chatAgentPreflight.phase === "confirmation"
       ? "confirmation"
       : smartReplyUIPhase === "applying"
         ? "thinking"
@@ -649,9 +649,9 @@ export function ChatPanel({
           : aiAssistantStatus);
   const resolvedAIAssistantStatusLabel = aiAssistantDebugView
     ? aiAssistantDebugView.label
-    : customerResponsePreflight.phase === "confirmation" &&
-        customerResponsePreflight.label
-      ? customerResponsePreflight.label
+    : chatAgentPreflight.phase === "confirmation" &&
+        chatAgentPreflight.label
+      ? chatAgentPreflight.label
       : smartReplyUIPhase === "applying"
         ? SMART_REPLY_INLINE_LOADING_HINT
         : smartReplyTurn
@@ -877,10 +877,10 @@ export function ChatPanel({
       message: ChatMessage,
       options?: { force?: boolean },
     ) => {
-      customerResponsePreflight.dismiss();
+      chatAgentPreflight.dismiss();
       onTriggerSmartReply?.(message, options);
     },
-    [customerResponsePreflight.dismiss, onTriggerSmartReply],
+    [chatAgentPreflight.dismiss, onTriggerSmartReply],
   );
   const handleAIAssistantDebugStatusChange = (
     scenario: ChatAIAssistantDebugScenario,
@@ -891,7 +891,7 @@ export function ChatPanel({
   const handleAgentTurnMockScenarioSelect = (
     scenario: Parameters<typeof agentTurnMock.startScenario>[0],
   ) => {
-    customerResponsePreflight.dismiss();
+    chatAgentPreflight.dismiss();
     if (sourceSmartReplyTurn) {
       toast.error("请先处理当前话术建议");
       return;
@@ -939,22 +939,22 @@ export function ChatPanel({
               tone: "primary",
             },
           ]
-        : customerResponsePreflight.phase === "confirmation"
+        : chatAgentPreflight.phase === "confirmation"
           ? [
               {
                 id: "ignore-preflight",
                 label: "忽略",
-                onSelect: customerResponsePreflight.dismiss,
+                onSelect: chatAgentPreflight.dismiss,
                 tone: "quiet",
               },
               {
                 disabled: !canStartPreflightAgentTurn,
                 id: "start-preflight",
-                label: getCustomerResponsePreflightActionLabel(
-                  customerResponsePreflight.direction,
+                label: getChatAgentPreflightActionLabel(
+                  chatAgentPreflight.direction,
                 ),
                 onSelect: canStartPreflightAgentTurn
-                  ? customerResponsePreflight.accept
+                  ? chatAgentPreflight.accept
                   : undefined,
                 tone: "primary",
               },
@@ -1532,8 +1532,8 @@ function getSmartReplyStatusBarStatus(
   return "waiting";
 }
 
-function getCustomerResponsePreflightActionLabel(
-  direction?: CustomerResponseDirection,
+function getChatAgentPreflightActionLabel(
+  direction?: ChatAgentDirection,
 ) {
   if (direction === "provide_response") {
     return "起草回复";

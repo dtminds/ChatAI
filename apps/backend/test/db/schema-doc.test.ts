@@ -9,6 +9,27 @@ const schemaSql = readFileSync(resolve(__dirname, "../../../../docs/db/schema.sq
 const changeLogMarkdown = readFileSync(resolve(__dirname, "../../../../docs/db/change-log.md"), "utf8");
 
 describe("database schema document", () => {
+  it("defines durable chat-agent preflight deduplication", () => {
+    const preflightTable = extractCreateTable(
+      schemaSql,
+      "xy_wap_embed_chat_agent_preflight",
+    );
+    const migration = extractChangeLogEntry(
+      changeLogMarkdown,
+      "2026-09-17 Chat Agent Preflight 防重复",
+    );
+
+    expect(preflightTable).toContain(
+      "UNIQUE KEY uk_chat_agent_preflight_message",
+    );
+    expect(preflightTable).toContain("token_usage JSON NULL");
+    expect(preflightTable).toContain("lease_expires_at DATETIME(3) NULL");
+    expect(migration).toContain("先建表、再部署 Backend");
+    expect(WRITABLE_TABLES).toContain(
+      "xy_wap_embed_chat_agent_preflight",
+    );
+  });
+
   it("defines independently revocable embed browser sessions", () => {
     const sessionTable = extractCreateTable(
       schemaSql,

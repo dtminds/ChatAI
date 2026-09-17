@@ -6,7 +6,8 @@ import { WorkbenchRepository } from "../modules/chat/workbench-repository.js";
 import { MysqlWorkbenchService, type WorkbenchService } from "../modules/chat/workbench.service.js";
 import { ComposerAiEditService } from "../modules/chat/composer-ai-edit.service.js";
 import { ComposerAiEditQuotaService } from "../modules/chat/composer-ai-edit-quota.service.js";
-import { CustomerResponsePreflightService } from "../modules/chat/customer-response-preflight.service.js";
+import { MysqlChatAgentPreflightRecordStore } from "../modules/chat/chat-agent-preflight.repository.js";
+import { ChatAgentPreflightService } from "../modules/chat/chat-agent-preflight.service.js";
 import { createWorkbenchJavaClient } from "../modules/chat/workbench-java-client.js";
 import type { AppLogger } from "../shared/logger.js";
 import type { AuthenticatedWorkbenchScope } from "../modules/workbench-platform-scope.js";
@@ -20,7 +21,7 @@ declare module "fastify" {
     ): WorkbenchService;
     workbenchService: WorkbenchService;
     composerAiEditService: ComposerAiEditService;
-    customerResponsePreflightService: CustomerResponsePreflightService;
+    chatAgentPreflightService: ChatAgentPreflightService;
   }
 }
 
@@ -63,13 +64,13 @@ export const dbPlugin = fp(async (app) => {
     }),
   );
   app.decorate(
-    "customerResponsePreflightService",
-    new CustomerResponsePreflightService({
+    "chatAgentPreflightService",
+    new ChatAgentPreflightService({
       automaticUsageLimiter: app.dailyUsageLimiter,
       apiKey: process.env.VOLCENGINE_ARK_API_KEY,
-      cache: app.cache,
       cacheKeys: app.cacheKeys,
       logger: app.log,
+      recordStore: new MysqlChatAgentPreflightRecordStore(db),
       repository,
     }),
   );

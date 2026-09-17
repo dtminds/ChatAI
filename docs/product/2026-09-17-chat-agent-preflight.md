@@ -208,7 +208,7 @@ flowchart TD
 ### 6.1 产品字段
 
 ```ts
-type CustomerResponseAssessment =
+type ChatAgentAssessment =
   | {
       outcome: "no_response_needed";
       reasoningSummary: string;
@@ -319,14 +319,16 @@ Preflight 是弱感知的后台判断。硬门禁通过并开始分析时，辅�
 
 这个边界会增加一次明确点击，但能够避免 AI 在客服自行输入时抢占 Composer，也让客服始终知道当前是哪一轮客户消息触发了 AI 处理。
 
-### 7.8 缓存与频率保护
+### 7.8 防重复与频率保护
 
-首版不保存会话级自动协助授权。Redis 仅用于与 Preflight 本身直接相关的技术保护：
+首版不保存会话级自动协助授权。Preflight 结果以 MySQL 记录为准：
 
-- 按会话和触发消息缓存 Preflight 结果，避免同一消息因页面重载或重复请求反复调用模型。
-- 保存自动 Preflight 的频率计数，限制异常高频客户消息造成的模型消耗。
+- 按租户、会话和触发消息唯一保存一条 Preflight 记录，页面重载、请求重试或重复触发直接复用已经完成的结果。
+- 运行中的记录通过短租约协调多实例并发，同一消息只有租约持有者调用模型；租约失效后才允许其它实例接管。
+- 记录结果来源、模型、预判结论和模型返回的原始 `token_usage`，用于成本统计和后续排查。
+- Redis 只保存 60 秒窗口内的自动 Preflight 频率计数，限制异常高频客户消息造成的模型消耗，不再保存 Preflight 结果。
 
-这些缓存不改变产品状态，也不能把 `response_needed` 从 confirmation 改为自动启动 Agent Turn。
+这些技术保护不改变产品状态，也不能把 `response_needed` 从 confirmation 改为自动启动 Agent Turn。
 
 ## 8. 与 Composer 的关系
 
@@ -519,4 +521,4 @@ Agent Turn 已经运行时到达的新客户消息如何进入当前 Turn或等�
 11. 是否确认达到上限后使用「客户补充了新消息」通用提示，不向客服展示限流概念。
 12. 是否确认一次启动确认只授权当前消息批次，不形成会话级自动处理授权。
 13. 是否确认 Preflight 分析过程保持弱感知，辅助条在得到 `response_needed` 前维持标准 waiting。
-14. 是否确认 Redis 仅保留消息级结果缓存和调用频率保护，不保存会话级自动处理授权。
+14. 是否确认以 MySQL 唯一记录防止同一消息重复 Preflight，Redis 仅保留自动调用频率保护。

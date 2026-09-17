@@ -1,5 +1,14 @@
 # Database Change Log
 
+## 2026-09-17 Chat Agent Preflight 防重复
+
+- 新增 `xy_wap_embed_chat_agent_preflight`，按租户、会话和触发消息唯一保存一次客户回应预判。
+- `running` 记录使用短租约协调多实例并发请求；同一消息只有租约持有者调用模型，其余请求复用完成结果或等待当前运行结束。
+- `token_usage` 保存模型响应返回的原始 usage 对象；模型输出无效但已产生用量时同样记录。
+- Redis 不再保存 Preflight 结果，只保留自动调用频率限制。
+- 发布顺序为先建表、再部署 Backend；新环境执行 `docs/db/schema.sql`，已存在环境先执行其中该表的最终 `CREATE TABLE` 语句。
+- 不需要历史数据回填；回滚时先回滚 Backend，表可保留，确认不再使用后再人工删除。
+
 ## 2026-09-10 Workflow 推理用量快照
 
 - `xy_wap_embed_workflow_inference_job` 增加模型调用用量快照，独立保留内部成本数据并提供调用时的计费模型快照；Usage Event 不汇总 Token。

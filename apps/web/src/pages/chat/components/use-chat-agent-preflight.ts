@@ -1,25 +1,25 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type {
-  CustomerResponseDirection,
-  CustomerResponsePreflightResponse,
+  ChatAgentDirection,
+  ChatAgentPreflightResponse,
 } from "@chatai/contracts";
 import {
-  requestCustomerResponsePreflight,
-} from "@/pages/chat/api/customer-response-preflight";
+  requestChatAgentPreflight,
+} from "@/pages/chat/api/chat-agent-preflight";
 import type { ChatMessage, Message } from "@/pages/chat/chat-types";
 
 type PreflightPhase = "idle" | "analyzing" | "confirmation";
 
 type PreflightState = {
   phase: PreflightPhase;
-  response?: CustomerResponsePreflightResponse;
+  response?: ChatAgentPreflightResponse;
   triggerMessage?: ChatMessage;
 };
 
 const INITIAL_STATE: PreflightState = { phase: "idle" };
 const PREFLIGHT_DEBOUNCE_MS = 1_500;
 
-export function useCustomerResponsePreflight({
+export function useChatAgentPreflight({
   blocked,
   conversationId,
   enabled,
@@ -31,7 +31,7 @@ export function useCustomerResponsePreflight({
   enabled: boolean;
   messages: Message[];
   onAccept: (input: {
-    direction: CustomerResponseDirection;
+    direction: ChatAgentDirection;
     message: ChatMessage;
   }) => void | Promise<void>;
 }) {
@@ -107,7 +107,7 @@ export function useCustomerResponsePreflight({
         triggerMessage,
       });
 
-      void requestCustomerResponsePreflight(
+      void requestChatAgentPreflight(
         { conversationId, triggerMessageId },
         controller.signal,
       )

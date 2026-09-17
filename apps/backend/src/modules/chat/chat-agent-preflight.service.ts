@@ -1,20 +1,21 @@
+import { randomUUID } from "node:crypto";
 import type {
-  CustomerResponseAssessment,
-  CustomerResponsePreflightRequest,
-  CustomerResponsePreflightResponse,
+  ChatAgentAssessment,
+  ChatAgentPreflightRequest,
+  ChatAgentPreflightResponse,
   WorkbenchMessageDto,
 } from "@chatai/contracts";
-import {
-  CustomerResponseAssessmentSchema,
-  CustomerResponsePreflightResponseSchema,
-} from "@chatai/contracts";
-import { VOLCENGINE_ARK_CUSTOMER_RESPONSE_PREFLIGHT_MODEL } from "@chatai/llm";
+import { ChatAgentAssessmentSchema } from "@chatai/contracts";
+import { VOLCENGINE_ARK_CHAT_AGENT_PREFLIGHT_MODEL } from "@chatai/llm";
 import { Value } from "@sinclair/typebox/value";
-import type { CachePort } from "../../cache/cache-port.js";
 import { buildCacheKeys } from "../../cache/keys.js";
 import { BadRequestError } from "../../shared/errors.js";
 import { noopLogger, type AppLogger } from "../../shared/logger.js";
 import type { DailyUsageLimiter } from "../../usage-limit/daily-usage-limiter.js";
+import type {
+  ChatAgentPreflightRecordStore,
+  StoredChatAgentPreflightResult,
+} from "./chat-agent-preflight.repository.js";
 import type { WorkbenchRepository } from "./workbench-repository.js";
 
 const VOLCENGINE_ARK_BASE_URL = "https://ark.cn-beijing.volces.com/api/v3";
@@ -27,7 +28,9 @@ const CONTEXT_LOOKAHEAD_MESSAGE_LIMIT = MAX_CONTEXT_MESSAGES;
 const MAX_CONTEXT_TEXT_CHARACTERS = 12_000;
 const MAX_CONTEXT_IMAGES = 4;
 const REQUEST_TIMEOUT_MS = 3_000;
-const PREFLIGHT_RESULT_TTL_SECONDS = 12 * 60 * 60;
+const PREFLIGHT_CLAIM_GRACE_MS = 2_000;
+const PREFLIGHT_RESULT_WAIT_GRACE_MS = 500;
+const PREFLIGHT_RESULT_POLL_MS = 250;
 const PREFLIGHT_RATE_LIMIT_SECONDS = 60;
 const PREFLIGHT_RATE_LIMIT = 3;
 const MAX_LOCAL_RATE_LIMIT_BUCKETS = 1_000;
@@ -43,54 +46,77 @@ type PreflightContextMessage = {
   role: "assistant" | "user";
 };
 
-type CustomerResponsePreflightServiceOptions = {
+type ChatAgentPreflightServiceOptions = {
   apiKey?: string;
   automaticUsageLimiter?: Pick<DailyUsageLimiter, "reserve">;
-  cache?: Pick<CachePort, "get" | "set">;
   cacheKeys?: ReturnType<typeof buildCacheKeys>;
   fetch?: typeof fetch;
   logger?: AppLogger;
   model?: string;
+  recordStore: ChatAgentPreflightRecordStore;
   repository: Pick<WorkbenchRepository, "listMessageContext">;
   timeoutMs?: number;
 };
 
-const fallbackAssessment: CustomerResponseAssessment = {
+const fallbackAssessment: ChatAgentAssessment = {
   direction: "handle_request",
   reasoningSummary: "客户发来新消息，尚未形成明确处理结论",
   outcome: "response_needed",
 };
 
-export class CustomerResponsePreflightService {
+export class ChatAgentPreflightService {
   private readonly apiKey?: string;
-  private readonly automaticUsageLimiter?: CustomerResponsePreflightServiceOptions["automaticUsageLimiter"];
-  private readonly cache?: CustomerResponsePreflightServiceOptions["cache"];
+  private readonly automaticUsageLimiter?: ChatAgentPreflightServiceOptions["automaticUsageLimiter"];
   private readonly cacheKeys: ReturnType<typeof buildCacheKeys>;
   private readonly fetch: typeof fetch;
+  private readonly inFlightByMessage = new Map<
+    string,
+    Promise<ChatAgentPreflightResponse>
+  >();
   private readonly logger: AppLogger;
   private readonly localRateLimitBuckets = new Map<string, number[]>();
   private readonly model: string;
-  private readonly repository: CustomerResponsePreflightServiceOptions["repository"];
+  private readonly recordStore: ChatAgentPreflightRecordStore;
+  private readonly repository: ChatAgentPreflightServiceOptions["repository"];
   private readonly timeoutMs: number;
 
-  constructor(options: CustomerResponsePreflightServiceOptions) {
+  constructor(options: ChatAgentPreflightServiceOptions) {
     this.apiKey = options.apiKey?.trim();
     this.automaticUsageLimiter = options.automaticUsageLimiter;
-    this.cache = options.cache;
     this.cacheKeys = options.cacheKeys ?? buildCacheKeys("chatai:");
     this.fetch = options.fetch ?? globalThis.fetch;
     this.logger = options.logger ?? noopLogger;
     this.model =
-      options.model ?? VOLCENGINE_ARK_CUSTOMER_RESPONSE_PREFLIGHT_MODEL;
+      options.model ?? VOLCENGINE_ARK_CHAT_AGENT_PREFLIGHT_MODEL;
+    this.recordStore = options.recordStore;
     this.repository = options.repository;
     this.timeoutMs = options.timeoutMs ?? REQUEST_TIMEOUT_MS;
   }
 
   async assess(
     uid: number,
-    input: CustomerResponsePreflightRequest,
+    input: ChatAgentPreflightRequest,
     requestSignal?: AbortSignal,
-  ): Promise<CustomerResponsePreflightResponse> {
+  ): Promise<ChatAgentPreflightResponse> {
+    const messageKey = `${uid}:${input.conversationId}:${input.triggerMessageId}`;
+    let operation = this.inFlightByMessage.get(messageKey);
+
+    if (!operation) {
+      operation = this.assessOnce(uid, input).finally(() => {
+        if (this.inFlightByMessage.get(messageKey) === operation) {
+          this.inFlightByMessage.delete(messageKey);
+        }
+      });
+      this.inFlightByMessage.set(messageKey, operation);
+    }
+
+    return waitForSharedOperation(operation, requestSignal);
+  }
+
+  private async assessOnce(
+    uid: number,
+    input: ChatAgentPreflightRequest,
+  ): Promise<ChatAgentPreflightResponse> {
     const messageContext = await this.repository.listMessageContext({
       after: CONTEXT_LOOKAHEAD_MESSAGE_LIMIT,
       before: CONTEXT_LOOKBACK_MESSAGE_LIMIT,
@@ -104,14 +130,14 @@ export class CustomerResponsePreflightService {
 
     if (!triggerMessage) {
       throw new BadRequestError(
-        "CUSTOMER_RESPONSE_PREFLIGHT_MESSAGE_NOT_FOUND",
+        "CHAT_AGENT_PREFLIGHT_MESSAGE_NOT_FOUND",
         "触发消息不存在",
       );
     }
 
     if (triggerMessage.senderType !== "customer" || triggerMessage.isRevoked) {
       throw new BadRequestError(
-        "CUSTOMER_RESPONSE_PREFLIGHT_MESSAGE_INVALID",
+        "CHAT_AGENT_PREFLIGHT_MESSAGE_INVALID",
         "只能对客户消息执行回应预判",
       );
     }
@@ -127,44 +153,99 @@ export class CustomerResponsePreflightService {
       );
     }
 
-    const resultCacheKey = this.cacheKeys.customerResponsePreflightResult(
-      uid,
-      input.conversationId,
-      input.triggerMessageId,
-    );
-    const cachedResponse = await readCachedResponse(this.cache, resultCacheKey);
-    if (cachedResponse) {
-      return cachedResponse;
-    }
-
-    const context = buildCustomerResponsePreflightContext(
+    const context = buildChatAgentPreflightContext(
       messageContext.messages,
       input.triggerMessageId,
     );
+    const claimToken = randomUUID();
+    const claimLeaseMs = this.timeoutMs + PREFLIGHT_CLAIM_GRACE_MS;
+    const claim = await this.recordStore.claim({
+      claimToken,
+      conversationId: input.conversationId,
+      leaseExpiresAt: new Date(Date.now() + claimLeaseMs),
+      now: new Date(),
+      triggerMessageId: input.triggerMessageId,
+      uid,
+    });
 
-    if (!this.apiKey || context.length === 0) {
-      return buildResponse(input, fallbackAssessment, "fallback");
+    if (claim.kind === "completed") {
+      return buildStoredResponse(input, claim.result);
+    }
+
+    if (claim.kind === "running") {
+      const completed = await this.waitForCompletedResult(uid, input, claimLeaseMs);
+
+      if (completed) {
+        return buildStoredResponse(input, completed);
+      }
+
+      const retryClaimToken = randomUUID();
+      const retryClaim = await this.recordStore.claim({
+        claimToken: retryClaimToken,
+        conversationId: input.conversationId,
+        leaseExpiresAt: new Date(Date.now() + claimLeaseMs),
+        now: new Date(),
+        triggerMessageId: input.triggerMessageId,
+        uid,
+      });
+
+      if (retryClaim.kind === "completed") {
+        return buildStoredResponse(input, retryClaim.result);
+      }
+
+      if (retryClaim.kind === "running") {
+        return buildResponse(input, fallbackAssessment, "fallback");
+      }
+
+      return this.runClaimedAssessment(
+        uid,
+        input,
+        context,
+        messageContext.messages,
+        retryClaimToken,
+      );
+    }
+
+    return this.runClaimedAssessment(uid, input, context, messageContext.messages, claimToken);
+  }
+
+  private async runClaimedAssessment(
+    uid: number,
+    input: ChatAgentPreflightRequest,
+    context: PreflightContextMessage[],
+    messages: WorkbenchMessageDto[],
+    claimToken: string,
+  ) {
+    if (!this.apiKey) {
+      return this.completeClaim(uid, input, claimToken, fallbackAssessment, {
+        errorCode: "model_unavailable",
+        errorMessage: "Chat agent preflight model is not configured",
+      });
+    }
+
+    if (context.length === 0) {
+      return this.completeClaim(uid, input, claimToken, fallbackAssessment, {
+        errorCode: "empty_context",
+        errorMessage: "Chat agent preflight context is empty",
+      });
     }
 
     if (
       !(await this.reserveAutomaticPreflight(
         uid,
         input.conversationId,
-        getLatestAgentMessageBucket(messageContext.messages),
+        getLatestAgentMessageBucket(messages),
       ))
     ) {
-      return buildResponse(
-        input,
-        fallbackAssessment,
-        "fallback",
-      );
+      return this.completeClaim(uid, input, claimToken, fallbackAssessment, {
+        errorCode: "rate_limited",
+        errorMessage: "Chat agent preflight automatic budget is exhausted",
+      });
     }
 
     const timeoutController = new AbortController();
     const timeout = setTimeout(() => timeoutController.abort(), this.timeoutMs);
-    const signal = requestSignal
-      ? AbortSignal.any([requestSignal, timeoutController.signal])
-      : timeoutController.signal;
+    let tokenUsage: Record<string, unknown> | undefined;
 
     try {
       const response = await this.fetch(
@@ -182,7 +263,7 @@ export class CustomerResponsePreflightService {
             "Content-Type": "application/json",
           },
           method: "POST",
-          signal,
+          signal: timeoutController.signal,
         },
       );
 
@@ -192,22 +273,29 @@ export class CustomerResponsePreflightService {
 
       const payload = await response.json() as {
         choices?: Array<{ message?: { content?: string } }>;
+        usage?: unknown;
       };
+      tokenUsage = isRecord(payload.usage) ? payload.usage : undefined;
       const assessment = parseAssessment(
         payload.choices?.[0]?.message?.content,
       );
 
       if (!assessment) {
-        throw new Error("invalid preflight response");
+        return this.completeClaim(uid, input, claimToken, fallbackAssessment, {
+          errorCode: "invalid_response",
+          errorMessage: "Chat agent preflight returned an invalid response",
+          model: this.model,
+          tokenUsage,
+        });
       }
 
-      const result = buildResponse(input, assessment, "model");
-      await writeCachedResponse(this.cache, resultCacheKey, result);
-      return result;
+      return this.completeClaim(uid, input, claimToken, assessment, {
+        model: this.model,
+        source: "model",
+        tokenUsage,
+      });
     } catch (error) {
-      if (requestSignal?.aborted) {
-        throw error;
-      }
+      const timedOut = timeoutController.signal.aborted;
 
       this.logger.warn(
         {
@@ -215,12 +303,91 @@ export class CustomerResponsePreflightService {
           error: error instanceof Error ? error.message : String(error),
           triggerMessageId: input.triggerMessageId,
         },
-        "Customer response preflight fell back to generic confirmation",
+        "Chat agent preflight fell back to generic confirmation",
       );
-      return buildResponse(input, fallbackAssessment, "fallback");
+      return this.completeClaim(uid, input, claimToken, fallbackAssessment, {
+        errorCode: timedOut ? "model_timeout" : "model_error",
+        errorMessage: error instanceof Error ? error.message : String(error),
+        model: this.model,
+        tokenUsage,
+      });
     } finally {
       clearTimeout(timeout);
     }
+  }
+
+  private async completeClaim(
+    uid: number,
+    input: ChatAgentPreflightRequest,
+    claimToken: string,
+    assessment: ChatAgentAssessment,
+    metadata: {
+      errorCode?: string;
+      errorMessage?: string;
+      model?: string;
+      source?: StoredChatAgentPreflightResult["source"];
+      tokenUsage?: Record<string, unknown>;
+    },
+  ) {
+    const result: StoredChatAgentPreflightResult = {
+      assessment,
+      source: metadata.source ?? "fallback",
+    };
+    const completed = await this.recordStore.complete({
+      claimToken,
+      conversationId: input.conversationId,
+      errorCode: metadata.errorCode,
+      errorMessage: metadata.errorMessage,
+      model: metadata.model,
+      result,
+      tokenUsage: metadata.tokenUsage,
+      triggerMessageId: input.triggerMessageId,
+      uid,
+    });
+
+    if (!completed) {
+      const persisted = await this.recordStore.findCompleted({
+        conversationId: input.conversationId,
+        triggerMessageId: input.triggerMessageId,
+        uid,
+      });
+
+      if (persisted) {
+        return buildStoredResponse(input, persisted);
+      }
+
+      throw new Error("Chat agent preflight claim was lost before completion");
+    }
+
+    return buildStoredResponse(input, result);
+  }
+
+  private async waitForCompletedResult(
+    uid: number,
+    input: ChatAgentPreflightRequest,
+    claimLeaseMs: number,
+  ) {
+    const deadline = Date.now() + claimLeaseMs + PREFLIGHT_RESULT_WAIT_GRACE_MS;
+
+    while (Date.now() < deadline) {
+      const completed = await this.recordStore.findCompleted({
+        conversationId: input.conversationId,
+        triggerMessageId: input.triggerMessageId,
+        uid,
+      });
+
+      if (completed) {
+        return completed;
+      }
+
+      await delay(Math.min(PREFLIGHT_RESULT_POLL_MS, deadline - Date.now()));
+    }
+
+    return this.recordStore.findCompleted({
+      conversationId: input.conversationId,
+      triggerMessageId: input.triggerMessageId,
+      uid,
+    });
   }
 
   private async reserveAutomaticPreflight(
@@ -234,7 +401,7 @@ export class CustomerResponsePreflightService {
 
     try {
       return await this.automaticUsageLimiter.reserve({
-        key: this.cacheKeys.customerResponsePreflightRate(
+        key: this.cacheKeys.chatAgentPreflightRate(
           uid,
           conversationId,
           bucket,
@@ -249,12 +416,12 @@ export class CustomerResponsePreflightService {
           error: error instanceof Error ? error.message : String(error),
           uid,
         },
-        "Customer response preflight rate limiter unavailable",
+        "Chat agent preflight rate limiter unavailable",
       );
     }
 
     return this.reserveLocalAutomaticPreflight(
-      this.cacheKeys.customerResponsePreflightRate(uid, conversationId, bucket),
+      this.cacheKeys.chatAgentPreflightRate(uid, conversationId, bucket),
     );
   }
 
@@ -288,40 +455,7 @@ export class CustomerResponsePreflightService {
   }
 }
 
-async function readCachedResponse(
-  cache: CustomerResponsePreflightServiceOptions["cache"],
-  key: string,
-) {
-  if (!cache) return undefined;
-
-  try {
-    const value = await cache.get(key);
-    if (!value) return undefined;
-
-    const parsed: unknown = JSON.parse(value);
-    return Value.Check(CustomerResponsePreflightResponseSchema, parsed)
-      ? parsed
-      : undefined;
-  } catch {
-    return undefined;
-  }
-}
-
-async function writeCachedResponse(
-  cache: CustomerResponsePreflightServiceOptions["cache"],
-  key: string,
-  response: CustomerResponsePreflightResponse,
-) {
-  if (!cache) return;
-
-  try {
-    await cache.set(key, JSON.stringify(response), PREFLIGHT_RESULT_TTL_SECONDS);
-  } catch {
-    // Cache failures must not turn a valid model assessment into a request failure.
-  }
-}
-
-export function buildCustomerResponsePreflightContext(
+export function buildChatAgentPreflightContext(
   messages: WorkbenchMessageDto[],
   triggerMessageId: string,
 ): PreflightContextMessage[] {
@@ -602,7 +736,7 @@ function parseAssessment(content: string | undefined) {
 
   try {
     const parsed: unknown = JSON.parse(extractJsonObject(content));
-    return Value.Check(CustomerResponseAssessmentSchema, parsed)
+    return Value.Check(ChatAgentAssessmentSchema, parsed)
       ? parsed
       : undefined;
   } catch {
@@ -619,10 +753,10 @@ function extractJsonObject(content: string) {
 }
 
 function buildResponse(
-  input: CustomerResponsePreflightRequest,
-  assessment: CustomerResponseAssessment,
-  source: CustomerResponsePreflightResponse["source"],
-): CustomerResponsePreflightResponse {
+  input: ChatAgentPreflightRequest,
+  assessment: ChatAgentAssessment,
+  source: ChatAgentPreflightResponse["source"],
+): ChatAgentPreflightResponse {
   return {
     assessment,
     conversationId: input.conversationId,
@@ -632,9 +766,16 @@ function buildResponse(
   };
 }
 
+function buildStoredResponse(
+  input: ChatAgentPreflightRequest,
+  result: StoredChatAgentPreflightResult,
+) {
+  return buildResponse(input, result.assessment, result.source);
+}
+
 function resolveNextAction(
-  assessment: CustomerResponseAssessment,
-): CustomerResponsePreflightResponse["nextAction"] {
+  assessment: ChatAgentAssessment,
+): ChatAgentPreflightResponse["nextAction"] {
   return assessment.outcome === "no_response_needed" ? "wait" : "confirm";
 }
 
@@ -657,6 +798,51 @@ function getLatestAgentMessageBucket(messages: WorkbenchMessageDto[]) {
   }
 
   return "initial";
+}
+
+function delay(durationMs: number) {
+  return new Promise<void>((resolve) => {
+    setTimeout(resolve, durationMs);
+  });
+}
+
+function waitForSharedOperation<T>(
+  operation: Promise<T>,
+  signal?: AbortSignal,
+): Promise<T> {
+  if (!signal) {
+    return operation;
+  }
+
+  if (signal.aborted) {
+    return Promise.reject(createAbortError(signal));
+  }
+
+  return new Promise<T>((resolve, reject) => {
+    const onAbort = () => {
+      cleanup();
+      reject(createAbortError(signal));
+    };
+    const cleanup = () => signal.removeEventListener("abort", onAbort);
+
+    signal.addEventListener("abort", onAbort, { once: true });
+    operation.then(
+      (value) => {
+        cleanup();
+        resolve(value);
+      },
+      (error: unknown) => {
+        cleanup();
+        reject(error);
+      },
+    );
+  });
+}
+
+function createAbortError(signal: AbortSignal) {
+  return signal.reason instanceof Error
+    ? signal.reason
+    : new DOMException("The operation was aborted", "AbortError");
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

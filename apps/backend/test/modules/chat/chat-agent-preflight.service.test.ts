@@ -1,20 +1,24 @@
 import type {
-  CustomerResponsePreflightRequest,
-  CustomerResponsePreflightResponse,
+  ChatAgentAssessment,
+  ChatAgentPreflightRequest,
   WorkbenchMessageDto,
 } from "@chatai/contracts";
 import { describe, expect, it, vi } from "vitest";
+import type {
+  ChatAgentPreflightRecordStore,
+  StoredChatAgentPreflightResult,
+} from "../../../src/modules/chat/chat-agent-preflight.repository.js";
 import {
-  buildCustomerResponsePreflightContext,
-  CustomerResponsePreflightService,
-} from "../../../src/modules/chat/customer-response-preflight.service";
+  buildChatAgentPreflightContext,
+  ChatAgentPreflightService,
+} from "../../../src/modules/chat/chat-agent-preflight.service";
 
-const request: CustomerResponsePreflightRequest = {
+const request: ChatAgentPreflightRequest = {
   conversationId: "144",
   triggerMessageId: "20",
 };
 
-describe("CustomerResponsePreflightService", () => {
+describe("ChatAgentPreflightService", () => {
   it("looks up the trigger message with a 20-message context window", async () => {
     const repository = {
       listMessageContext: vi.fn().mockResolvedValue({
@@ -22,7 +26,10 @@ describe("CustomerResponsePreflightService", () => {
         targetMessageId: request.triggerMessageId,
       }),
     };
-    const service = new CustomerResponsePreflightService({ repository });
+    const service = new ChatAgentPreflightService({
+      recordStore: createRecordStore(),
+      repository,
+    });
 
     const response = await service.assess(9001, request);
 
@@ -54,9 +61,10 @@ describe("CustomerResponsePreflightService", () => {
       }),
     };
     const fetchMock = vi.fn();
-    const service = new CustomerResponsePreflightService({
+    const service = new ChatAgentPreflightService({
       apiKey: "test-key",
       fetch: fetchMock,
+      recordStore: createRecordStore(),
       repository,
     });
 
@@ -81,7 +89,7 @@ describe("CustomerResponsePreflightService", () => {
       }),
     );
 
-    const context = buildCustomerResponsePreflightContext(messages, "25");
+    const context = buildChatAgentPreflightContext(messages, "25");
 
     expect(context).toHaveLength(20);
     expect(context[0]?.messageId).toBe("6");
@@ -100,7 +108,7 @@ describe("CustomerResponsePreflightService", () => {
       }),
     ];
 
-    const context = buildCustomerResponsePreflightContext(messages, "3");
+    const context = buildChatAgentPreflightContext(messages, "3");
 
     expect(context.map((message) => message.messageId)).toEqual(["3"]);
   });
@@ -137,13 +145,20 @@ describe("CustomerResponsePreflightService", () => {
                 },
               },
             ],
+            usage: {
+              completion_tokens: 26,
+              prompt_tokens: 118,
+              total_tokens: 144,
+            },
           }),
           { status: 200 },
         ),
       );
-    const service = new CustomerResponsePreflightService({
+    const recordStore = createRecordStore();
+    const service = new ChatAgentPreflightService({
       apiKey: "test-key",
       fetch: fetchMock,
+      recordStore,
       repository,
     });
 
@@ -168,29 +183,32 @@ describe("CustomerResponsePreflightService", () => {
       ]),
       role: "user",
     });
+    expect(recordStore.complete).toHaveBeenCalledWith(
+      expect.objectContaining({
+        tokenUsage: {
+          completion_tokens: 26,
+          prompt_tokens: 118,
+          total_tokens: 144,
+        },
+      }),
+    );
   });
 
-  it("reuses a cached assessment without invoking the model", async () => {
-    const cachedResponse: CustomerResponsePreflightResponse = {
+  it("reuses a persisted assessment without invoking the model", async () => {
+    const persistedResult: StoredChatAgentPreflightResult = {
       assessment: {
         direction: "provide_response",
         reasoningSummary: "客户继续追问退款到账进度",
         outcome: "response_needed",
       },
-      conversationId: request.conversationId,
-      evaluatedThroughMessageId: request.triggerMessageId,
-      nextAction: "confirm",
       source: "model",
     };
-    const cache = {
-      get: vi.fn().mockResolvedValue(JSON.stringify(cachedResponse)),
-      set: vi.fn(),
-    };
+    const recordStore = createRecordStore(persistedResult);
     const fetchMock = vi.fn();
-    const service = new CustomerResponsePreflightService({
+    const service = new ChatAgentPreflightService({
       apiKey: "test-key",
-      cache,
       fetch: fetchMock,
+      recordStore,
       repository: {
         listMessageContext: vi.fn().mockResolvedValue({
           messages: [createMessage({ senderType: "customer", seq: 20 })],
@@ -201,9 +219,56 @@ describe("CustomerResponsePreflightService", () => {
 
     const response = await service.assess(9001, request);
 
-    expect(response).toEqual(cachedResponse);
+    expect(response).toEqual({
+      assessment: persistedResult.assessment,
+      conversationId: request.conversationId,
+      evaluatedThroughMessageId: request.triggerMessageId,
+      nextAction: "confirm",
+      source: "model",
+    });
     expect(fetchMock).not.toHaveBeenCalled();
-    expect(cache.set).not.toHaveBeenCalled();
+    expect(recordStore.complete).not.toHaveBeenCalled();
+  });
+
+  it("keeps one shared model request running when a concurrent caller aborts", async () => {
+    const fetchStarted = createDeferred<void>();
+    const fetchResult = createDeferred<Response>();
+    const fetchMock = vi.fn(async () => {
+      fetchStarted.resolve();
+      return fetchResult.promise;
+    });
+    const repository = {
+      listMessageContext: vi.fn().mockResolvedValue({
+        messages: [createMessage({ senderType: "customer", seq: 20 })],
+        targetMessageId: request.triggerMessageId,
+      }),
+    };
+    const recordStore = createRecordStore();
+    const service = new ChatAgentPreflightService({
+      apiKey: "test-key",
+      fetch: fetchMock,
+      recordStore,
+      repository,
+    });
+    const abortController = new AbortController();
+
+    const first = service.assess(9001, request, abortController.signal);
+    await fetchStarted.promise;
+    const second = service.assess(9001, request);
+    abortController.abort();
+    await expect(first).rejects.toMatchObject({ name: "AbortError" });
+    fetchResult.resolve(createValidModelResponse());
+
+    const secondResponse = await second;
+
+    expect(secondResponse).toMatchObject({
+      assessment: { outcome: "response_needed" },
+      source: "model",
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(repository.listMessageContext).toHaveBeenCalledTimes(1);
+    expect(recordStore.claim).toHaveBeenCalledTimes(1);
+    expect(recordStore.complete).toHaveBeenCalledTimes(1);
   });
 
   it("returns the conservative fallback when the automatic preflight budget is exhausted", async () => {
@@ -211,10 +276,11 @@ describe("CustomerResponsePreflightService", () => {
       reserve: vi.fn().mockResolvedValue(false),
     };
     const fetchMock = vi.fn();
-    const service = new CustomerResponsePreflightService({
+    const service = new ChatAgentPreflightService({
       apiKey: "test-key",
       automaticUsageLimiter: limiter,
       fetch: fetchMock,
+      recordStore: createRecordStore(),
       repository: {
         listMessageContext: vi.fn().mockResolvedValue({
           messages: [createMessage({ senderType: "customer", seq: 20 })],
@@ -224,6 +290,7 @@ describe("CustomerResponsePreflightService", () => {
     });
 
     const response = await service.assess(9001, request);
+    const repeatedResponse = await service.assess(9001, request);
 
     expect(response).toMatchObject({
       assessment: {
@@ -233,11 +300,13 @@ describe("CustomerResponsePreflightService", () => {
       source: "fallback",
     });
     expect(limiter.reserve).toHaveBeenCalledWith({
-      key: "chatai:chat:customer-response-preflight:rate:9001:144:initial",
+      key: "chatai:chat:chat-agent-preflight:rate:9001:144:initial",
       limit: 3,
       ttlSeconds: 60,
     });
     expect(fetchMock).not.toHaveBeenCalled();
+    expect(repeatedResponse).toEqual(response);
+    expect(limiter.reserve).toHaveBeenCalledTimes(1);
   });
 
   it("falls back when the model response is invalid", async () => {
@@ -247,15 +316,21 @@ describe("CustomerResponsePreflightService", () => {
         targetMessageId: request.triggerMessageId,
       }),
     };
-    const service = new CustomerResponsePreflightService({
+    const recordStore = createRecordStore();
+    const service = new ChatAgentPreflightService({
       apiKey: "test-key",
       fetch: vi
         .fn()
         .mockResolvedValue(
-          new Response(JSON.stringify({ choices: [{ message: { content: "not json" } }] }), {
-            status: 200,
-          }),
+          new Response(
+            JSON.stringify({
+              choices: [{ message: { content: "not json" } }],
+              usage: { completion_tokens: 3, prompt_tokens: 80, total_tokens: 83 },
+            }),
+            { status: 200 },
+          ),
         ),
+      recordStore,
       repository,
     });
 
@@ -269,8 +344,88 @@ describe("CustomerResponsePreflightService", () => {
       },
       source: "fallback",
     });
+    expect(recordStore.complete).toHaveBeenCalledWith(
+      expect.objectContaining({
+        errorCode: "invalid_response",
+        tokenUsage: {
+          completion_tokens: 3,
+          prompt_tokens: 80,
+          total_tokens: 83,
+        },
+      }),
+    );
   });
 });
+
+function createRecordStore(
+  completedResult?: StoredChatAgentPreflightResult,
+): ChatAgentPreflightRecordStore & {
+  claim: ReturnType<typeof vi.fn>;
+  complete: ReturnType<typeof vi.fn>;
+  findCompleted: ReturnType<typeof vi.fn>;
+} {
+  let record:
+    | { claimToken: string; status: "running" }
+    | { result: StoredChatAgentPreflightResult; status: "completed" }
+    | undefined = completedResult
+    ? { result: completedResult, status: "completed" }
+    : undefined;
+
+  return {
+    claim: vi.fn(async (input) => {
+      if (record?.status === "completed") {
+        return { kind: "completed" as const, result: record.result };
+      }
+
+      if (record?.status === "running") {
+        return { kind: "running" as const };
+      }
+
+      record = { claimToken: input.claimToken, status: "running" };
+      return { kind: "claimed" as const };
+    }),
+    complete: vi.fn(async (input) => {
+      if (
+        record?.status !== "running" ||
+        record.claimToken !== input.claimToken
+      ) {
+        return false;
+      }
+
+      record = { result: input.result, status: "completed" };
+      return true;
+    }),
+    findCompleted: vi.fn(async () =>
+      record?.status === "completed" ? record.result : undefined,
+    ),
+  };
+}
+
+function createValidModelResponse() {
+  const assessment: ChatAgentAssessment = {
+    direction: "provide_response",
+    reasoningSummary: "客户仍在等待问题处理",
+    outcome: "response_needed",
+  };
+
+  return new Response(
+    JSON.stringify({
+      choices: [{ message: { content: JSON.stringify(assessment) } }],
+    }),
+    { status: 200 },
+  );
+}
+
+function createDeferred<T>() {
+  let resolve!: (value: T | PromiseLike<T>) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise;
+    reject = rejectPromise;
+  });
+
+  return { promise, reject, resolve };
+}
 
 function createMessage(
   overrides: Partial<WorkbenchMessageDto> &

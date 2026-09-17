@@ -1922,15 +1922,10 @@ export async function registerChatRoutes(app: FastifyInstance) {
     },
     async (request) => {
       assertChatWriteAccess(request);
-      const response = await getWorkbenchService(app, request).sendSmartReplyAnswer(
+      return getWorkbenchService(app, request).sendSmartReplyAnswer(
         getSubUserId(request),
         request.body satisfies WorkbenchSmartReplySendAnswerRequest,
       );
-      await app.customerResponsePreflightService.refreshAssistance(
-        request.user.uid,
-        request.body.conversationId,
-      );
-      return response;
     },
   );
 
@@ -2109,15 +2104,10 @@ export async function registerChatRoutes(app: FastifyInstance) {
     },
     async (request) => {
       assertChatSendAccess(request);
-      const response = await getWorkbenchService(app, request).sendMessage(
+      return getWorkbenchService(app, request).sendMessage(
         getSubUserId(request),
         request.body satisfies WorkbenchSendMessagePayload,
       );
-      await app.customerResponsePreflightService.refreshAssistance(
-        request.user.uid,
-        request.body.conversationId,
-      );
-      return response;
     },
   );
 
@@ -2131,15 +2121,10 @@ export async function registerChatRoutes(app: FastifyInstance) {
     },
     async (request) => {
       assertChatSendAccess(request);
-      const response = await getWorkbenchService(app, request).retryMessage(
+      return getWorkbenchService(app, request).retryMessage(
         getSubUserId(request),
         request.body satisfies WorkbenchRetryMessageRequest,
       );
-      await app.customerResponsePreflightService.refreshAssistance(
-        request.user.uid,
-        request.body.conversationId,
-      );
-      return response;
     },
   );
 

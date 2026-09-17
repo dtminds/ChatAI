@@ -204,36 +204,6 @@ function createSmartReplyTextMessageDto({
   };
 }
 
-function createSmartReplyVoiceMessageDto({
-  id,
-  seq,
-  transVoiceText,
-}: {
-  id: string;
-  seq: number;
-  transVoiceText?: string;
-}): WorkbenchMessageDto {
-  return {
-    content: {
-      audioUrl: `https://b5.bokr.com.cn/s5/msg/20260525/${id}.amr`,
-      durationLabel: "11\"",
-      playbackUrl: `https://b5.bokr.com.cn/s5/playable-voice/20260525/${id}.wav`,
-      transFileUrlPersisted: true,
-      transVoiceText,
-    },
-    contentType: "voice",
-    conversationId: "conv-001",
-    createdAt: 1_778_400_000_000 + seq * 1_000,
-    customerId: "cust-001",
-    msgid: id,
-    rawMsgtype: "voice",
-    seatId: "drc",
-    senderType: "customer",
-    seq,
-    status: "sent",
-  };
-}
-
 describe("useWorkbenchStore", () => {
   beforeEach(() => {
     resetWorkbenchStoreTestState();
@@ -2349,121 +2319,6 @@ describe("useWorkbenchStore", () => {
     ).toEqual(["101", "100"]);
   });
 
-  it("auto-generates only the latest unanswered customer message after loading a conversation", async () => {
-    const baseService = createMockWorkbenchService();
-    const observedAutoRequests: Array<{ conversationId: string; msgId: number }> = [];
-
-    setWorkbenchService({
-      ...baseService,
-      async getMessages(conversationId, options) {
-        const page = await baseService.getMessages(conversationId, options);
-
-        if (conversationId !== "conv-001") {
-          return page;
-        }
-
-        return {
-          ...page,
-          messages: [
-            createSmartReplyTextMessageDto({
-              id: "msg-answered",
-              seq: 1,
-              text: "已经被客服回复的问题",
-            }),
-            createSmartReplyTextMessageDto({
-              id: "msg-agent",
-              senderType: "agent",
-              seq: 2,
-              text: "客服已回复",
-            }),
-            ...Array.from({ length: 6 }, (_, index) =>
-              createSmartReplyTextMessageDto({
-                id: `msg-unanswered-${index + 1}`,
-                seq: index + 3,
-                text: `待回复问题 ${index + 1}`,
-              }),
-            ),
-          ],
-        };
-      },
-      async requestSmartReplyAutoGeneralAnswer(request) {
-        observedAutoRequests.push(request);
-
-        return { id: "88" };
-      },
-      async pollSmartReplies() {
-        return { suggestions: [] };
-      },
-    });
-
-    await useWorkbenchStore.getState().initializeWorkbench();
-
-    expect(observedAutoRequests).toEqual([
-      {
-        conversationId: "conv-001",
-        msgId: 8,
-      },
-    ]);
-  });
-
-  it("waits for voice transcription before auto-generating smart reply", async () => {
-    const baseService = createMockWorkbenchService();
-    const observedAutoRequests: Array<{ conversationId: string; msgId: number }> = [];
-
-    setWorkbenchService({
-      ...baseService,
-      async getMessages(conversationId, options) {
-        const page = await baseService.getMessages(conversationId, options);
-
-        if (conversationId !== "conv-001") {
-          return page;
-        }
-
-        return {
-          ...page,
-          messages: [
-            createSmartReplyVoiceMessageDto({
-              id: "msg-voice-9",
-              seq: 9,
-              transVoiceText: "",
-            }),
-          ],
-        };
-      },
-      async requestSmartReplyAutoGeneralAnswer(request) {
-        observedAutoRequests.push(request);
-
-        return { id: "voice-smart-reply-9" };
-      },
-      async pollSmartReplies() {
-        return { suggestions: [] };
-      },
-      async transcribeVoiceMessage(input) {
-        return {
-          messageSeq: input.messageSeq,
-          transVoiceText: "识别后的客户问题",
-          transVoiceTextPersisted: true,
-        };
-      },
-    });
-
-    await useWorkbenchStore.getState().initializeWorkbench();
-
-    expect(observedAutoRequests).toEqual([]);
-
-    await useWorkbenchStore.getState().transcribeVoiceMessage(
-      "conv-001",
-      "9",
-    );
-
-    expect(observedAutoRequests).toEqual([
-      {
-        conversationId: "conv-001",
-        msgId: 9,
-      },
-    ]);
-  });
-
   it("adds latest page non-terminal smart replies to polling", async () => {
     const baseService = createMockWorkbenchService();
     const observedSmartReplyRequests: WorkbenchSmartReplyPollRequest[] = [];
@@ -2602,7 +2457,7 @@ describe("useWorkbenchStore", () => {
     ).toEqual({});
   });
 
-  it("keeps but hides page smart replies for messages already followed by an agent reply", async () => {
+  it("keeps but does not activate page smart replies", async () => {
     const baseService = createMockWorkbenchService();
 
     setWorkbenchService({
@@ -2678,10 +2533,10 @@ describe("useWorkbenchStore", () => {
       useWorkbenchStore.getState().smartReplyActiveMessageKeyByConversationId[
         "conv-001"
       ],
-    ).toBe("9");
+    ).toBeUndefined();
   });
 
-  it("activates a failed smart reply returned for the latest customer message", async () => {
+  it("loads a failed smart reply without activating it", async () => {
     const baseService = createMockWorkbenchService();
 
     setWorkbenchService({
@@ -2728,7 +2583,9 @@ describe("useWorkbenchStore", () => {
       },
     });
     expect(state.smartReplyHiddenMessageKeysByConversationId["conv-001"]).toEqual({});
-    expect(state.smartReplyActiveMessageKeyByConversationId["conv-001"]).toBe("9");
+    expect(
+      state.smartReplyActiveMessageKeyByConversationId["conv-001"],
+    ).toBeUndefined();
     expect(state.smartReplyPendingMessageKeysByConversationId["conv-001"]).toEqual(
       {},
     );
@@ -3047,7 +2904,6 @@ describe("useWorkbenchStore", () => {
 
   it("stops polling semantic-wait smart replies that are no longer the latest customer message", async () => {
     const baseService = createMockWorkbenchService();
-    const observedAutoRequests: Array<{ conversationId: string; msgId: number }> = [];
     const observedSmartReplyRequests: WorkbenchSmartReplyPollRequest[] = [];
 
     setWorkbenchService({
@@ -3085,11 +2941,6 @@ describe("useWorkbenchStore", () => {
           ],
         };
       },
-      async requestSmartReplyAutoGeneralAnswer(request) {
-        observedAutoRequests.push(request);
-
-        return { id: "auto-10" };
-      },
       async pollSmartReplies(request) {
         observedSmartReplyRequests.push(request);
 
@@ -3110,109 +2961,14 @@ describe("useWorkbenchStore", () => {
 
     await useWorkbenchStore.getState().initializeWorkbench();
 
-    await waitForStoreAssertion(() => {
-      expect(observedAutoRequests).toEqual([
-        {
-          conversationId: "conv-001",
-          msgId: 10,
-        },
-      ]);
-      expect(
-        useWorkbenchStore.getState().smartReplyPendingMessageKeysByConversationId[
-          "conv-001"
-        ],
-      ).not.toHaveProperty("9");
-    });
+    expect(
+      useWorkbenchStore.getState().smartReplyPendingMessageKeysByConversationId[
+        "conv-001"
+      ],
+    ).not.toHaveProperty("9");
     expect(
       observedSmartReplyRequests.some((request) => request.msgIds.includes(9)),
     ).toBe(false);
-  });
-
-  it("automatically creates a smart reply task for the latest customer message without a recommendation", async () => {
-    const baseService = createMockWorkbenchService();
-    const observedAutoRequests: Array<{ conversationId: string; msgId: number }> = [];
-    const autoRequest = createDeferred<{ id: string }>();
-
-    setWorkbenchService({
-      ...baseService,
-      async requestSmartReplyAutoGeneralAnswer(request) {
-        observedAutoRequests.push(request);
-
-        return autoRequest.promise;
-      },
-      async pollSmartReplies() {
-        return { suggestions: [] };
-      },
-    });
-
-    await useWorkbenchStore.getState().initializeWorkbench();
-
-    expect(observedAutoRequests).toEqual([
-      {
-        conversationId: "conv-001",
-        msgId: 9,
-      },
-    ]);
-    expect(
-      useWorkbenchStore.getState().smartReplyAutoPendingMessageKeysByConversationId[
-        "conv-001"
-      ],
-    ).toMatchObject({
-      "9": true,
-    });
-    expect(
-      useWorkbenchStore.getState().smartReplyPendingMessageKeysByConversationId["conv-001"],
-    ).not.toHaveProperty("9");
-
-    autoRequest.resolve({ id: "88" });
-    await waitForStoreAssertion(() => {
-      expect(
-        useWorkbenchStore.getState().smartReplyAutoPendingMessageKeysByConversationId[
-          "conv-001"
-        ],
-      ).not.toHaveProperty("9");
-      expect(
-        useWorkbenchStore.getState().smartReplyPendingMessageKeysByConversationId[
-          "conv-001"
-        ],
-      ).toMatchObject({
-        "9": true,
-      });
-    });
-  });
-
-  it("asks before auto-generating when the composer already has a draft", async () => {
-    const baseService = createMockWorkbenchService();
-    const observedAutoRequests: Array<{ conversationId: string; msgId: number }> = [];
-
-    setWorkbenchService({
-      ...baseService,
-      async requestSmartReplyAutoGeneralAnswer(request) {
-        observedAutoRequests.push(request);
-        return { id: "88" };
-      },
-      async pollSmartReplies() {
-        return { suggestions: [] };
-      },
-    });
-    useWorkbenchStore.getState().saveComposerDraft("conv-001", {
-      draft: "客服正在编辑的草稿",
-      quotedMessage: null,
-      segments: [{ text: "客服正在编辑的草稿", type: "text" }],
-    });
-
-    await useWorkbenchStore.getState().initializeWorkbench();
-
-    expect(observedAutoRequests).toEqual([]);
-    expect(
-      useWorkbenchStore.getState()
-        .smartReplyDraftConfirmationMessageKeyByConversationId["conv-001"],
-    ).toBe("9");
-    expect(
-      useWorkbenchStore.getState().smartReplyActiveMessageKeyByConversationId[
-        "conv-001"
-      ],
-    ).toBe("9");
   });
 
   it("starts manual generation only after the composer overwrite is confirmed", async () => {
@@ -3285,47 +3041,6 @@ describe("useWorkbenchStore", () => {
       useWorkbenchStore.getState()
         .smartReplyDraftConfirmationMessageKeyByConversationId["conv-001"],
     ).toBeUndefined();
-  });
-
-  it("clears auto smart reply preview pending when a background conversation auto request completes", async () => {
-    const baseService = createMockWorkbenchService();
-    const autoRequest = createDeferred<{ id: string }>();
-
-    setWorkbenchService({
-      ...baseService,
-      async requestSmartReplyAutoGeneralAnswer() {
-        return autoRequest.promise;
-      },
-      async pollSmartReplies() {
-        return { suggestions: [] };
-      },
-    });
-
-    await useWorkbenchStore.getState().initializeWorkbench();
-
-    expect(
-      useWorkbenchStore.getState().smartReplyAutoPendingMessageKeysByConversationId[
-        "conv-001"
-      ],
-    ).toMatchObject({
-      "9": true,
-    });
-
-    useWorkbenchStore.setState({ activeConversationId: "conv-002" });
-
-    autoRequest.resolve({ id: "88" });
-    await waitForStoreAssertion(() => {
-      expect(
-        useWorkbenchStore.getState().smartReplyAutoPendingMessageKeysByConversationId[
-          "conv-001"
-        ],
-      ).not.toHaveProperty("9");
-    });
-    expect(
-      useWorkbenchStore.getState().smartReplyPendingMessageKeysByConversationId[
-        "conv-001"
-      ],
-    ).not.toHaveProperty("9");
   });
 
   it("does not automatically create a smart reply task without chat send permission", async () => {
@@ -4165,63 +3880,6 @@ describe("useWorkbenchStore", () => {
     vi.useRealTimers();
   });
 
-  it("auto-generates a smart reply task for a newly loaded customer message", async () => {
-    const baseService = createMockWorkbenchService();
-    const observedAutoRequests: Array<{ conversationId: string; msgId: number }> = [];
-
-    setWorkbenchService({
-      ...baseService,
-      async poll(request) {
-        const response = await baseService.poll(request);
-
-        if (request.activeConversationId !== "conv-001") {
-          return response;
-        }
-
-        return {
-          ...response,
-          activeConversationMessages: [
-            createSmartReplyTextMessageDto({
-              id: "msg-new-customer",
-              seq: 11,
-              text: "新客户问题",
-            }),
-          ],
-        };
-      },
-      async requestSmartReplyAutoGeneralAnswer(request) {
-        observedAutoRequests.push(request);
-
-        return { id: "88" };
-      },
-      async pollSmartReplies() {
-        return { suggestions: [] };
-      },
-    });
-
-    await useWorkbenchStore.getState().initializeWorkbench();
-    await new Promise((resolve) => globalThis.setTimeout(resolve, 0));
-    useWorkbenchStore.setState((state) => ({
-      smartReplyHiddenMessageKeysByConversationId: {
-        ...state.smartReplyHiddenMessageKeysByConversationId,
-        "conv-001": {
-          ...(state.smartReplyHiddenMessageKeysByConversationId["conv-001"] ?? {}),
-          "9": true,
-        },
-      },
-    }));
-    observedAutoRequests.length = 0;
-
-    await useWorkbenchStore.getState().pollWorkbench();
-
-    expect(observedAutoRequests).toEqual([
-      {
-        conversationId: "conv-001",
-        msgId: 11,
-      },
-    ]);
-  });
-
   it("keeps polled active conversation messages in message time order", async () => {
     const baseService = createMockWorkbenchService();
 
@@ -4329,72 +3987,6 @@ describe("useWorkbenchStore", () => {
     ]);
   });
 
-  it("waits for a customer image download to finish before auto-generating smart reply", async () => {
-    const baseService = createMockWorkbenchService();
-    const observedAutoRequests: Array<{ conversationId: string; msgId: number }> = [];
-
-    setWorkbenchService({
-      ...baseService,
-      async getMessages(conversationId, options) {
-        const page = await baseService.getMessages(conversationId, options);
-
-        if (conversationId !== "conv-001") {
-          return page;
-        }
-
-        return {
-          ...page,
-          messages: [
-            ...page.messages,
-            {
-              content: {
-                alt: "产品图片",
-                downloadStatus: "ing",
-                fileUrl: "https://b5.bokr.com.cn/chat-images/product.png",
-              },
-              contentType: "image",
-              conversationId: "conv-001",
-              createdAt: 1_778_400_011_000,
-              customerId: "cust-001",
-              msgid: "img-11",
-              rawMsgtype: "image",
-              seatId: "drc",
-              senderType: "customer",
-              seq: 11,
-              status: "sent",
-            },
-          ],
-        };
-      },
-      async requestSmartReplyAutoGeneralAnswer(request) {
-        observedAutoRequests.push(request);
-
-        return { id: "88" };
-      },
-      async pollSmartReplies() {
-        return { suggestions: [] };
-      },
-    });
-
-    await useWorkbenchStore.getState().initializeWorkbench();
-    await new Promise((resolve) => globalThis.setTimeout(resolve, 0));
-
-    expect(observedAutoRequests).toEqual([]);
-
-    useWorkbenchStore.getState().updateMessageDownloadContent("conv-001", "11", {
-      downloadStatus: "finished",
-    });
-
-    await new Promise((resolve) => globalThis.setTimeout(resolve, 0));
-
-    expect(observedAutoRequests).toEqual([
-      {
-        conversationId: "conv-001",
-        msgId: 11,
-      },
-    ]);
-  });
-
   it("does not auto-generate smart reply for a polled customer image before its url is ready", async () => {
     const baseService = createMockWorkbenchService();
     const observedAutoRequests: Array<{ conversationId: string; msgId: number }> = [];
@@ -4457,105 +4049,6 @@ describe("useWorkbenchStore", () => {
       imageUrl: "",
       type: "image",
     });
-  });
-
-  it("shows the skipped smart reply card after auto preview detects incomplete content", async () => {
-    vi.setSystemTime(new Date("2026-05-29T12:00:00+08:00"));
-    const baseService = createMockWorkbenchService();
-    const observedAutoRequests: Array<{ conversationId: string; msgId: number }> = [];
-    const observedGeneralAnswerRequests: Array<{
-      conversationId: string;
-      msgId: number;
-    }> = [];
-
-    setWorkbenchService({
-      ...baseService,
-      async requestSmartReplyAutoGeneralAnswer(request) {
-        observedAutoRequests.push(request);
-
-        throw {
-          code: "WORKBENCH_INTERNAL_API_BUSINESS_FAILED",
-          details: {
-            error: 999,
-            errorMsg: "content_incomplete_skip",
-          },
-          message: "对话语意未完整",
-          status: 200,
-        };
-      },
-      async requestSmartReplyGeneralAnswer(request) {
-        observedGeneralAnswerRequests.push(request);
-
-        return { suggestion: null };
-      },
-      async pollSmartReplies() {
-        return { suggestions: [] };
-      },
-    });
-
-    await useWorkbenchStore.getState().initializeWorkbench();
-    await new Promise((resolve) => globalThis.setTimeout(resolve, 0));
-
-    expect(
-      useWorkbenchStore.getState().smartReplyByMessageIdByConversationId["conv-001"]?.[
-        "9"
-      ],
-    ).toMatchObject({
-      failReason: "这条消息信息不足，已跳过话术推荐",
-      pollComplete: true,
-      status: undefined,
-    });
-    expect(
-      useWorkbenchStore.getState().smartReplyPendingMessageKeysByConversationId["conv-001"],
-    ).not.toHaveProperty("9");
-    expect(
-      useWorkbenchStore.getState().smartReplyAutoPendingMessageKeysByConversationId[
-        "conv-001"
-      ],
-    ).not.toHaveProperty("9");
-    expect(
-      useWorkbenchStore.getState().smartReplyHiddenMessageKeysByConversationId[
-        "conv-001"
-      ],
-    ).not.toHaveProperty("9");
-
-    const skippedMessage = useWorkbenchStore
-      .getState()
-      .messagesByConversationId["conv-001"].find(
-        (item): item is Message & { role: "customer" } =>
-          item.role === "customer" && item.seq === 9,
-      );
-
-    expect(skippedMessage).toBeDefined();
-
-    await useWorkbenchStore.getState().pollWorkbench();
-
-    expect(observedAutoRequests).toEqual([
-      {
-        conversationId: "conv-001",
-        msgId: 9,
-      },
-    ]);
-
-    expect(
-      useWorkbenchStore.getState().smartReplyByMessageIdByConversationId["conv-001"]?.[
-        "9"
-      ],
-    ).toMatchObject({
-      failReason: "这条消息信息不足，已跳过话术推荐",
-      pollComplete: true,
-    });
-    expect(
-      useWorkbenchStore.getState().smartReplyHiddenMessageKeysByConversationId[
-        "conv-001"
-      ],
-    ).not.toHaveProperty("9");
-
-    await useWorkbenchStore
-      .getState()
-      .requestSmartReplyGeneralAnswer(skippedMessage!);
-
-    expect(observedGeneralAnswerRequests).toEqual([]);
   });
 
   it("keeps visible smart replies when an ordinary agent reply arrives", async () => {
@@ -6156,92 +5649,6 @@ describe("useWorkbenchStore", () => {
     expect(
       useWorkbenchStore.getState().smartReplyPendingMessageKeysByConversationId["conv-002"],
     ).toEqual({});
-  });
-
-  it("marks smart reply generation failed after the local timeout", async () => {
-    vi.useFakeTimers();
-    vi.setSystemTime(new Date("2026-05-29T12:00:00+08:00"));
-    const baseService = createMockWorkbenchService();
-
-    setWorkbenchService({
-      ...baseService,
-      async requestSmartReplyAutoGeneralAnswer() {
-        return { id: "88" };
-      },
-      async pollSmartReplies() {
-        return { suggestions: [] };
-      },
-    });
-
-    await useWorkbenchStore.getState().initializeWorkbench();
-    await Promise.resolve();
-    await Promise.resolve();
-
-    await vi.advanceTimersByTimeAsync(30_000);
-
-    const suggestion =
-      useWorkbenchStore.getState().smartReplyByMessageIdByConversationId["conv-001"]?.[
-        "9"
-      ];
-
-    expect(suggestion).toMatchObject({
-      failReason: "智能回复生成超时，请稍后重试",
-      generateStatus: 3,
-      pollComplete: true,
-    });
-    expect(
-      useWorkbenchStore.getState().smartReplyPendingMessageKeysByConversationId["conv-001"],
-    ).not.toHaveProperty("9");
-
-    vi.useRealTimers();
-  });
-
-  it("marks auto smart reply preview failed when auto request never returns", async () => {
-    vi.useFakeTimers();
-    vi.setSystemTime(new Date("2026-05-29T12:00:00+08:00"));
-    const baseService = createMockWorkbenchService();
-    const autoRequest = createDeferred<{ id: string }>();
-
-    setWorkbenchService({
-      ...baseService,
-      async requestSmartReplyAutoGeneralAnswer() {
-        return autoRequest.promise;
-      },
-      async pollSmartReplies() {
-        return { suggestions: [] };
-      },
-    });
-
-    await useWorkbenchStore.getState().initializeWorkbench();
-
-    expect(
-      useWorkbenchStore.getState().smartReplyAutoPendingMessageKeysByConversationId[
-        "conv-001"
-      ],
-    ).toMatchObject({
-      "9": true,
-    });
-
-    await vi.advanceTimersByTimeAsync(30_000);
-
-    const state = useWorkbenchStore.getState();
-    const suggestion = state.smartReplyByMessageIdByConversationId["conv-001"]?.[
-      "9"
-    ];
-
-    expect(suggestion).toMatchObject({
-      failReason: "智能回复生成超时，请稍后重试",
-      generateStatus: 3,
-      pollComplete: true,
-    });
-    expect(
-      state.smartReplyAutoPendingMessageKeysByConversationId["conv-001"],
-    ).not.toHaveProperty("9");
-    expect(
-      state.smartReplyPendingMessageKeysByConversationId["conv-001"],
-    ).not.toHaveProperty("9");
-
-    vi.useRealTimers();
   });
 
   it("does not start another smart reply while one is active", async () => {
@@ -11288,7 +10695,7 @@ describe("useWorkbenchStore", () => {
     });
   });
 
-  it("activates the latest cached smart reply after taking over the account", async () => {
+  it("does not activate a cached smart reply after taking over the account", async () => {
     await useWorkbenchStore.getState().initializeWorkbench();
     await useWorkbenchStore.getState().setActiveAccount("ndt");
 
@@ -11348,7 +10755,7 @@ describe("useWorkbenchStore", () => {
       useWorkbenchStore.getState().smartReplyActiveMessageKeyByConversationId[
         conversationId
       ],
-    ).toBe("99");
+    ).toBeUndefined();
   });
 
   it("returns the API error message when takeover fails", async () => {

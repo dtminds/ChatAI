@@ -1,7 +1,5 @@
 import {
-  CustomerResponseAssistanceMutationRequestSchema,
   CustomerResponsePreflightRequestSchema,
-  type CustomerResponseAssistanceMutationRequest,
   type CustomerResponsePreflightRequest,
 } from "@chatai/contracts";
 import type { FastifyInstance, FastifyRequest } from "fastify";
@@ -54,28 +52,6 @@ export async function registerCustomerResponsePreflightRoutes(
         request.raw.off("aborted", abortOnRequestAborted);
         reply.raw.off("close", abortOnResponseClosed);
       }
-    },
-  );
-
-  app.post<{ Body: CustomerResponseAssistanceMutationRequest }>(
-    "/api/server/customer-response-preflight/assistance",
-    {
-      preHandler: app.authenticate,
-      schema: { body: CustomerResponseAssistanceMutationRequestSchema },
-    },
-    async (request) => {
-      assertPreflightAccess(request);
-      const subUserId = request.user?.subUserId ?? "";
-      await getWorkbenchService(app, request).assertConversationOperable(
-        subUserId,
-        request.body.conversationId,
-      );
-
-      return app.customerResponsePreflightService.mutateAssistance(
-        request.user.uid,
-        subUserId,
-        request.body,
-      );
     },
   );
 }

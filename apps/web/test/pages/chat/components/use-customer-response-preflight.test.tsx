@@ -8,23 +8,16 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { useCustomerResponsePreflight } from "@/pages/chat/components/use-customer-response-preflight";
 import type { ChatMessage } from "@/pages/chat/chat-types";
 
-const {
-  mutateCustomerResponseAssistanceMock,
-  requestCustomerResponsePreflightMock,
-} = vi.hoisted(() => ({
-  mutateCustomerResponseAssistanceMock: vi.fn(),
+const { requestCustomerResponsePreflightMock } = vi.hoisted(() => ({
   requestCustomerResponsePreflightMock: vi.fn(),
 }));
 
 vi.mock("@/pages/chat/api/customer-response-preflight", () => ({
-  isCustomerResponsePreflightEnabled: () => true,
-  mutateCustomerResponseAssistance: mutateCustomerResponseAssistanceMock,
   requestCustomerResponsePreflight: requestCustomerResponsePreflightMock,
 }));
 
 describe("useCustomerResponsePreflight", () => {
   afterEach(() => {
-    mutateCustomerResponseAssistanceMock.mockReset();
     requestCustomerResponsePreflightMock.mockReset();
     vi.useRealTimers();
   });
@@ -35,10 +28,6 @@ describe("useCustomerResponsePreflight", () => {
     const response = createResponse("request_information");
     const deferred = createDeferred<CustomerResponsePreflightResponse>();
     requestCustomerResponsePreflightMock.mockReturnValue(deferred.promise);
-    mutateCustomerResponseAssistanceMock.mockResolvedValue({
-      active: true,
-      conversationId: "144",
-    });
     const onAccept = vi.fn();
     const { result } = renderHook(() =>
       useCustomerResponsePreflight({
@@ -79,10 +68,6 @@ describe("useCustomerResponsePreflight", () => {
       await Promise.resolve();
     });
 
-    expect(mutateCustomerResponseAssistanceMock).toHaveBeenCalledWith({
-      action: "activate",
-      conversationId: "144",
-    });
     expect(onAccept).toHaveBeenCalledWith({
       direction: "request_information",
       message,
@@ -191,42 +176,6 @@ describe("useCustomerResponsePreflight", () => {
     expect(result.current.phase).toBe("idle");
     expect(result.current.isActive).toBe(false);
   });
-
-  it("starts the Agent Turn directly when assistance is already active", async () => {
-    vi.useFakeTimers();
-    const message = createCustomerMessage(7003);
-    const response = createResponse("handle_request", "start_agent_turn");
-    const deferred = createDeferred<CustomerResponsePreflightResponse>();
-    requestCustomerResponsePreflightMock.mockReturnValue(deferred.promise);
-    const onAutoStart = vi.fn();
-    const onAccept = vi.fn();
-    const { result } = renderHook(() =>
-      useCustomerResponsePreflight({
-        blocked: false,
-        conversationId: "144",
-        enabled: true,
-        messages: [message],
-        onAccept,
-        onAutoStart,
-      }),
-    );
-
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(1_500);
-    });
-
-    await act(async () => {
-      deferred.resolve(response);
-      await deferred.promise;
-    });
-
-    expect(result.current.phase).toBe("idle");
-    expect(onAccept).not.toHaveBeenCalled();
-    expect(onAutoStart).toHaveBeenCalledWith({
-      direction: "handle_request",
-      message,
-    });
-  });
 });
 
 function createCustomerMessage(seq: number): ChatMessage {
@@ -245,17 +194,16 @@ function createCustomerMessage(seq: number): ChatMessage {
 
 function createResponse(
   direction: "provide_response" | "request_information" | "handle_request",
-  nextAction: "confirm" | "start_agent_turn" = "confirm",
 ): CustomerResponsePreflightResponse {
   return {
     assessment: {
       direction,
-      intentSummary: "客户需要补充信息",
+      reasoningSummary: "客户需要补充信息",
       outcome: "response_needed",
     },
     conversationId: "144",
     evaluatedThroughMessageId: "7003",
-    nextAction,
+    nextAction: "confirm",
     source: "model",
   };
 }

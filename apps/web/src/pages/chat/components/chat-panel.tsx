@@ -580,7 +580,6 @@ export function ChatPanel({
       canStartPreflightAgentTurn,
     messages,
     onAccept: startAgentTurnForPreflight,
-    onAutoStart: startAgentTurnForPreflight,
   });
   const smartReplyComposer = useSmartReplyComposer({
     approvedOverwriteLookupKey,
@@ -641,18 +640,17 @@ export function ChatPanel({
     presentedAgentTurnView ?? staticAIAssistantDebugView;
   const resolvedAIAssistantStatus =
     aiAssistantDebugView?.status ??
-    (customerResponsePreflight.phase === "analyzing"
-      ? "thinking"
-      : customerResponsePreflight.phase === "confirmation"
-        ? "confirmation"
-        : smartReplyUIPhase === "applying"
-          ? "thinking"
-          : smartReplyTurn
-            ? getSmartReplyStatusBarStatus(smartReplyTurn.phase)
-            : aiAssistantStatus);
+    (customerResponsePreflight.phase === "confirmation"
+      ? "confirmation"
+      : smartReplyUIPhase === "applying"
+        ? "thinking"
+        : smartReplyTurn
+          ? getSmartReplyStatusBarStatus(smartReplyTurn.phase)
+          : aiAssistantStatus);
   const resolvedAIAssistantStatusLabel = aiAssistantDebugView
     ? aiAssistantDebugView.label
-    : customerResponsePreflight.label
+    : customerResponsePreflight.phase === "confirmation" &&
+        customerResponsePreflight.label
       ? customerResponsePreflight.label
       : smartReplyUIPhase === "applying"
         ? SMART_REPLY_INLINE_LOADING_HINT
@@ -950,9 +948,7 @@ export function ChatPanel({
                 tone: "quiet",
               },
               {
-                disabled:
-                  !canStartPreflightAgentTurn ||
-                  customerResponsePreflight.isAccepting,
+                disabled: !canStartPreflightAgentTurn,
                 id: "start-preflight",
                 label: getCustomerResponsePreflightActionLabel(
                   customerResponsePreflight.direction,

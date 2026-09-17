@@ -2,7 +2,7 @@
 
 - 日期：2026-09-17
 - 状态：待产品评审
-- 范围：客户新消息进入半托管辅助条前的回应必要性判断、意图摘要与启动建议
+- 范围：客户新消息进入半托管辅助条前的回应必要性判断、对话进展摘要与启动建议
 - 关联产品方案：[`2026-09-09-semi-managed-mode-2.md`](./2026-09-09-semi-managed-mode-2.md)
 - 关联前端协议：[`../specs/2026-09-15-semi-managed-agent-turn-frontend-protocol.md`](../specs/2026-09-15-semi-managed-agent-turn-frontend-protocol.md)
 
@@ -13,17 +13,17 @@
 1. 当前是否需要继续回应客户。
 2. 如果需要，下一步回应方向是什么。
 
-AI 持续协助尚未开启时，需要回应则由辅助条展示客户意图摘要和一个符合当前方向的主按钮，由客服决定是否开始 AI 处理。无需回应时，不启动 AI 处理，辅助条回到等待状态，并保留客服主动发起处理的入口。
+需要回应时，辅助条展示当前对话进展摘要和一个符合当前方向的主按钮，由客服决定是否开始本次 AI 处理。无需回应时，不启动 AI 处理，辅助条保持等待状态，并保留客服主动发起处理的入口。
 
 轻量模型不理解 Agent Turn、技能、工具、SOP、审批策略或执行步骤。它只理解会话，并给出面向客服的回应建议。系统负责将建议映射为辅助条交互和后续 Agent Turn。
 
 首版建议：
 
-- AI 持续协助尚未开启时，`response_needed` 由客服首次确认开始。
+- 每个新的客户消息批次得到 `response_needed` 后，都由客服明确确认是否开始本次处理。
 - 业务结果只保留 `no_response_needed` 和 `response_needed` 两类。
 - `response_needed` 下只枚举三种回应方向：起草回复、起草追问、开始处理。
 - 模型不确定、超时或输出无效时，保守降级为建议回应，不能静默跳过客户消息。
-- 客服首次确认开始后，会话进入有时限的“AI 持续协助”状态；后续客户消息不重复要求客服点击开始。
+- 一次确认只授权当前消息批次对应的 Agent Turn，不产生隐藏的会话级自动处理授权。
 
 ### 1.1 与半托管 2.0 原方案的关系
 
@@ -32,12 +32,12 @@ AI 持续协助尚未开启时，需要回应则由辅助条展示客户意图�
 ```text
 原方案：客户新消息 → 直接进入能力匹配和 Agent 处理
 
-本提案：客户新消息 → 客户回应预判 → 客服确认 → 进入 AI 持续协助
+本提案：客户新消息 → 客户回应预判 → 客服确认 → 启动本次 Agent Turn
 ```
 
 首次打开一个最后消息由客户发送、且尚未被客服处理的会话，同样只触发回应预判，不直接启动 Agent Turn。客服从消息菜单或 `/` 主动请求 AI 处理时，属于明确的人工作用，不需要再次经过“是否值得回应”的预判，可以直接进入 Agent Turn。
 
-进入 AI 持续协助后，每次客户形成新的消息批次，系统可以继续静默执行回应预判：`no_response_needed` 时保持等待，`response_needed` 时自动启动新的 Agent Turn，不再重复展示启动 confirmation。
+客户后续形成新的消息批次时，系统重新静默执行回应预判：`no_response_needed` 时保持等待，`response_needed` 时重新展示启动 confirmation。系统不会因为客服曾启动过一次 Agent Turn，就自动抢占 Composer 或继续运行下一轮 Agent Turn。
 
 该调整不改变后续已确认的授权边界：只读查询是否自动执行、写工具是否需要审批、SOP 是否整体授权，仍由 Agent Turn 和确定性执行策略负责。
 
@@ -53,11 +53,7 @@ flowchart TD
   GENERIC[通用 confirmation<br/>客户补充了新消息<br/>忽略 / 开始处理]
   PREFLIGHT[执行 Preflight<br/>判断是否需要回应及回应方向]
   OUTCOME{Preflight 结果}
-  ASSIST{Redis 中持续协助<br/>状态有效?}
-  CONFIRM[意图 confirmation<br/>忽略 / 起草回复<br/>起草追问 / 开始处理]
-  ACTIVATE[写入持续协助状态<br/>Backend Redis + TTL]
-  BLOCKED{存在阻塞状态?}
-  PENDING[只保留最新消息上下文<br/>等待当前操作结束]
+  CONFIRM[对话进展 confirmation<br/>忽略 / 起草回复<br/>起草追问 / 开始处理]
   MANUAL[客服从消息菜单或 / 主动发起]
 
   WAIT --> MSG
@@ -69,15 +65,9 @@ flowchart TD
   LIMIT -- 可用 --> PREFLIGHT
   PREFLIGHT --> OUTCOME
   OUTCOME -- no_response_needed --> WAIT
-  OUTCOME -- response_needed --> ASSIST
-  ASSIST -- 未开启 --> CONFIRM
+  OUTCOME -- response_needed --> CONFIRM
   CONFIRM -- 忽略 --> WAIT
-  CONFIRM -- 确认 --> ACTIVATE
-  ACTIVATE --> TURN_START
-  ASSIST -- 已开启 --> BLOCKED
-  BLOCKED -- 是 --> PENDING
-  PENDING -->|阻塞解除后重新判断| MERGE
-  BLOCKED -- 否 --> TURN_START
+  CONFIRM -- 确认 --> TURN_START
   GENERIC -- 忽略 --> WAIT
   GENERIC -- 开始处理 --> TURN_START
   MANUAL --> TURN_START
@@ -113,24 +103,20 @@ flowchart TD
     THINKING -- 异常或终止 --> TERMINAL
   end
 
-  DECIDE -->|持续协助状态保留| WAIT
+  DECIDE --> WAIT
   FINISH -->|no_reply| WAIT
   TERMINAL --> WAIT
-
-  ASSIST_STATE[(Backend Redis<br/>会话级持续协助状态)]
-  ACTIVATE -. 创建或续期 .-> ASSIST_STATE
-  ASSIST_STATE -. TTL 过期 / 转交 / 关闭 .-> WAIT
 ```
 
 读图规则：
 
-1. waiting 始终只展示「正在等待 XXX 的消息」，不暴露持续协助、限流或内部状态。
-2. 持续协助未开启时，第一次 `response_needed` 必须由客服确认。
-3. 持续协助有效时，Preflight 仍然静默运行；`response_needed` 自动启动 Agent Turn，`no_response_needed` 回到 waiting。
+1. waiting 始终只展示「正在等待 XXX 的消息」，不暴露 Preflight、限流或内部状态。
+2. 每次 `response_needed` 都必须由客服确认后，才启动当前消息批次对应的 Agent Turn。
+3. Preflight 静默运行；`no_response_needed` 保持 waiting，`response_needed` 才把辅助条切换为 confirmation。
 4. Preflight 超过自动调用上限时不继续消耗模型，降级为通用「开始处理」confirmation。
 5. 单个会话只允许一个运行中 Agent Turn、待审批节点、待澄清节点或待处理回复草稿；新消息只保留最新上下文，不并发创建 Turn。
-6. Tool Policy 决定工具自动执行还是请求人工审批，Preflight 和持续协助状态都不能绕过该策略。
-7. 单次 Turn 结束后持续协助状态仍可保留；Redis TTL 过期、会话转交、关闭 AI 辅助或客服主动结束后才失效。
+6. Tool Policy 决定工具自动执行还是请求人工审批，Preflight confirmation 不能绕过该策略。
+7. 单次 Turn 结束后回到 waiting；后续客户消息重新经过 Preflight 和客服确认。
 
 ## 2. 背景与问题
 
@@ -151,7 +137,7 @@ flowchart TD
 - 在 AI 开始处理前，用一句话向客服呈现对客户诉求的理解。
 - 根据下一步回应方向提供更准确的主按钮文案。
 - 将是否开始 AI 处理交给客服，降低错误理解直接进入复杂执行流程的风险。
-- 为持续协助的有效期、自动处理频率和退出规则积累真实数据。
+- 为回应预判质量、客服采纳率和自动调用频率积累真实数据。
 
 ### 3.2 非目标
 
@@ -182,7 +168,7 @@ flowchart TD
 | 结果 | 产品含义 | 系统行为 |
 | --- | --- | --- |
 | `no_response_needed` | 当前消息不需要继续回应或处理 | 不启动 Agent Turn，回到等待状态 |
-| `response_needed` | 当前消息值得客服继续回应或处理 | 展示意图摘要和启动确认 |
+| `response_needed` | 当前消息值得客服继续回应或处理 | 展示对话进展摘要和启动确认 |
 
 `human_handoff`、`actionable`、`complaint`、`after_sales` 等不作为一级结果。它们描述的是客户意图或后续业务路径，不回答“当前是否需要回应”这一核心问题。
 
@@ -215,7 +201,7 @@ flowchart TD
 2. 可以通过查询、核实或业务办理继续推进，选择 `handle_request`。
 3. 已具备直接回应条件，选择 `provide_response`。
 
-意图摘要可以保留复合诉求，不需要为每个诉求生成独立按钮。
+对话进展摘要可以保留复合诉求，不需要为每个诉求生成独立按钮。
 
 ## 6. 输出内容
 
@@ -225,7 +211,7 @@ flowchart TD
 type CustomerResponseAssessment =
   | {
       outcome: "no_response_needed";
-      reasonSummary: string;
+      reasoningSummary: string;
     }
   | {
       outcome: "response_needed";
@@ -233,17 +219,19 @@ type CustomerResponseAssessment =
         | "provide_response"
         | "request_information"
         | "handle_request";
-      intentSummary: string;
+      reasoningSummary: string;
     };
 ```
 
 ### 6.2 文案要求
 
-`intentSummary` 和 `reasonSummary` 必须：
+`reasoningSummary` 必须：
 
 - 使用一句简短中文，可直接展示在辅助条中。
 - 基于客户消息和会话上下文，不补充客户没有表达的事实。
-- 描述客户诉求或无需回应的原因，不描述 AI 执行方案。
+- 描述当前对话进展，以及为什么需要继续回应或可以停止回应，不是固定的客户意图标签。
+- 结合当前客户消息、上一条客服消息和更早的会话上下文，体现本轮相对上一轮的变化。
+- 客户继续追问时，体现仍有疑问、继续追问或问题尚未解决，不能机械重复上一轮摘要。
 - 不出现技能名、工具名、SOP 名和审批策略。
 - 不输出“建议调用订单查询”“建议执行退款”等内部规划。
 - 不让模型生成按钮文案；按钮由前端按 `direction` 固定映射。
@@ -252,6 +240,7 @@ type CustomerResponseAssessment =
 
 ```text
 客户希望查询订单物流状态
+客户对物流滞留结果仍有疑问
 客户反馈商品问题，希望申请售后
 客户希望查询订单，但尚未提供订单信息
 客户已确认收到处理结果
@@ -269,13 +258,7 @@ type CustomerResponseAssessment =
 
 ### 7.1 预判中
 
-硬门禁通过后，辅助条进入短暂分析状态：
-
-```text
-正在理解客户诉求
-```
-
-该状态不代表 Agent Turn 已经启动，也不展示 Agent 思考过程。
+Preflight 是弱感知的后台判断。硬门禁通过并开始分析时，辅助条仍保持标准 waiting 文案，不切换为 thinking，也不展示“正在理解客户诉求”。只有得到 `response_needed` 后，辅助条才切换为 confirmation。
 
 ### 7.2 建议起草回复
 
@@ -313,7 +296,7 @@ type CustomerResponseAssessment =
 正在等待 XXX 的消息
 ```
 
-`reasonSummary` 仅用于内部审计和质量评估，不在 waiting 状态向客服展示。客服仍可通过目标消息菜单或 `/ → AI 操作建议` 主动发起处理。首版不在 waiting 条增加额外主按钮，避免无需回应场景继续制造操作噪声。
+`reasoningSummary` 仅用于当前判断和必要的内部审计，不在 waiting 状态向客服展示。客服仍可通过目标消息菜单或 `/ → AI 操作建议` 主动发起处理。首版不在 waiting 条增加额外主按钮，避免无需回应场景继续制造操作噪声。
 
 ### 7.6 忽略
 
@@ -325,71 +308,29 @@ type CustomerResponseAssessment =
 - 客户后续消息继续按短防抖和自动调用上限处理。
 - 客服仍可从目标消息主动发起 AI 处理。
 
-### 7.7 AI 持续协助
+### 7.7 启动确认边界
 
-客服首次点击「起草回复」「起草追问」或「开始处理」后，不应只授权当前一个 Agent Turn，而应使当前会话进入有时限的“AI 持续协助”状态。
+客服点击「起草回复」「起草追问」或「开始处理」，只表示允许 AI 处理当前消息批次，并启动一个 Agent Turn。
 
-持续协助解决的是多轮客服问题：售后处理经常需要客户补充订单号、确认处理方式或反馈新的结果。如果每轮都重新展示意图并要求客服点击开始，会形成明显的重复操作。
+- 不创建会话级自动处理授权。
+- 不因为客服曾确认过一次，就自动启动后续 Agent Turn。
+- 不把本次确认解释为对 Tool Call、写操作或后续客户消息的预授权。
+- 本次 Turn 结束后回到 waiting；客户再次发来需要回应的消息时，重新展示新的对话进展摘要和 confirmation。
 
-持续协助期间：
+这个边界会增加一次明确点击，但能够避免 AI 在客服自行输入时抢占 Composer，也让客服始终知道当前是哪一轮客户消息触发了 AI 处理。
 
-1. 客户发送新消息后，系统先按短防抖合并消息。
-2. 后台静默执行 Preflight，不展示启动 confirmation。
-3. `no_response_needed` 时保持 waiting，不启动 Agent Turn。
-4. `response_needed` 时自动启动新的 Agent Turn。
-5. Tool Call 的自动放行、人工审批和禁止策略保持不变。
-6. Agent 生成的回复仍需客服确认发送。
+### 7.8 缓存与频率保护
 
-因此，Preflight 在持续协助期间仍然有价值，但它只是一个低成本的静默入口判断，不再要求客服参与。它可以避免客户仅回复“好的”“谢谢”时仍启动完整 Agent Turn，也继续承担异常消息频率保护。
+首版不保存会话级自动协助授权。Redis 仅用于与 Preflight 本身直接相关的技术保护：
 
-持续协助状态不需要在辅助条中显式展示。没有正在处理的活动时，waiting 文案始终保持「正在等待 XXX 的消息」，避免向客服暴露内部运行状态。
+- 按会话和触发消息缓存 Preflight 结果，避免同一消息因页面重载或重复请求反复调用模型。
+- 保存自动 Preflight 的频率计数，限制异常高频客户消息造成的模型消耗。
 
-首版建议采用 10 分钟无会话互动自动结束的滑动有效期。客户或客服发送新消息都会刷新有效期。以下情况立即结束：
-
-- 客服主动结束 AI 协助。
-- 会话被关闭、转交或当前客服失去接管权。
-- AI 辅助功能被关闭。
-
-单个 Agent Turn 完成、客服发送一条回复或忽略当前建议，不应自动结束持续协助；这些只是一次具体处理结束，会话问题可能仍在继续。
-
-为了保护客服正在进行的工作，以下情况不自动启动新的 Agent Turn：
-
-- 已有 Agent Turn、工具审批或客服澄清尚未结束。
-- 上一份 AI 回复草稿仍等待客服发送或忽略。
-- Composer 中存在客服正在编辑的人工内容。
-
-这些阻塞条件解除后，系统基于最新上下文重新判断；不能并发堆积多个 Agent Turn，也不能覆盖客服草稿。
-
-### 7.8 状态存储
-
-持续协助是 Backend 管理的会话级临时运行状态，不存放在前端工作台 Store，也不依赖当前页面是否打开。
-
-首版建议使用 Redis 保存，并通过 TTL 管理自动过期：
-
-```ts
-type ConversationAiAssistanceState = {
-  conversationId: string;
-  activatedByEmployeeId: string;
-  activatedAt: string;
-  lastActivityAt: string;
-  expiresAt: string;
-};
-```
-
-存储规则：
-
-- Key 至少按租户、业务账号和 `conversationId` 隔离。
-- 客户或客服产生有效会话互动时刷新 TTL。
-- 会话关闭、转交、失去接管权、关闭 AI 辅助或客服主动结束时删除状态。
-- Backend 收到客户消息后读取该状态，决定 Preflight 结果是展示首次启动 confirmation，还是在 `response_needed` 时自动启动 Agent Turn。
-- 前端可以消费 Backend 返回的处理结果，但不能自行推断或持有权威的持续协助状态。
-- Redis 不可用或状态丢失时按“持续协助未开启”处理，不能在状态不确定时自动启动 Agent Turn。
-
-持续协助的启用人、启用时间、结束时间和结束原因应进入可持久化审计记录；Redis 只承担短期有效状态，不作为长期审计数据源。
+这些缓存不改变产品状态，也不能把 `response_needed` 从 confirmation 改为自动启动 Agent Turn。
 
 ## 8. 与 Composer 的关系
 
-客户回应预判不读取或改写 Composer 内容。首次由客服点击主按钮、或持续协助期间自动启动 Agent Turn 后，才进入现有的草稿处理规则。
+客户回应预判不读取或改写 Composer 内容。客服点击主按钮启动本次 Agent Turn 后，才进入现有的草稿处理规则。
 
 为避免连续两次确认，产品上应遵循：
 
@@ -448,13 +389,11 @@ Composer 是否已有内容不改变 `outcome` 和 `direction`，只影响启动
 
 - 客服可以直接点击「开始处理」，Agent Turn 使用最新完整会话上下文。
 - 客服也可以继续正常回复客户；发送后自动调用计数重置。
-- 系统不为了恢复意图摘要而排队补跑被抑制的 Preflight。
+- 系统不为了恢复对话进展摘要而排队补跑被抑制的 Preflight。
 
 ### 9.4 与 Agent Turn 的关系
 
-AI 持续协助尚未开启时，客户消息不能直接启动 Agent Turn，只有客服采纳 Preflight 建议或主动发起 AI 处理后才能启动。
-
-AI 持续协助开启后，客户消息仍然先经过受频率保护的静默 Preflight；只有结果为 `response_needed` 才自动启动 Agent Turn。因此控制 Preflight 的并发和频率，就同时限制了自动 Agent Turn 的入口，不需要再增加第二套消息频控。
+客户消息不能直接启动 Agent Turn，只有客服采纳 Preflight 建议或主动发起 AI 处理后才能启动。Preflight 的并发和频率保护只限制自动预判模型调用，不授予自动启动 Agent Turn 的能力。
 
 Agent Turn 已经运行时到达的新客户消息如何进入当前 Turn或等待下一轮处理，属于 Agent Runtime 的上下文更新策略，不由本提案定义。
 
@@ -478,7 +417,7 @@ Agent Turn 已经运行时到达的新客户消息如何进入当前 Turn或等�
 
 当新的客户消息到达时：
 
-- 当前建议立即失效，不能使用旧意图摘要启动针对新上下文的 Agent Turn。
+- 当前建议立即失效，不能使用旧对话进展摘要启动针对新上下文的 Agent Turn。
 - 短防抖结束后，在自动调用额度内基于最新上下文重新 Preflight。
 - 达到自动调用上限时不再请求模型，辅助条降级为「客户补充了新消息」。
 - 客服点击「开始处理」时，Agent Turn 始终读取最新完整上下文。
@@ -513,7 +452,7 @@ Agent Turn 已经运行时到达的新客户消息如何进入当前 Turn或等�
 
 ## 13. 典型示例
 
-| 客户消息与上下文 | 预判结果 | 意图或原因摘要 | 主按钮 |
+| 客户消息与上下文 | 预判结果 | 对话进展摘要 | 主按钮 |
 | --- | --- | --- | --- |
 | “退款一般多久到账？” | `provide_response` | 客户询问退款到账时间 | 起草回复 |
 | “帮我查一下订单”，且无可识别订单 | `request_information` | 客户希望查询订单，但尚未提供订单信息 | 起草追问 |
@@ -536,13 +475,11 @@ Agent Turn 已经运行时到达的新客户消息如何进入当前 Turn或等�
 | 点击开始到最终发送或结束的耗时 | 衡量是否缩短客服处理时间 |
 | Agent 启动后立即要求不同处理方向的比例 | 评估回应方向分类质量 |
 | 模型超时、无效输出和降级率 | 评估运行稳定性 |
-| 客服修改意图摘要的反馈样本 | 建立中文客服场景评测集 |
+| 客服修改对话进展摘要的反馈样本 | 建立中文客服场景评测集 |
 | 连续客户消息的数量和间隔分布 | 校准短防抖时间 |
 | 会话达到自动调用上限的比例 | 评估阈值是否影响正常客服场景 |
 | 被频率保护抑制的 Preflight 数量 | 评估避免的异常模型消耗 |
 | 通用「客户补充了新消息」提示的点击率 | 判断限流降级是否仍能支持客服处理 |
-| 持续协助期间自动启动的 Agent Turn 数量 | 评估减少的重复客服确认操作 |
-| 持续协助期间人工主动结束率 | 判断持续时间和自动处理是否符合客服预期 |
 
 其中最重要的质量指标是 `no_response_needed` 的精确率。错误建议启动只增加一次确认和少量成本；错误判断无需回应可能导致客户诉求被遗漏，两者风险不对称。
 
@@ -557,19 +494,15 @@ Agent Turn 已经运行时到达的新客户消息如何进入当前 Turn或等�
 
 ### 阶段二：建议模式
 
-- 启用辅助条意图摘要和三类主按钮。
-- AI 持续协助尚未开启时，由客服首次确认启动。
-- 首次确认后进入有时限的持续协助，后续 `response_needed` 自动启动 Agent Turn。
+- 启用辅助条对话进展摘要和三类主按钮。
+- 每次 `response_needed` 都由客服确认是否启动当前 Agent Turn。
 - `no_response_needed` 只影响是否展示启动 confirmation，不影响人工入口。
-- 收集接受、忽略、持续协助自动处理、主动结束和后续真实 Agent 行为。
+- 收集接受、忽略和后续真实 Agent 行为。
 
 ### 阶段三：参数优化
 
-- 根据真实数据调整短防抖时间、Preflight 调用上限和持续协助有效期。
-- 评估不同客户是否需要不同的持续协助时长，但不把底层模型限流参数暴露为客服配置。
-- 评估是否需要管理员控制持续协助能力的开启范围。
-
-持续协助中的自动 Agent Turn 不改变 Tool Call 审批规则，不能被解释为对写操作的自动授权。
+- 根据真实数据调整短防抖时间和 Preflight 调用上限。
+- 评估不同业务场景是否需要调整三类回应方向和主按钮映射，但不把底层模型限流参数暴露为客服配置。
 
 ## 16. 本次产品评审需要确认
 
@@ -578,13 +511,12 @@ Agent Turn 已经运行时到达的新客户消息如何进入当前 Turn或等�
 3. 是否确认三类主按钮分别为「起草回复」「起草追问」「开始处理」。
 4. 是否确认 `no_response_needed` 直接回到标准「正在等待 XXX 的消息」，原因只用于内部审计。
 5. Composer 已有内容时，是否将替换提示合并进本次启动 confirmation，避免二次确认。
-6. 是否确认 AI 持续协助尚未开启时，首次 `response_needed` 必须由客服确认启动。
+6. 是否确认每次 `response_needed` 都必须由客服确认后，才启动当前 Agent Turn。
 7. 是否确认模型异常统一降级为通用「开始处理」建议，而不是静默跳过。
 8. 是否确认正常连续消息使用 1.5 秒短防抖，并始终基于最新上下文更新建议。
 9. 是否确认同一会话在客服未回应期间，60 秒内最多自动执行 3 次 Preflight。
 10. 是否确认客服发送消息后重置自动调用计数，人工主动触发不占用自动额度。
 11. 是否确认达到上限后使用「客户补充了新消息」通用提示，不向客服展示限流概念。
-12. 是否确认首次启动后进入 AI 持续协助，后续 `response_needed` 自动启动 Agent Turn，不再重复确认。
-13. 是否确认持续协助采用 10 分钟无互动自动结束，并提供客服主动结束入口。
-14. 是否确认存在运行中 Turn、待处理草稿或人工 Composer 内容时暂停自动启动，避免并发和覆盖。
-15. 是否确认持续协助状态由 Backend Redis 按会话保存，前端不展示、不作为状态源，Redis 失效时按未开启处理。
+12. 是否确认一次启动确认只授权当前消息批次，不形成会话级自动处理授权。
+13. 是否确认 Preflight 分析过程保持弱感知，辅助条在得到 `response_needed` 前维持标准 waiting。
+14. 是否确认 Redis 仅保留消息级结果缓存和调用频率保护，不保存会话级自动处理授权。

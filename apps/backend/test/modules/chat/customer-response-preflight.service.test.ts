@@ -65,7 +65,7 @@ describe("CustomerResponsePreflightService", () => {
     expect(response).toMatchObject({
       assessment: {
         outcome: "no_response_needed",
-        reasonSummary: "消息已有后续处理",
+        reasoningSummary: "该消息已有后续处理，无需重复回应",
       },
       source: "fallback",
     });
@@ -131,7 +131,7 @@ describe("CustomerResponsePreflightService", () => {
                 message: {
                   content: JSON.stringify({
                     direction: "provide_response",
-                    intentSummary: "客户发送了商品图片",
+                    reasoningSummary: "客户发送商品图片，等待进一步判断",
                     outcome: "response_needed",
                   }),
                 },
@@ -174,7 +174,7 @@ describe("CustomerResponsePreflightService", () => {
     const cachedResponse: CustomerResponsePreflightResponse = {
       assessment: {
         direction: "provide_response",
-        intentSummary: "客户询问退款到账时间",
+        reasoningSummary: "客户继续追问退款到账进度",
         outcome: "response_needed",
       },
       conversationId: request.conversationId,
@@ -204,83 +204,6 @@ describe("CustomerResponsePreflightService", () => {
     expect(response).toEqual(cachedResponse);
     expect(fetchMock).not.toHaveBeenCalled();
     expect(cache.set).not.toHaveBeenCalled();
-  });
-
-  it("recomputes the next action from the persisted assistance state", async () => {
-    const values = new Map<string, string>();
-    const cache = {
-      del: vi.fn().mockImplementation(async (...keys: string[]) => {
-        for (const key of keys) values.delete(key);
-      }),
-      get: vi.fn().mockImplementation(async (key: string) => {
-        return values.get(key) ?? null;
-      }),
-      set: vi.fn().mockImplementation(async (key: string, value: string) => {
-        values.set(key, value);
-      }),
-    };
-    const fetchMock = vi.fn().mockResolvedValue(
-      new Response(
-        JSON.stringify({
-          choices: [
-            {
-              message: {
-                content: JSON.stringify({
-                  direction: "handle_request",
-                  intentSummary: "客户希望查询订单物流",
-                  outcome: "response_needed",
-                }),
-              },
-            },
-          ],
-        }),
-        { status: 200 },
-      ),
-    );
-    const repository = {
-      listMessageContext: vi.fn().mockResolvedValue({
-        messages: [createMessage({ senderType: "customer", seq: 20 })],
-        targetMessageId: request.triggerMessageId,
-      }),
-    };
-    const service = new CustomerResponsePreflightService({
-      apiKey: "test-key",
-      assistanceTtlSeconds: 600,
-      cache,
-      fetch: fetchMock,
-      repository,
-    });
-
-    const firstResponse = await service.assess(9001, request);
-    expect(firstResponse.nextAction).toBe("confirm");
-
-    expect(
-      await service.mutateAssistance(9001, "employee-1", {
-        action: "activate",
-        conversationId: request.conversationId,
-      }),
-    ).toEqual({
-      active: true,
-      conversationId: request.conversationId,
-    });
-
-    const activeResponse = await service.assess(9001, request);
-    expect(activeResponse.nextAction).toBe("start_agent_turn");
-    expect(fetchMock).toHaveBeenCalledTimes(1);
-
-    expect(
-      await service.mutateAssistance(9001, "employee-1", {
-        action: "deactivate",
-        conversationId: request.conversationId,
-      }),
-    ).toEqual({
-      active: false,
-      conversationId: request.conversationId,
-    });
-
-    const inactiveResponse = await service.assess(9001, request);
-    expect(inactiveResponse.nextAction).toBe("confirm");
-    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
   it("returns the conservative fallback when the automatic preflight budget is exhausted", async () => {
@@ -341,7 +264,7 @@ describe("CustomerResponsePreflightService", () => {
     expect(response).toMatchObject({
       assessment: {
         direction: "handle_request",
-        intentSummary: "客户发来新的消息",
+        reasoningSummary: "客户发来新消息，尚未形成明确处理结论",
         outcome: "response_needed",
       },
       source: "fallback",

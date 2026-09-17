@@ -281,7 +281,6 @@ function createSessionCacheKeys(
     authSession: (sessionId) => baseCacheKeys.authSession(`embed:${sessionId}`),
     authSessionIndex: (subUserId) =>
       baseCacheKeys.authSessionIndex(`embed:${subUserId}`),
-    customerResponseAssistance: baseCacheKeys.customerResponseAssistance,
     customerResponsePreflightRate: baseCacheKeys.customerResponsePreflightRate,
     customerResponsePreflightResult:
       baseCacheKeys.customerResponsePreflightResult,

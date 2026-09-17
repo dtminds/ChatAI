@@ -6,6 +6,7 @@ import { WorkbenchRepository } from "../modules/chat/workbench-repository.js";
 import { MysqlWorkbenchService, type WorkbenchService } from "../modules/chat/workbench.service.js";
 import { ComposerAiEditService } from "../modules/chat/composer-ai-edit.service.js";
 import { ComposerAiEditQuotaService } from "../modules/chat/composer-ai-edit-quota.service.js";
+import { CustomerResponsePreflightService } from "../modules/chat/customer-response-preflight.service.js";
 import { createWorkbenchJavaClient } from "../modules/chat/workbench-java-client.js";
 import type { AppLogger } from "../shared/logger.js";
 import type { AuthenticatedWorkbenchScope } from "../modules/workbench-platform-scope.js";
@@ -19,6 +20,7 @@ declare module "fastify" {
     ): WorkbenchService;
     workbenchService: WorkbenchService;
     composerAiEditService: ComposerAiEditService;
+    customerResponsePreflightService: CustomerResponsePreflightService;
   }
 }
 
@@ -57,6 +59,14 @@ export const dbPlugin = fp(async (app) => {
         limiter: app.dailyUsageLimiter,
         logger: app.log,
       }),
+      repository,
+    }),
+  );
+  app.decorate(
+    "customerResponsePreflightService",
+    new CustomerResponsePreflightService({
+      apiKey: process.env.VOLCENGINE_ARK_API_KEY,
+      logger: app.log,
       repository,
     }),
   );

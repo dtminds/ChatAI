@@ -9,6 +9,7 @@ import {
   formatWorkbenchTimestamp,
   isInvalidMessageUiKey,
 } from "@/pages/chat/api/workbench-adapter";
+import { isCustomerResponsePreflightEnabled } from "@/pages/chat/api/customer-response-preflight";
 import { getWorkbenchService } from "@/pages/chat/api/workbench-service";
 import {
   bootstrapWorkbench,
@@ -1350,6 +1351,12 @@ function getPageSmartRepliesForConversation(
     return {};
   }
 
+  // Preflight owns automatic activation. Keep manual message-menu actions on
+  // the existing request path instead of reviving a cached legacy card.
+  if (isCustomerResponsePreflightEnabled()) {
+    return {};
+  }
+
   return getPageSmartReplies(page);
 }
 
@@ -1434,6 +1441,10 @@ function shouldAutoGenerateSmartReply(input: {
   pending: Record<string, true>;
   suggestions: Record<string, SmartReplySuggestion>;
 }) {
+  if (isCustomerResponsePreflightEnabled()) {
+    return undefined;
+  }
+
   const {
     autoPending = {},
     autoSkipped = {},

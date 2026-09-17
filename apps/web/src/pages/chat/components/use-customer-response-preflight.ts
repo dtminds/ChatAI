@@ -55,6 +55,33 @@ export function useCustomerResponsePreflight({
   }, [conversationId]);
 
   useEffect(() => {
+    if (!active && state.phase === "idle") {
+      return;
+    }
+
+    if (!active || blocked) {
+      generationRef.current += 1;
+      setState((current) =>
+        current.phase === "idle" ? current : INITIAL_STATE,
+      );
+    }
+  }, [active, blocked, state.phase]);
+
+  useEffect(() => {
+    const displayedMessageId = state.triggerMessage?.seq
+      ? String(state.triggerMessage.seq)
+      : undefined;
+
+    if (
+      state.phase !== "idle" &&
+      displayedMessageId !== triggerMessageId
+    ) {
+      generationRef.current += 1;
+      setState(INITIAL_STATE);
+    }
+  }, [state.phase, state.triggerMessage?.seq, triggerMessageId]);
+
+  useEffect(() => {
     if (
       !active ||
       blocked ||

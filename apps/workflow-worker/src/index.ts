@@ -53,6 +53,7 @@ import {
   MysqlWorkflowMessageQueryPort,
 } from "./message-query-port.js";
 import { MysqlWorkflowMessageCapabilityPort } from "./message-capability-port.js";
+import { createWorkflowMessageRateLimiter } from "./message-rate-limiter.js";
 import { HttpWorkflowTagCapabilityPort } from "./tag-capability-port.js";
 import { HttpWorkflowTagQueryCapabilityPort } from "./tag-query-capability-port.js";
 import { MysqlWorkflowHandoffCapabilityPort } from "./handoff-capability-port.js";
@@ -102,6 +103,12 @@ export async function startWorkflowWorkerProcess(env: NodeJS.ProcessEnv = proces
     throw error;
   }
   const repository = new MysqlWorkflowRuntimeRepository(database);
+  const messageRateLimiter = createWorkflowMessageRateLimiter({
+    client: entitlementCache.client,
+    config: config.messageRateLimit,
+    keyPrefix: config.redis.keyPrefix,
+    logger,
+  });
   const entitlementPort = createWorkflowEntitlementPort({
     activeRunLimit: config.entitlement.activeRunLimit,
     baseUrl: config.javaInternalApi.baseUrl,
@@ -111,6 +118,7 @@ export async function startWorkflowWorkerProcess(env: NodeJS.ProcessEnv = proces
   });
   const messageCapabilityPort = new MysqlWorkflowMessageCapabilityPort(database, {
     baseUrl: config.javaInternalApi.baseUrl,
+    rateLimiter: messageRateLimiter,
     token: config.javaInternalApi.token,
   });
   const customerUpdateCapabilityPort = new HttpWorkflowCustomerUpdateCapabilityPort({
@@ -327,6 +335,7 @@ export * from "./inference-worker.js";
 export * from "./logger.js";
 export * from "./llm-test-adapter.js";
 export * from "./message-capability-port.js";
+export * from "./message-rate-limiter.js";
 export * from "./marketing-message-port.js";
 export * from "./order-query-capability-port.js";
 export * from "./outbox-publisher.js";

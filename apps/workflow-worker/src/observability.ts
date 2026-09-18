@@ -135,8 +135,10 @@ export type WorkflowTaskConsumeObservation = {
     | "acked_boundary"
     | "capability_failed"
     | "completed"
+    | "deferred"
     | "invalid_task_message"
     | "node_failed"
+    | "rate_limited"
     | "retry_scheduled"
     | "temporary_failure";
   command?: {
@@ -394,9 +396,11 @@ function createTaskCounters() {
     ackedBoundary: 0,
     capabilityFailed: 0,
     completed: 0,
+    deferred: 0,
     invalid: 0,
     nacked: 0,
     nodeFailed: 0,
+    rateLimited: 0,
     received: 0,
     retryScheduled: 0,
   };
@@ -407,8 +411,10 @@ function getTaskCounterBucket(code: WorkflowTaskConsumeObservation["code"]):
   if (code === "acked_boundary") return "ackedBoundary";
   if (code === "capability_failed") return "capabilityFailed";
   if (code === "completed") return "completed";
+  if (code === "deferred") return "deferred";
   if (code === "invalid_task_message") return "invalid";
   if (code === "node_failed") return "nodeFailed";
+  if (code === "rate_limited") return "rateLimited";
   if (code === "retry_scheduled") return "retryScheduled";
   return "nacked";
 }

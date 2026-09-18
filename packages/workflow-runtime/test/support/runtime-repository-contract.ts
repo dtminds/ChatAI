@@ -83,6 +83,53 @@ export function runWorkflowRuntimeRepositoryContract(
     });
   });
 
+  it("defers a rate-limited claimed Task without consuming an execution attempt", async () => {
+    const created = requireCreatedRun(await harness.repository.createRunWithInitialTask(createRunInput()));
+    const claimed = await harness.repository.claimTask({
+      expectedTaskVersion: created.task.taskVersion,
+      leaseExpiresAt: new Date("2099-01-01T00:01:00.000Z"),
+      leaseOwner: "worker-1",
+      taskId: created.task.id,
+      uid: 9,
+    });
+    if (claimed.kind !== "success") throw new Error("Expected Task claim");
+    const runningRun = await harness.repository.findRun(9, created.run.id);
+    if (!runningRun) throw new Error("Expected running Run");
+    const dueAt = new Date("2099-01-01T00:00:05.000Z");
+
+    await expect(harness.repository.deferClaimedTask({
+      dueAt,
+      expectedRunLockVersion: runningRun.lockVersion,
+      expectedTaskVersion: claimed.task.taskVersion,
+      reasonCode: "WORKFLOW_MESSAGE_RATE_LIMITED",
+      runId: runningRun.id,
+      taskId: claimed.task.id,
+      uid: 9,
+    })).resolves.toMatchObject({
+      kind: "success",
+      run: { nextExecuteAt: dueAt, status: "waiting" },
+      task: {
+        attempt: 0,
+        dueAt,
+        lastErrorCode: "WORKFLOW_MESSAGE_RATE_LIMITED",
+        status: "pending",
+      },
+    });
+
+    const deferredTask = await harness.repository.findTask(9, created.task.id);
+    if (!deferredTask) throw new Error("Expected deferred Task");
+    await expect(harness.repository.claimTask({
+      expectedTaskVersion: deferredTask.taskVersion,
+      leaseExpiresAt: new Date("2099-01-01T00:01:05.000Z"),
+      leaseOwner: "worker-2",
+      taskId: deferredTask.id,
+      uid: 9,
+    })).resolves.toMatchObject({
+      kind: "success",
+      task: { attempt: 1, lastErrorCode: null, status: "running" },
+    });
+  });
+
   it("records one stable Entry Inbox message across concurrent deliveries", async () => {
     const input = {
       capacityRejectedCount: 0,

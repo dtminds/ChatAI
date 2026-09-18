@@ -807,6 +807,18 @@ export type WorkflowRuntimeRepository = WorkflowInboxRepository
     taskId: string;
     uid: number;
   }): Promise<{ kind: "success"; task: WorkflowTaskRecord } | WorkflowRuntimeFailure>;
+  deferClaimedTask(input: {
+    dueAt: Date;
+    expectedRunLockVersion: number;
+    expectedTaskVersion: number;
+    reasonCode: WorkflowTaskDeferReasonCode;
+    runId: string;
+    taskId: string;
+    uid: number;
+  }): Promise<
+    { kind: "success"; run: WorkflowRunRecord; task: WorkflowTaskRecord }
+    | WorkflowRuntimeFailure
+  >;
   prepareCapabilityExecution(input: {
     expectedRunLockVersion: number;
     expectedTaskVersion: number;

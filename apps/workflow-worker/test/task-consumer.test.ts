@@ -80,6 +80,61 @@ describe("workflow task consumer", () => {
     }));
   });
 
+  it("records and ACKs a persisted seat rate-limit deferral", async () => {
+    const observe = vi.fn();
+    const message = createBrokerMessage(taskMessage());
+    const retryAt = new Date("2026-09-18T00:00:05.000Z");
+    const handler = createTaskConsumerHandler({
+      observe,
+      runtimeService: {
+        executeTask: vi.fn(async () => ({
+          kind: "deferred",
+          reasonCode: "WORKFLOW_MESSAGE_RATE_LIMITED",
+          retryAt,
+        })),
+      },
+      workerId: "worker-1",
+    });
+
+    await handler(message);
+
+    expect(message.ack).toHaveBeenCalledTimes(1);
+    expect(message.negativeAck).not.toHaveBeenCalled();
+    expect(observe).toHaveBeenCalledWith(message, {
+      code: "rate_limited",
+      command: { runId: "5", taskId: "7", taskVersion: 3, uid: "9" },
+      disposition: "ack",
+      retryAt,
+    });
+  });
+
+  it("records non-rate-limit deferrals separately", async () => {
+    const observe = vi.fn();
+    const message = createBrokerMessage(taskMessage());
+    const retryAt = new Date("2026-09-18T00:00:05.000Z");
+    const handler = createTaskConsumerHandler({
+      observe,
+      runtimeService: {
+        executeTask: vi.fn(async () => ({
+          kind: "deferred",
+          reasonCode: "WORKFLOW_MESSAGE_SENDING_WINDOW_DEFERRED",
+          retryAt,
+        })),
+      },
+      workerId: "worker-1",
+    });
+
+    await handler(message);
+
+    expect(message.ack).toHaveBeenCalledTimes(1);
+    expect(observe).toHaveBeenCalledWith(message, {
+      code: "deferred",
+      command: { runId: "5", taskId: "7", taskVersion: 3, uid: "9" },
+      disposition: "ack",
+      retryAt,
+    });
+  });
+
   it.each([
     {
       event: "workflow.capability.retry.scheduled",

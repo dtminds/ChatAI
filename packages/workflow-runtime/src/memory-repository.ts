@@ -614,6 +614,35 @@ export class InMemoryWorkflowRuntimeRepository implements WorkflowRuntimeReposit
     return { kind: "success" as const, task: clone(task) };
   }
 
+  async deferClaimedTask(
+    input: Parameters<WorkflowRuntimeRepository["deferClaimedTask"]>[0],
+  ) {
+    const run = this.runs.find(item => item.uid === input.uid && item.id === input.runId);
+    const task = this.tasks.find(item => item.uid === input.uid && item.id === input.taskId);
+    if (!run || !task || task.runId !== run.id) return notFound();
+    if (run.lockVersion !== input.expectedRunLockVersion
+      || run.status !== "running"
+      || task.taskVersion !== input.expectedTaskVersion
+      || task.status !== "running") return conflict();
+    const boundary = this.resolveWorkflowBoundary
+      ? await this.resolveWorkflowBoundary({ uid: task.uid, workflowId: task.workflowId })
+      : { bizStatus: 1 as const, runtimeStatus: "active" as const };
+    const boundaryDecision = boundary ? getWorkflowExecutionBoundaryDecision(boundary) : "cancel";
+    if (boundaryDecision === "cancel") return conflict();
+    task.attempt = Math.max(0, task.attempt - 1);
+    task.dueAt = clone(input.dueAt);
+    task.lastErrorCode = input.reasonCode;
+    task.leaseExpiresAt = null;
+    task.leaseOwner = null;
+    task.status = boundaryDecision === "defer" ? "suspended" : "pending";
+    task.taskVersion += 1;
+    run.lockVersion += 1;
+    run.nextExecuteAt = clone(input.dueAt);
+    run.status = transitionRun(run.status, "waiting");
+    this.touchRun(run);
+    return { kind: "success" as const, run: clone(run), task: clone(task) };
+  }
+
   async deferTask(input: Parameters<WorkflowRuntimeRepository["deferTask"]>[0]) {
     const task = this.tasks.find((item) => item.uid === input.uid && item.id === input.taskId);
     if (!task) return notFound();

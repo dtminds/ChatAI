@@ -160,6 +160,7 @@ describe("workflow worker observability", () => {
     const command = { runId: "5", taskId: "7", taskVersion: 3, uid: "9" };
 
     observer.record(message, { code: "completed", command, disposition: "ack" });
+    observer.record(message, { code: "deferred", command, disposition: "ack" });
     observer.record(message, {
       code: "temporary_failure",
       command,
@@ -192,11 +193,13 @@ describe("workflow worker observability", () => {
       ackedBoundary: 0,
       capabilityFailed: 0,
       completed: 1,
+      deferred: 1,
       event: "workflow.task.consume.summary",
       invalid: 1,
       nacked: 2,
       nodeFailed: 0,
-      received: 4,
+      rateLimited: 0,
+      received: 5,
       retryScheduled: 0,
       role: "task-consumer",
     }, "workflow task consume summary");

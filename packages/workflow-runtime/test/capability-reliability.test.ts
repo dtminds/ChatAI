@@ -1,6 +1,7 @@
 import type { WorkflowExecutionNode, WorkflowExecutionSpec } from "@chatai/contracts";
 import { Type } from "@sinclair/typebox";
 import {
+  WorkflowCapabilityDeferredError,
   WorkflowCapabilityExecutionError,
   WorkflowNodeExecutorRegistry,
 } from "@chatai/workflow-engine";
@@ -163,6 +164,36 @@ describe("workflow capability reliability", () => {
     });
     await expect(runtime.findRun(9, started.run.id)).resolves.toMatchObject({
       nextExecuteAt: new Date("2026-07-13T01:00:00.000Z"),
+      status: "waiting",
+    });
+  });
+
+  it("defers a rate-limited Message after claim without consuming an execution attempt", async () => {
+    const runtime = new InMemoryWorkflowRuntimeRepository(undefined, () => now);
+    const retryAt = new Date(now.getTime() + 5_000);
+    const service = createService(runtime, async () => {
+      throw new WorkflowCapabilityDeferredError(
+        "WORKFLOW_MESSAGE_RATE_LIMITED",
+        "消息正在排队发送",
+        retryAt,
+      );
+    });
+    const messageTask = await startCapability(runtime, service);
+
+    await expect(service.executeTask({
+      now,
+      taskId: messageTask.id,
+      taskVersion: messageTask.taskVersion,
+      uid: 9,
+      workerId: "worker-1",
+    })).resolves.toMatchObject({
+      kind: "deferred",
+      reasonCode: "WORKFLOW_MESSAGE_RATE_LIMITED",
+      retryAt,
+      task: { attempt: 0, dueAt: retryAt, status: "pending" },
+    });
+    await expect(runtime.findRun(9, messageTask.runId)).resolves.toMatchObject({
+      nextExecuteAt: retryAt,
       status: "waiting",
     });
   });

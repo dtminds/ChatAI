@@ -1046,6 +1046,74 @@ export class MysqlWorkflowRuntimeRepository implements
     });
   }
 
+  async deferClaimedTask(
+    input: Parameters<WorkflowRuntimeRepository["deferClaimedTask"]>[0],
+  ) {
+    return this.db.transaction().execute(async (trx) => {
+      const state = await lockCapabilityExecutionState(trx, input);
+      if (state.kind !== "success") return state;
+      const { run, task } = state;
+      const definition = await trx.selectFrom("xy_wap_embed_workflow_definition")
+        .select(["biz_status", "runtime_status"])
+        .where("uid", "=", input.uid)
+        .where("id", "=", task.workflowId)
+        .forShare()
+        .executeTakeFirst();
+      const boundaryDecision = definition
+        ? getWorkflowExecutionBoundaryDecision({
+            bizStatus: definition.biz_status === 1 ? 1 : 0,
+            runtimeStatus: parseRuntimeStatus(definition.runtime_status),
+          })
+        : "cancel";
+      if (boundaryDecision === "cancel") return { kind: "conflict" as const };
+      const nextAttempt = Math.max(0, task.attempt - 1);
+      const nextTaskVersion = task.taskVersion + 1;
+      const nextRunLockVersion = run.lockVersion + 1;
+      await trx.updateTable(TASK_TABLE).set({
+        attempt: nextAttempt,
+        bucket_time: floorToMinute(input.dueAt),
+        due_at: input.dueAt,
+        last_error_code: input.reasonCode,
+        lease_expires_at: null,
+        lease_owner: null,
+        status: boundaryDecision === "defer" ? "suspended" : "pending",
+        task_version: nextTaskVersion,
+      }).where("uid", "=", input.uid)
+        .where("id", "=", task.id)
+        .where("status", "=", "running")
+        .where("task_version", "=", input.expectedTaskVersion)
+        .executeTakeFirstOrThrow();
+      await trx.updateTable(RUN_TABLE).set({
+        lock_version: nextRunLockVersion,
+        next_execute_at: input.dueAt,
+        status: "waiting",
+      }).where("uid", "=", input.uid)
+        .where("id", "=", run.id)
+        .where("lock_version", "=", input.expectedRunLockVersion)
+        .where("status", "=", "running")
+        .executeTakeFirstOrThrow();
+      return {
+        kind: "success" as const,
+        run: {
+          ...run,
+          lockVersion: nextRunLockVersion,
+          nextExecuteAt: input.dueAt,
+          status: "waiting" as const,
+        },
+        task: {
+          ...task,
+          attempt: nextAttempt,
+          dueAt: input.dueAt,
+          lastErrorCode: input.reasonCode,
+          leaseExpiresAt: null,
+          leaseOwner: null,
+          status: boundaryDecision === "defer" ? "suspended" as const : "pending" as const,
+          taskVersion: nextTaskVersion,
+        },
+      };
+    });
+  }
+
   async deferTask(input: Parameters<WorkflowRuntimeRepository["deferTask"]>[0]) {
     const dueAt = floorToMinute(input.dueAt);
     return this.db.transaction().execute(async (trx) => {

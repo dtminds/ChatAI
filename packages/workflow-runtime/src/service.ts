@@ -32,6 +32,7 @@ import {
   createWorkflowNodeExecutionKey,
   isWorkflowRuntimeSupportedNodeKind,
   WORKFLOW_RUNTIME_SUPPORTED_NODE_KINDS,
+  WorkflowCapabilityDeferredError,
   WorkflowCapabilityExecutionError,
   WorkflowNodeExecutionError,
   type WorkflowNodeExecutorRegistry,
@@ -821,6 +822,26 @@ export class WorkflowRuntimeService {
       });
       assertWorkflowRuntimeValue(nextContext, "run-context", WORKFLOW_RUN_CONTEXT_MAX_BYTES);
     } catch (error) {
+      if (error instanceof WorkflowCapabilityDeferredError
+        && isWorkflowTaskDeferReasonCode(error.code)) {
+        const deferred = await this.runtimeRepository.deferClaimedTask({
+          dueAt: error.retryAt,
+          expectedRunLockVersion: run.lockVersion,
+          expectedTaskVersion: claimed.task.taskVersion,
+          reasonCode: error.code,
+          runId: run.id,
+          taskId: claimed.task.id,
+          uid: run.uid,
+        });
+        if (deferred.kind !== "success") throw staleTaskError();
+        return {
+          diagnosticMessage: error.diagnosticMessage.slice(0, 1_024),
+          kind: "deferred" as const,
+          reasonCode: error.code,
+          retryAt: error.retryAt,
+          task: deferred.task,
+        };
+      }
       if (!requiresPreparedExecution && isCoreNodeExecutionFailure(error)) {
         return this.commitCoreNodeFailure({
           nodeExecutionKey,

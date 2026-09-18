@@ -78,6 +78,16 @@ function createTaskObservation(
     return { code: "completed", command: pickTaskIdentity(command), disposition: "ack" };
   }
   const outcome = result as Record<string, unknown>;
+  if (outcome.kind === "deferred") {
+    return {
+      code: outcome.reasonCode === "WORKFLOW_MESSAGE_RATE_LIMITED"
+        ? "rate_limited"
+        : "deferred",
+      command: pickTaskIdentity(command),
+      disposition: "ack",
+      retryAt: outcome.retryAt,
+    };
+  }
   if (outcome.kind !== "retry-scheduled"
     && outcome.kind !== "failed"
     && outcome.kind !== "node-failed") {

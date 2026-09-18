@@ -46,6 +46,10 @@
   --warning: oklch(0.735 0.151 73);
   --warning-foreground: oklch(0.985 0 0);
   --warning-muted: oklch(0.958 0.052 82);
+  --beta-badge-start: #ff3b86;
+  --beta-badge-middle: #ff425f;
+  --beta-badge-end: #ff9818;
+  --beta-badge-foreground: oklch(1 0 0);
   --info: var(--primary);
   --info-foreground: oklch(0.985 0 0);
   --wechat-brand: #2aae67;
@@ -1130,6 +1134,16 @@ html.dark[data-appearance-theme="nature"] {
 }
 
 @layer components {
+  .beta-badge {
+    color: var(--beta-badge-foreground);
+    background: linear-gradient(
+      100deg,
+      var(--beta-badge-start) 0%,
+      var(--beta-badge-middle) 48%,
+      var(--beta-badge-end) 100%
+    );
+  }
+
   .primary-grid-fade-background {
     position: relative;
     isolation: isolate;

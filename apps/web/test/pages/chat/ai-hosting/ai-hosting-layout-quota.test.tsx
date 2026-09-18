@@ -1,4 +1,4 @@
-import { act, render, screen, waitFor } from "@testing-library/react";
+import { act, render, screen, waitFor, within } from "@testing-library/react";
 import { createMemoryRouter, RouterProvider } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { AiHostingQuotaOverview } from "@chatai/contracts";
@@ -67,15 +67,17 @@ describe("AI hosting layout quota", () => {
     setOwner("101");
   });
 
-  it("shows the Workflow navigation without a UID allowlist", async () => {
+  it("shows the Workflow navigation and Beta marker without a UID allowlist", async () => {
     vi.mocked(getAiHostingQuota).mockResolvedValue(createQuota());
 
     renderLayout();
 
-    expect(await screen.findByRole("link", { name: "工作流" })).toHaveAttribute(
+    const workflowLink = await screen.findByRole("link", { name: "工作流" });
+    expect(workflowLink).toHaveAttribute(
       "href",
       "/chat/workflows",
     );
+    expect(within(workflowLink).getByText("Beta")).toBeInTheDocument();
   });
 
   it("clears and reloads sidebar quota when the account owner changes without unmounting", async () => {

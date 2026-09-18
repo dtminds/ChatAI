@@ -490,7 +490,9 @@ describe("Agent workflow page", () => {
 
     render(<RouterProvider router={router} />);
 
-    expect(await screen.findByRole("heading", { level: 1 })).toBeInTheDocument();
+    const heading = await screen.findByRole("heading", { level: 1, name: "营销画布" });
+    expect(heading).toBeInTheDocument();
+    expect(within(heading.parentElement!).getByText("Beta")).toBeInTheDocument();
     expect(screen.queryByRole("link", { name: "运行观测" })).not.toBeInTheDocument();
   });
 

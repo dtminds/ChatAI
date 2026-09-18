@@ -35,6 +35,7 @@ import { useDebouncedValue } from "@/pages/chat/hooks/use-debounced-value";
 import {
   AiHostingLayout,
   AiHostingPageHeader,
+  BetaBadge,
 } from "../ai-hosting/ai-hosting-layout";
 import {
   getWorkflowDraftRepository,
@@ -328,6 +329,7 @@ export function WorkflowListPage({
             ) : undefined}
           description={surface.description}
           title={surface.title}
+          titleActions={surface.embedded ? <BetaBadge /> : undefined}
         />
 
         <WorkflowTenantDataSection

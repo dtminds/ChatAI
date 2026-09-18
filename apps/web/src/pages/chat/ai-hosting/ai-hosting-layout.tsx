@@ -34,6 +34,7 @@ const aiHostingNavItems = [
     to: "/chat/ai-hosting/agents",
   },
   {
+    badge: "Beta",
     icon: WorkflowSquare06Icon,
     label: "工作流",
     to: "/chat/workflows",
@@ -66,6 +67,20 @@ const aiHostingNavItems = [
 ] as const;
 
 const quotaRefreshEventName = "ai-hosting:quota-refresh";
+
+export function BetaBadge({ className }: { className?: string }) {
+  return (
+    <span
+      aria-hidden="true"
+      className={cn(
+        "beta-badge inline-flex h-[18px] min-w-10 shrink-0 items-center justify-center rounded-full px-1.5 text-[10px] font-medium leading-none",
+        className,
+      )}
+    >
+      Beta
+    </span>
+  );
+}
 
 export function notifyAiHostingQuotaChanged() {
   window.dispatchEvent(new Event(quotaRefreshEventName));
@@ -159,6 +174,9 @@ export function AiHostingLayout({
               >
                 <HugeiconsIcon icon={item.icon} size={18} />
                 <span>{item.label}</span>
+                {"badge" in item ? (
+                  <BetaBadge className="ml-auto" />
+                ) : null}
               </NavLink>
             ))}
           </nav>

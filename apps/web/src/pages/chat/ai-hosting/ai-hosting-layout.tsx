@@ -14,6 +14,7 @@ import {
   WorkflowSquare06Icon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
+import { BetaBadge } from "@/components/ui/beta-badge";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { SignedInAccountMenu } from "@/pages/chat/components/signed-in-account-menu";
@@ -67,20 +68,6 @@ const aiHostingNavItems = [
 ] as const;
 
 const quotaRefreshEventName = "ai-hosting:quota-refresh";
-
-export function BetaBadge({ className }: { className?: string }) {
-  return (
-    <span
-      aria-hidden="true"
-      className={cn(
-        "beta-badge flex h-[18px] min-w-10 shrink-0 items-center justify-center rounded-full px-1.5 text-[10px] font-medium leading-none",
-        className,
-      )}
-    >
-      Beta
-    </span>
-  );
-}
 
 export function notifyAiHostingQuotaChanged() {
   window.dispatchEvent(new Event(quotaRefreshEventName));

@@ -15,6 +15,7 @@ import type { ReactNode } from "react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { toast } from "sonner";
+import { BetaBadge } from "@/components/ui/beta-badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Spinner } from "@/components/ui/spinner";
@@ -35,7 +36,6 @@ import { useDebouncedValue } from "@/pages/chat/hooks/use-debounced-value";
 import {
   AiHostingLayout,
   AiHostingPageHeader,
-  BetaBadge,
 } from "../ai-hosting/ai-hosting-layout";
 import {
   getWorkflowDraftRepository,

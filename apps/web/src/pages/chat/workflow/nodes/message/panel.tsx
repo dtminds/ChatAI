@@ -153,7 +153,7 @@ export function MessageConfig({ edges, node, nodes, onNodeChange, resources }: N
       </div>
       <WorkflowSettingsSection title="配置须知">
         <p className="text-[13px] leading-5 text-muted-foreground">
-          为保障账号安全，本节点按频控规则排队发送（单账号约 5 秒/条）。如需向大量客户群发，建议使用企微官方「客户群发」功能，避免长时间排队延迟。
+          本节点按频控规则排队发送（单账号约 5 秒/条）。如需向大量客户群发，建议使用企微官方「客户群发」功能，避免长时间排队延迟。
         </p>
       </WorkflowSettingsSection>
     </>

@@ -24,4 +24,5 @@ export {
   WechatEmojiText,
 } from "@/pages/chat/components/message/text";
 export { VideoMessageCard } from "@/pages/chat/components/message/video";
+export { VoiceCallMessageCard } from "@/pages/chat/components/message/voice-call";
 export { VoiceMessageCard } from "@/pages/chat/components/message/voice";

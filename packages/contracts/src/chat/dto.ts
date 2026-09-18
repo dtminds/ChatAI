@@ -44,6 +44,7 @@ export type WorkbenchMessageContentType =
   | "revoke"
   | "text"
   | "voice"
+  | "voice-call"
   | "image"
   | "emotion"
   | "video"

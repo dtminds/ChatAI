@@ -175,6 +175,12 @@ export type VoiceMessageContent = {
   transVoiceText?: string;
 };
 
+export type VoiceCallMessageContent = {
+  type: "voice-call";
+  text: string;
+  missed?: boolean;
+};
+
 export type ImageMessageContent = {
   type: "image";
   imageUrl: string;
@@ -311,6 +317,7 @@ export type MessageContent =
   | RevokeMessageContent
   | TextMessageContent
   | VoiceMessageContent
+  | VoiceCallMessageContent
   | ImageMessageContent
   | VideoMessageContent
   | FileMessageContent
@@ -362,6 +369,7 @@ export type ChatMessage = BaseMessage & {
   content:
     | TextMessageContent
     | VoiceMessageContent
+    | VoiceCallMessageContent
     | ImageMessageContent
     | VideoMessageContent
     | FileMessageContent

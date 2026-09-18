@@ -335,6 +335,12 @@ function adaptChatMessageContent(
         transVoiceText: asOptionalString(content.transVoiceText),
         type: "voice",
       };
+    case "voice-call":
+      return {
+        text: String(content.text ?? ""),
+        type: "voice-call",
+        ...(content.missed === true ? { missed: true } : {}),
+      };
     case "image":
     case "emotion":
       return {
@@ -522,6 +528,7 @@ function isQuotedPreviewContentType(
     "revoke",
     "text",
     "voice",
+    "voice-call",
     "image",
     "emotion",
     "video",

@@ -1671,6 +1671,162 @@ describe("workbench MySQL mappers", () => {
     });
   });
 
+  it("maps voiptext messages into voice-call bubbles", () => {
+    expect(
+      mapMessageRow(messageRow({
+        content: JSON.stringify({
+          callduration: 8,
+          invitetype: 2,
+        }),
+        from_type: 2,
+        msgtype: "voiptext",
+      })),
+    ).toMatchObject({
+      content: {
+        text: "通话时长 00:08",
+      },
+      contentType: "voice-call",
+      rawMsgtype: "voiptext",
+    });
+    expect(
+      mapMessageRow(messageRow({
+        content: JSON.stringify({
+          callduration: 8,
+          invitetype: 2,
+        }),
+        from_type: 2,
+        msgtype: "voiptext",
+      })).content,
+    ).not.toHaveProperty("missed");
+
+    expect(
+      mapMessageRow(messageRow({
+        content: JSON.stringify({
+          info: {
+            callduration: 0,
+            invitetype: 2,
+          },
+        }),
+        from_type: 2,
+        msgtype: "voiptext",
+      })),
+    ).toMatchObject({
+      content: {
+        missed: true,
+        text: "对方已取消",
+      },
+      contentType: "voice-call",
+    });
+
+    expect(
+      mapMessageRow(messageRow({
+        content: JSON.stringify({
+          callduration: 0,
+          invitetype: 2,
+        }),
+        from_type: 1,
+        msgtype: "voiptext",
+      })),
+    ).toMatchObject({
+      content: {
+        text: "已取消",
+      },
+      contentType: "voice-call",
+    });
+    expect(
+      mapMessageRow(messageRow({
+        content: JSON.stringify({
+          callduration: 0,
+          invitetype: 2,
+        }),
+        from_type: 1,
+        msgtype: "voiptext",
+      })).content,
+    ).not.toHaveProperty("missed");
+
+    expect(
+      mapMessageRow(messageRow({
+        content: JSON.stringify({
+          text: "已在其它设备接听",
+        }),
+        from_type: 2,
+        msgtype: "voiptext",
+      })),
+    ).toMatchObject({
+      content: {
+        text: "已在其它设备接听",
+      },
+      contentType: "voice-call",
+    });
+    expect(
+      mapMessageRow(messageRow({
+        content: JSON.stringify({
+          text: "已在其它设备接听",
+        }),
+        from_type: 2,
+        msgtype: "voiptext",
+      })).content,
+    ).not.toHaveProperty("missed");
+
+    expect(
+      mapConversationRow({
+        chat_type: 1,
+        contact_original_name: null,
+        create_time: null,
+        customer_avatar: "",
+        customer_name: "客户备注",
+        group_avatar: "",
+        group_name: "",
+        group_remark: null,
+        id: 94,
+        last_message_content: JSON.stringify({
+          callduration: 8,
+          invitetype: 2,
+        }),
+        last_message_type: "voiptext",
+        last_msgtime: 1778240100000,
+        pinned_time: 0,
+        seat_id: 12,
+        third_external_userid: "external-1",
+        third_group_id: "",
+        third_userid: "third-user-1",
+        unread_cnt: 0,
+        verified: 0,
+      }),
+    ).toMatchObject({
+      lastMessage: "通话时长 00:08",
+    });
+
+    expect(
+      mapConversationRow({
+        chat_type: 1,
+        contact_original_name: null,
+        create_time: null,
+        customer_avatar: "",
+        customer_name: "客户备注",
+        group_avatar: "",
+        group_name: "",
+        group_remark: null,
+        id: 95,
+        last_message_content: JSON.stringify({
+          callduration: 0,
+          invitetype: 2,
+        }),
+        last_message_type: "voiptext",
+        last_msgtime: 1778240100000,
+        pinned_time: 0,
+        seat_id: 12,
+        third_external_userid: "external-1",
+        third_group_id: "",
+        third_userid: "third-user-1",
+        unread_cnt: 0,
+        verified: 0,
+      }),
+    ).toMatchObject({
+      lastMessage: "[语音通话]",
+    });
+  });
+
   it("maps media and file payload fields with complete URLs or object paths", () => {
     expect(
       mapMessageRow(messageRow({

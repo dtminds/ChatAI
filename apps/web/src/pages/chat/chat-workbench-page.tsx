@@ -3221,6 +3221,13 @@ function buildQuotedMessagePreview(
         fallbackText: "[语音]",
         title: message.content.durationLabel,
       };
+    case "voice-call":
+      return {
+        ...basePreview,
+        fallbackText: "[语音通话]",
+        text: message.content.text,
+        title: message.content.text,
+      };
     case "file":
       return {
         ...basePreview,

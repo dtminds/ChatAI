@@ -801,6 +801,29 @@ describe("MessageHistorySidePanel", () => {
     expect(viewport.queryByText("MP")).not.toBeInTheDocument();
   });
 
+  it("renders voice-call copy in the compact history list", () => {
+    render(
+      <HistoryCompactMessageList
+        messages={[
+          {
+            ...createTextMessage("voice-call-1", "对方已取消"),
+            content: {
+              missed: true,
+              text: "对方已取消",
+              type: "voice-call",
+            },
+          },
+        ]}
+      />,
+    );
+
+    expect(screen.getByTestId("voice-call-message-bubble")).toHaveAccessibleName(
+      "对方已取消 未接听",
+    );
+    expect(screen.getByText("对方已取消")).toBeInTheDocument();
+    expect(screen.getByTestId("voice-call-missed-dot")).toBeInTheDocument();
+  });
+
   it("renders chat record messages in the compact history list", () => {
     render(
       <HistoryCompactMessageList

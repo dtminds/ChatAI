@@ -125,6 +125,10 @@ export type MessageHydrationSources = {
 const WECHAT_NICKNAME_SUBTITLE_PREFIX = "微信昵称：";
 const UNSUPPORTED_MESSAGE_DISPLAY_TEXT = "[暂不支持显示该消息]";
 const UNSUPPORTED_CHAT_RECORD_DISPLAY_TEXT = "[暂不支持展示该聊天记录]";
+const VOICE_CALL_MSGTYPE = "voiptext";
+const VOICE_CALL_MISSED_TEXT = "对方已取消";
+const VOICE_CALL_OUTGOING_CANCELLED_TEXT = "已取消";
+const VOICE_CALL_PREVIEW_FALLBACK = "[语音通话]";
 const CHAT_RECORD_LOADING_WINDOW_MS = 15_000;
 const APPLICATION_MESSAGE_AVATAR_URL = "https://b5.bokr.com.cn/dist/app-avatar.png";
 
@@ -399,6 +403,8 @@ function mapContentType(msgtype: string | null | undefined): WorkbenchMessageCon
       return "emotion";
     case "voice":
       return "voice";
+    case VOICE_CALL_MSGTYPE:
+      return "voice-call";
     case "video":
       return "video";
     case "file":
@@ -516,6 +522,8 @@ function parseMessageContent(row: MessageRow, quotePreview?: MessageRowQuotePrev
         durationLabel: "",
         ...buildVoiceTranscodeContent(parsed),
       };
+    case VOICE_CALL_MSGTYPE:
+      return readVoiceCallMessageContent(parsed, rawContent, row.from_type);
     case "video":
       return {
         alt: "视频",
@@ -616,6 +624,112 @@ function parseMessageContent(row: MessageRow, quotePreview?: MessageRowQuotePrev
   }
 }
 
+function readVoiceCallMessageContent(
+  parsed: unknown,
+  rawContent: string | null,
+  fromType: number | null,
+) {
+  const text = resolveVoiceCallDisplayText(parsed, rawContent, { fromType });
+  const missed = text === VOICE_CALL_MISSED_TEXT;
+
+  return {
+    text,
+    ...(missed ? { missed: true } : {}),
+  };
+}
+
+function resolveVoiceCallDisplayText(
+  parsed: unknown,
+  rawContent: string | null,
+  options?: {
+    fallback?: string;
+    fromType?: number | null;
+  },
+) {
+  const explicitText = readVoiceCallExplicitText(parsed, rawContent);
+
+  if (explicitText) {
+    return explicitText;
+  }
+
+  const duration = readVoiceCallDuration(parsed);
+
+  if (duration != null && duration > 0) {
+    return formatVoiceCallDurationLabel(duration);
+  }
+
+  if (options?.fallback != null) {
+    return options.fallback;
+  }
+
+  return options?.fromType === 1
+    ? VOICE_CALL_OUTGOING_CANCELLED_TEXT
+    : VOICE_CALL_MISSED_TEXT;
+}
+
+function readVoiceCallExplicitText(parsed: unknown, rawContent: string | null) {
+  if (typeof parsed === "string") {
+    return parsed.trim();
+  }
+
+  const payload = unwrapVoiceCallPayload(parsed);
+  const payloadText =
+    readStringField(payload, "text").trim() ||
+    readStringField(payload, "content").trim();
+
+  if (payloadText) {
+    return payloadText;
+  }
+
+  if (isRecord(parsed) && parsed !== payload) {
+    const topLevelText =
+      readStringField(parsed, "text").trim() ||
+      readStringField(parsed, "content").trim();
+
+    if (topLevelText) {
+      return topLevelText;
+    }
+  }
+
+  return typeof rawContent === "string" && !rawContent.trim().startsWith("{")
+    ? rawContent.trim()
+    : "";
+}
+
+function unwrapVoiceCallPayload(parsed: unknown) {
+  if (!isRecord(parsed)) {
+    return parsed;
+  }
+
+  if (isRecord(parsed.info)) {
+    return parsed.info;
+  }
+
+  if (isRecord(parsed.voiptext)) {
+    return parsed.voiptext;
+  }
+
+  return parsed;
+}
+
+function readVoiceCallDuration(parsed: unknown) {
+  const payload = unwrapVoiceCallPayload(parsed);
+
+  return (
+    readNumberField(payload, "callduration") ??
+    readNumberField(payload, "callDuration") ??
+    readNumberField(payload, "call_duration")
+  );
+}
+
+function formatVoiceCallDurationLabel(durationSeconds: number) {
+  const total = Math.max(0, Math.floor(durationSeconds));
+  const minutes = Math.floor(total / 60);
+  const seconds = total % 60;
+
+  return `通话时长 ${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
+}
+
 function buildVoiceTranscodeContent(parsed: unknown) {
   const transFileUrl = normalizeMediaAssetUrl(readStringField(parsed, "transFileUrl"));
   const audioUrl = normalizeMediaAssetUrl(readStringField(parsed, "fileUrl"));
@@ -678,6 +792,10 @@ function formatMessagePreview(
       return "[图片]";
     case "voice":
       return "[语音]";
+    case VOICE_CALL_MSGTYPE:
+      return resolveVoiceCallDisplayText(parsed, rawContent, {
+        fallback: VOICE_CALL_PREVIEW_FALLBACK,
+      });
     case "video":
       return "[视频]";
     case "file":
@@ -834,6 +952,13 @@ export function buildQuotedMessagePreview(row: MessageRow): MessageRowQuotePrevi
         senderName,
         text: String(mapped.content.text ?? ""),
       };
+    case "voice-call":
+      return {
+        contentType: "voice-call",
+        senderName,
+        text: String(mapped.content.text ?? ""),
+        title: String(mapped.content.text ?? ""),
+      };
     case "image":
       return {
         contentType: mapped.contentType,
@@ -922,6 +1047,7 @@ function getPreviewTitle(
 ) {
   return (
     readRecordString(content, "title") ||
+    readRecordString(content, "text") ||
     readRecordString(content, "name") ||
     readRecordString(content, "fileName") ||
     readRecordString(content, "appName") ||
@@ -940,6 +1066,8 @@ function reverseMapContentType(contentType: WorkbenchMessageContentType) {
       return "chatrecord";
     case "contact-card":
       return "card";
+    case "voice-call":
+      return VOICE_CALL_MSGTYPE;
     default:
       return contentType;
   }

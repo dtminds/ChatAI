@@ -12,6 +12,7 @@ import { SolitaireMessageCard } from "@/pages/chat/components/message/solitaire"
 import { SphFeedMessageCard } from "@/pages/chat/components/message/sphfeed";
 import { TextMessageBubble } from "@/pages/chat/components/message/text";
 import { VideoMessageCard } from "@/pages/chat/components/message/video";
+import { VoiceCallMessageCard } from "@/pages/chat/components/message/voice-call";
 import { VoiceMessageCard } from "@/pages/chat/components/message/voice";
 
 type MessageContentRendererProps = {
@@ -52,6 +53,14 @@ export function MessageContentRenderer({
           onTranscribe={
             onTranscribeVoice ? () => onTranscribeVoice(message) : undefined
           }
+        />
+      );
+    case "voice-call":
+      return (
+        <VoiceCallMessageCard
+          content={message.content}
+          isAgent={isAgent}
+          isOwnMessage={message.isOwnMessage}
         />
       );
     case "image":

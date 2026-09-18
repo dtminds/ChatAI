@@ -54,6 +54,8 @@ export function getMessageForwardPreview(message: ChatMessage) {
       return message.content.alt?.trim() || "[视频]";
     case "voice":
       return message.content.transVoiceText?.trim() || "[语音]";
+    case "voice-call":
+      return message.content.text.trim() || "[语音通话]";
     case "file":
       return message.content.fileName?.trim() || "[文件]";
     case "h5":

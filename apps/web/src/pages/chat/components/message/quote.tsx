@@ -1,4 +1,5 @@
 import {
+  Call02Icon,
   FileEmpty01Icon,
   Image01Icon,
   IdentityCardIcon,
@@ -276,6 +277,8 @@ function getQuoteTypeIcon(contentType: QuotedMessagePreviewContent["contentType"
       return Image01Icon;
     case "voice":
       return SpeechIcon;
+    case "voice-call":
+      return Call02Icon;
     case "video":
       return PlayCircle02Icon;
     case "file":
@@ -334,6 +337,8 @@ function getContentTypeLabel(contentType: QuotedMessagePreviewContent["contentTy
       return "[系统消息]";
     case "voice":
       return "[语音]";
+    case "voice-call":
+      return "[语音通话]";
     case "video":
       return "[视频]";
     case "file":

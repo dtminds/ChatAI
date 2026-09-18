@@ -1071,6 +1071,51 @@ describe("adaptMessage", () => {
     });
   });
 
+  it("adapts voice-call message content", () => {
+    expect(
+      adaptMessage(
+        {
+          ...messageDto,
+          content: {
+            missed: true,
+            text: "对方已取消",
+          },
+          contentType: "voice-call",
+          rawMsgtype: "voiptext",
+        },
+        customerProfilesById,
+        accountsById,
+        me,
+      ),
+    ).toMatchObject({
+      content: {
+        missed: true,
+        text: "对方已取消",
+        type: "voice-call",
+      },
+      rawMsgtype: "voiptext",
+    });
+
+    expect(
+      adaptMessage(
+        {
+          ...messageDto,
+          content: {
+            text: "通话时长 00:08",
+          },
+          contentType: "voice-call",
+          rawMsgtype: "voiptext",
+        },
+        customerProfilesById,
+        accountsById,
+        me,
+      ).content,
+    ).toEqual({
+      text: "通话时长 00:08",
+      type: "voice-call",
+    });
+  });
+
   it("adapts emotion messages as compact image content", () => {
     expect(
       adaptMessage(

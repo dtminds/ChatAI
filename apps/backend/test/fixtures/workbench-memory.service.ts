@@ -1833,6 +1833,8 @@ function getMemoryRawMsgtype(contentType: WorkbenchMessageDto["contentType"]) {
       return "weapp";
     case "contact-card":
       return "card";
+    case "voice-call":
+      return "voiptext";
     default:
       return contentType;
   }

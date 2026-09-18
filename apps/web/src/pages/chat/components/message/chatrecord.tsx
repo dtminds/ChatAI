@@ -31,6 +31,7 @@ import {
   WechatEmojiText,
 } from "@/pages/chat/components/message/text";
 import { VideoMessageCard } from "@/pages/chat/components/message/video";
+import { VoiceCallMessageCard } from "@/pages/chat/components/message/voice-call";
 
 type ChatRecordDetail = {
   messageSeq: number;
@@ -308,6 +309,17 @@ function ChatRecordDetailMessageContent({ message }: { message: ChatMessage }) {
       <div className="w-full max-w-full min-w-0 whitespace-pre-wrap break-words text-sm leading-6 text-foreground">
         <WechatEmojiText text={message.content.transVoiceText?.trim() || "[语音]"} />
       </div>
+    );
+  }
+
+  if (message.content.type === "voice-call") {
+    return (
+      <VoiceCallMessageCard
+        content={message.content}
+        isAgent={message.role === "agent"}
+        isOwnMessage={message.isOwnMessage}
+        variant="plain"
+      />
     );
   }
 

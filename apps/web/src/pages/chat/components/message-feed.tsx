@@ -78,6 +78,7 @@ import type { SmartReplySuggestion } from "@/pages/chat/lib/smart-reply-types";
 import {
   INITIALIZING_MESSAGE_DISPLAY_TEXT,
   MESSAGE_REVOKE_WINDOW_MS,
+  VOICE_CALL_MSGTYPE,
 } from "@/pages/chat/chat-constants";
 import type { ChatMessage, Message } from "@/pages/chat/chat-types";
 import {
@@ -895,7 +896,9 @@ function MessageActionAvatar({
     canUseMessageActions &&
     !message.isRevoked &&
     isValidMessageSeq(message.seq) &&
-    message.content.type !== "contact-card";
+    message.content.type !== "contact-card" &&
+    message.content.type !== "voice-call" &&
+    message.rawMsgtype !== VOICE_CALL_MSGTYPE;
   const canCollectMessage = Boolean(onCollectMaterial) && canCollectMaterial(message);
   const canSelectCollectMessage = canCollectMaterialActions && !message.isRevoked;
   const canForwardMessageAction =
@@ -1469,7 +1472,9 @@ function canShowRevokeMessageAction(message: ChatMessage, now = Date.now()) {
     message.isRevoked ||
     message.revokePending ||
     message.status !== "sent" ||
-    !isValidMessageSeq(message.seq)
+    !isValidMessageSeq(message.seq) ||
+    message.content.type === "voice-call" ||
+    message.rawMsgtype === VOICE_CALL_MSGTYPE
   ) {
     return false;
   }

@@ -823,6 +823,11 @@ function buildContent(message: Message) {
         audioUrl: message.content.audioUrl,
         durationLabel: message.content.durationLabel,
       };
+    case "voice-call":
+      return {
+        missed: message.content.missed,
+        text: message.content.text,
+      };
     case "image":
       return {
         alt: message.content.alt,
@@ -1554,6 +1559,8 @@ function getMockRawMsgtype(contentType: Message["content"]["type"]) {
       return "weapp";
     case "contact-card":
       return "card";
+    case "voice-call":
+      return "voiptext";
     default:
       return contentType;
   }

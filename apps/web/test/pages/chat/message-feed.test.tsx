@@ -692,6 +692,30 @@ describe("message feed row actions", () => {
     expect(onQuoteMessage).not.toHaveBeenCalled();
   });
 
+  it("disables the quote action for voice-call messages", async () => {
+    const user = userEvent.setup();
+    const onQuoteMessage = vi.fn();
+
+    render(
+      <MessageRow
+        message={{
+          ...createVoiceCallMessage(),
+          rawMsgtype: undefined,
+        }}
+        onQuoteMessage={onQuoteMessage}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "消息操作" }));
+
+    const quoteItem = screen.getByRole("menuitem", { name: "引用" });
+    expect(quoteItem).toHaveAttribute("data-disabled");
+
+    await user.click(quoteItem);
+
+    expect(onQuoteMessage).not.toHaveBeenCalled();
+  });
+
   it("shows smart reply recommendation as the first message action for customer messages without suggestions", async () => {
     const user = userEvent.setup();
 
@@ -1226,6 +1250,29 @@ describe("message feed row actions", () => {
     await user.click(screen.getByRole("button", { name: "消息操作" }));
 
     expect(screen.queryByRole("menuitem", { name: "撤回消息" })).not.toBeInTheDocument();
+  });
+
+  it("does not expose revoke action for voice-call messages", async () => {
+    const user = userEvent.setup();
+    const onRevokeMessage = vi.fn();
+    vi.setSystemTime(new Date("2026-05-08T09:56:59").getTime());
+
+    render(
+      <MessageRow
+        message={{
+          ...createVoiceCallMessage(),
+          isOwnMessage: true,
+          rawMsgtype: undefined,
+        }}
+        onRevokeMessage={onRevokeMessage}
+        onQuoteMessage={vi.fn()}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "消息操作" }));
+
+    expect(screen.queryByRole("menuitem", { name: "撤回消息" })).not.toBeInTheDocument();
+    expect(onRevokeMessage).not.toHaveBeenCalled();
   });
 
   it("does not expose revoke action when seq is invalid", async () => {
@@ -2046,5 +2093,16 @@ function createTextMessage(text: string) {
     seq: 1088,
     status: "sent" as const,
     uiMessageKey: "msg-text-layout",
+  } satisfies ChatMessage;
+}
+
+function createVoiceCallMessage(text = "通话时长 00:12") {
+  return {
+    ...createTextMessage(text),
+    content: {
+      text,
+      type: "voice-call" as const,
+    },
+    rawMsgtype: "voiptext",
   } satisfies ChatMessage;
 }

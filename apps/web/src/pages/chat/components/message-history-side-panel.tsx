@@ -31,6 +31,7 @@ import { ImagePreviewDialog } from "@/pages/chat/components/message/image";
 import { LoadableMessageImage } from "@/pages/chat/components/message/media-fallback";
 import {
   MessageContentRenderer,
+  VoiceCallMessageCard,
   WechatEmojiText,
 } from "@/pages/chat/components/message";
 import { QuoteMessagePreview } from "@/pages/chat/components/message/quote";
@@ -556,6 +557,17 @@ function HistoryCompactMessageContent({
 }) {
   if (message.content.type === "text") {
     return <HistoryCompactText text={message.content.text} textWeight={textWeight} />;
+  }
+
+  if (message.content.type === "voice-call") {
+    return (
+      <VoiceCallMessageCard
+        content={message.content}
+        isAgent={message.role === "agent"}
+        isOwnMessage={message.isOwnMessage}
+        variant="plain"
+      />
+    );
   }
 
   if (message.content.type === "quote") {

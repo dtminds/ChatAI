@@ -14,6 +14,7 @@ import {
   useState,
 } from "react";
 import type { AgentTurnEventEnvelope } from "@chatai/contracts";
+import { Spinner } from "@/components/ui/spinner";
 import { ShinyText } from "@/components/ui/shiny-text";
 import { cn } from "@/lib/utils";
 import {
@@ -169,6 +170,7 @@ function ActivityIcon({
   const isRejected =
     activity.decision?.action === "reject" ||
     activity.decision?.action === "redirect";
+  const isRunning = activity.status === "running";
   const isThinking = activity.kind === "thinking";
   const isWarning = isFailed || isRejected;
   const label = isFailed
@@ -190,19 +192,28 @@ function ActivityIcon({
       className="flex size-[18px] items-center justify-center"
       role="img"
     >
-      <HugeiconsIcon
-        aria-hidden="true"
-        className={
-          isFailed
-            ? "text-destructive"
-            : isRejected
-              ? "text-warning"
-              : "text-muted-foreground"
-        }
-        icon={icon}
-        size={14}
-        strokeWidth={1.8}
-      />
+      {isRunning ? (
+        <Spinner
+          aria-hidden="true"
+          className="text-muted-foreground"
+          size={13}
+          variant="classic"
+        />
+      ) : (
+        <HugeiconsIcon
+          aria-hidden="true"
+          className={
+            isFailed
+              ? "text-destructive"
+              : isRejected
+                ? "text-warning"
+                : "text-muted-foreground"
+          }
+          icon={icon}
+          size={14}
+          strokeWidth={1.8}
+        />
+      )}
     </span>
   );
 }

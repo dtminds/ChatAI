@@ -79,6 +79,9 @@ describe("ChatAgentTurnTimeline", () => {
       "data-slot",
       "shiny-text",
     );
+    expect(
+      screen.getByLabelText("思考").querySelector('[data-slot="spinner"]'),
+    ).toBeInTheDocument();
 
     rerender(
       <ChatAgentTurnTimeline
@@ -100,6 +103,9 @@ describe("ChatAgentTurnTimeline", () => {
     expect(screen.getByText("正在核对订单信息")).not.toHaveAttribute(
       "data-slot",
     );
+    expect(
+      screen.getByLabelText("思考").querySelector('[data-slot="spinner"]'),
+    ).not.toBeInTheDocument();
   });
 
   it("keeps tool data collapsed until the activity is expanded", async () => {

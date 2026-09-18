@@ -50,6 +50,7 @@ import { MessageForwardSelectedMessagesDialog } from "@/pages/chat/components/me
 import { MessageMultiSelectToolbar } from "@/pages/chat/components/message-forward/message-multi-select-toolbar";
 import { TicketDetailPage } from "@/pages/chat/tickets/ticket-detail-page";
 import { getMessageFeedItemKey } from "@/pages/chat/lib/message-feed-key";
+import { VOICE_CALL_MSGTYPE } from "@/pages/chat/chat-constants";
 import {
   getOversizedComposerFileDialogCopy,
   getSendFailureDialogCopy,
@@ -1592,7 +1593,7 @@ function ChatWorkbenchContent({
 
   const handleRevokeMessage = useCallback(
     async (message: ChatMessage) => {
-      if (!canSendMessage) {
+      if (!canSendMessage || message.rawMsgtype === VOICE_CALL_MSGTYPE) {
         return;
       }
 
@@ -2335,7 +2336,10 @@ function ChatWorkbenchContent({
   };
 
   const handleQuoteMessage = (message: ChatMessage) => {
-    if (message.isRevoked) {
+    if (
+      message.isRevoked ||
+      message.rawMsgtype === VOICE_CALL_MSGTYPE
+    ) {
       return;
     }
 

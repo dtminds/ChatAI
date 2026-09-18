@@ -1,4 +1,4 @@
-import { Call02Icon } from "@hugeicons/core-free-icons";
+import { PhoneIcon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { getTextBubbleClassName } from "@/pages/chat/components/message/bubble-style";
 import type { VoiceCallMessageContent } from "@/pages/chat/chat-types";
@@ -35,11 +35,8 @@ export function VoiceCallMessageCard({
     >
       <HugeiconsIcon
         aria-hidden="true"
-        className={cn(
-          "shrink-0",
-          isRightAligned ? "text-primary" : "text-muted-foreground",
-        )}
-        icon={Call02Icon}
+        className="shrink-0"
+        icon={PhoneIcon}
         size={16}
         strokeWidth={1.8}
       />

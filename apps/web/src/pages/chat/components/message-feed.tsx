@@ -64,16 +64,9 @@ import { QuoteMessagePreview } from "@/pages/chat/components/message/quote";
 import { TextMessageBubble } from "@/pages/chat/components/message/text";
 import {
   getSmartReplyLookupKey,
-  getSmartReplyInlineState,
-  shouldShowSmartReplyCard,
+  isSmartReplySkippedResult,
   shouldShowSmartReplyTriggerIcon,
-  SMART_REPLY_INLINE_LOADING_HINT,
-  type SmartReplySendPayload,
 } from "@/pages/chat/api/smart-reply-adapter";
-import {
-  SmartReplyInlineProcessingHint,
-  SmartReplyMessageAnchor,
-} from "@/pages/chat/components/smart-reply-card";
 import type { SmartReplySuggestion } from "@/pages/chat/lib/smart-reply-types";
 import {
   INITIALIZING_MESSAGE_DISPLAY_TEXT,
@@ -95,6 +88,7 @@ const TIMESTAMP_BREAK_MS = 5 * 60 * 1000;
 export const MESSAGE_SENT_AT_HOVER_DELAY_MS = 400;
 
 type ChatMessageListProps = {
+  activeSmartReplyLookupKey?: string;
   canCollectMaterialActions?: boolean;
   canUseMessageActions?: boolean;
   canUseMessageForward?: boolean;
@@ -116,10 +110,6 @@ type ChatMessageListProps = {
   onRevokeMessage?: (message: ChatMessage) => void;
   onRetryMessage?: (uiMessageKey: string) => void;
   onLoadSendFailReason?: (uiMessageKey: string) => Promise<string | undefined>;
-  onSendSmartReply?: (message: ChatMessage, payload: SmartReplySendPayload) => void;
-  onFillSmartReplyComposer?: (message: ChatMessage, content: string) => void;
-  onDismissSmartReply?: (message: ChatMessage) => void;
-  onMakeShorterSmartReply?: (message: ChatMessage) => void;
   onTriggerSmartReply?: (
     message: ChatMessage,
     options?: { force?: boolean },
@@ -131,9 +121,7 @@ type ChatMessageListProps = {
   ) => void;
   onTranscribeVoice?: (message: ChatMessage) => Promise<string>;
   retryingMessageIds?: ReadonlySet<string>;
-  smartReplyAutoPendingByMessageId?: Record<string, true>;
   smartReplyByMessageId?: Record<string, SmartReplySuggestion>;
-  smartReplyPendingByMessageId?: Record<string, true>;
 };
 
 
@@ -150,6 +138,7 @@ type FeedItem =
     };
 
 export function ChatMessageList({
+  activeSmartReplyLookupKey,
   canCollectMaterialActions = true,
   canUseMessageActions = true,
   canUseMessageForward = false,
@@ -171,18 +160,12 @@ export function ChatMessageList({
   onRevokeMessage,
   onRetryMessage,
   onLoadSendFailReason,
-  onSendSmartReply,
-  onFillSmartReplyComposer,
-  onDismissSmartReply,
-  onMakeShorterSmartReply,
   onTriggerSmartReply,
   onToggleMessageSelection,
   onVoicePlaybackReady,
   onTranscribeVoice,
   retryingMessageIds,
-  smartReplyAutoPendingByMessageId,
   smartReplyByMessageId,
-  smartReplyPendingByMessageId,
 }: ChatMessageListProps) {
   const renderableMessages = useMemo(
     () => messages.filter((message): message is Message => Boolean(message)),
@@ -283,6 +266,7 @@ export function ChatMessageList({
                 key={getMessageFeedItemKey(item.message)}
               >
                 <MessageRow
+                  activeSmartReplyLookupKey={activeSmartReplyLookupKey}
                   conversationId={conversationId}
                   customerAvatarFallbackUrl={customerAvatarFallbackUrl}
                   message={item.message}
@@ -315,33 +299,11 @@ export function ChatMessageList({
                   onRevokeMessage={onRevokeMessage}
                   onRetryMessage={onRetryMessage}
                   onLoadSendFailReason={onLoadSendFailReason}
-                  onSendSmartReply={onSendSmartReply}
-                  onFillSmartReplyComposer={onFillSmartReplyComposer}
-                  onDismissSmartReply={onDismissSmartReply}
-                  onMakeShorterSmartReply={onMakeShorterSmartReply}
                   onTriggerSmartReply={onTriggerSmartReply}
                   onToggleMessageSelection={onToggleMessageSelection}
                   onTranscribeVoice={onTranscribeVoice}
                   onVoicePlaybackReady={onVoicePlaybackReady}
                   isRetryingMessage={retryingMessageIds?.has(item.message.uiMessageKey) ?? false}
-                  isSmartReplyAutoPending={
-                    item.message.role === "customer" &&
-                    !item.message.isOwnMessage &&
-                    Boolean(
-                      smartReplyAutoPendingByMessageId?.[
-                        getSmartReplyLookupKey(item.message)
-                      ],
-                    )
-                  }
-                  isSmartReplyPending={
-                    item.message.role === "customer" &&
-                    !item.message.isOwnMessage &&
-                    Boolean(
-                      smartReplyPendingByMessageId?.[
-                        getSmartReplyLookupKey(item.message)
-                      ],
-                    )
-                  }
                   smartReply={
                     item.message.role === "customer" && !item.message.isOwnMessage
                       ? smartReplyByMessageId?.[getSmartReplyLookupKey(item.message)]
@@ -396,6 +358,7 @@ function SystemMessageNotice({ text }: { text: string }) {
 }
 
 export function MessageRow({
+  activeSmartReplyLookupKey,
   conversationId,
   customerAvatarFallbackUrl,
   message,
@@ -417,19 +380,14 @@ export function MessageRow({
   onRevokeMessage,
   onRetryMessage,
   onLoadSendFailReason,
-  onSendSmartReply,
-  onFillSmartReplyComposer,
-  onDismissSmartReply,
-  onMakeShorterSmartReply,
   onTriggerSmartReply,
   onToggleMessageSelection,
   onVoicePlaybackReady,
   onTranscribeVoice,
   isRetryingMessage = false,
-  isSmartReplyAutoPending = false,
-  isSmartReplyPending = false,
   smartReply,
 }: {
+  activeSmartReplyLookupKey?: string;
   conversationId?: string;
   customerAvatarFallbackUrl?: string;
   message: Message;
@@ -438,8 +396,6 @@ export function MessageRow({
   canUseMessageForward?: boolean;
   isMessageSelected?: boolean;
   isRetryingMessage?: boolean;
-  isSmartReplyAutoPending?: boolean;
-  isSmartReplyPending?: boolean;
   multiSelectMode?: boolean;
   shouldAnimate?: boolean;
   showTimestamp?: boolean;
@@ -454,10 +410,6 @@ export function MessageRow({
   onRevokeMessage?: (message: ChatMessage) => void;
   onRetryMessage?: (uiMessageKey: string) => void;
   onLoadSendFailReason?: (uiMessageKey: string) => Promise<string | undefined>;
-  onSendSmartReply?: (message: ChatMessage, payload: SmartReplySendPayload) => void;
-  onFillSmartReplyComposer?: (message: ChatMessage, content: string) => void;
-  onDismissSmartReply?: (message: ChatMessage) => void;
-  onMakeShorterSmartReply?: (message: ChatMessage) => void;
   onTriggerSmartReply?: (
     message: ChatMessage,
     options?: { force?: boolean },
@@ -525,18 +477,12 @@ export function MessageRow({
     !isAgent && showSenderName && Boolean(formattedSentAt);
   const showSentAtHoverSlot = Boolean(formattedSentAt) && !showSentAtAfterSenderName;
   const inlineDeliveryState = getInlineDeliveryState(message);
-  const showSmartReplyCard =
-    !isInitializing && shouldShowSmartReplyCard(smartReply);
-  const smartReplyInlineState =
-    !showSmartReplyCard && smartReply
-      ? getSmartReplyInlineState(smartReply)
-      : undefined;
-  const showSmartReplyInlineProcessing =
-    !isInitializing &&
-    !showSmartReplyCard &&
-    (isSmartReplyAutoPending || isSmartReplyPending || smartReplyInlineState != null);
+  const smartReplyLookupKey = getSmartReplyLookupKey(message);
+  const isActiveSmartReplySource =
+    activeSmartReplyLookupKey === smartReplyLookupKey;
+  const canRevealSmartReplyResult = isSmartReplySkippedResult(smartReply);
   const showSmartReplyTriggerIcon =
-    !showSmartReplyInlineProcessing &&
+    (!isActiveSmartReplySource || canRevealSmartReplyResult) &&
     shouldShowSmartReplyTriggerIcon(message, smartReply);
   const animationClassName = getMessageEntranceAnimationClassName(
     isAgent ? "right" : "left",
@@ -568,6 +514,9 @@ export function MessageRow({
             onQuoteMessage={onQuoteMessage}
             onRevokeMessage={onRevokeMessage}
             onTriggerSmartReply={onTriggerSmartReply}
+            smartReplyTriggerDisabled={
+              Boolean(activeSmartReplyLookupKey) && !canRevealSmartReplyResult
+            }
             showSmartReplyRecommendation={showSmartReplyTriggerIcon}
           />
         );
@@ -732,38 +681,6 @@ export function MessageRow({
                   </div>
                 )}
                 {message.isRevoked ? <MessageRevokedState /> : null}
-                {showSmartReplyCard ? (
-                  <SmartReplyMessageAnchor
-                    canSendMessage={canUseMessageActions}
-                    conversationId={conversationId}
-                    dismissTargetRef={dismissTargetRef}
-                    message={message}
-                    onDismiss={onDismissSmartReply}
-                    onFillComposer={onFillSmartReplyComposer}
-                    onMakeShorter={onMakeShorterSmartReply}
-                    onRegenerate={(regenerateMessage) => {
-                      onTriggerSmartReply?.(regenerateMessage, { force: true });
-                    }}
-                    suggestion={smartReply}
-                    onSend={onSendSmartReply}
-                  />
-                ) : null}
-                {showSmartReplyInlineProcessing ? (
-                  <SmartReplyInlineProcessingHint
-                    animated={smartReplyInlineState?.isLoading ?? true}
-                    label={smartReplyInlineState?.label ?? SMART_REPLY_INLINE_LOADING_HINT}
-                    onDismiss={
-                      smartReplyInlineState?.canDismiss && onDismissSmartReply
-                        ? () => onDismissSmartReply(message)
-                        : undefined
-                    }
-                    onRegenerate={
-                      smartReplyInlineState?.canRegenerate && onTriggerSmartReply
-                        ? () => onTriggerSmartReply(message, { force: true })
-                        : undefined
-                    }
-                  />
-                ) : null}
                 {showTimestamp ? (
                   <p className="px-1 text-[11px] leading-4 text-muted-foreground/80">
                     {message.sentAt}
@@ -862,6 +779,7 @@ function MessageActionAvatar({
   onQuoteMessage,
   onRevokeMessage,
   onTriggerSmartReply,
+  smartReplyTriggerDisabled,
   showSmartReplyRecommendation,
 }: {
   customerAvatarFallbackUrl?: string;
@@ -880,6 +798,7 @@ function MessageActionAvatar({
     message: ChatMessage,
     options?: { force?: boolean },
   ) => void;
+  smartReplyTriggerDisabled?: boolean;
   showSmartReplyRecommendation: boolean;
 }) {
   const [isRevokeDialogOpen, setIsRevokeDialogOpen] = useState(false);
@@ -907,7 +826,9 @@ function MessageActionAvatar({
     Boolean(onRevokeMessage) &&
     canShowRevokeMessageAction(message);
   const canSelectSmartReplyRecommendation =
-    canUseMessageActions && Boolean(onTriggerSmartReply);
+    canUseMessageActions &&
+    Boolean(onTriggerSmartReply) &&
+    !smartReplyTriggerDisabled;
   const messageSeqForCopy = isValidMessageSeq(message.seq) ? String(message.seq) : "";
   const senderUserIdForCopy = message.sender.userId?.trim() ?? "";
 

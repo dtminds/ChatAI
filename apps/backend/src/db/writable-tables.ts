@@ -23,6 +23,7 @@ export const WRITABLE_TABLES = [
   "xy_wap_embed_user_seat_group_agent",
   "xy_wap_embed_user_seat_sub_relation",
   "xy_wap_embed_conversation",
+  "xy_wap_embed_chat_agent_preflight",
   "xy_wap_embed_insight_analysis_policy",
   "xy_wap_embed_insight_asset",
   "xy_wap_embed_insight_entity_dictionary",

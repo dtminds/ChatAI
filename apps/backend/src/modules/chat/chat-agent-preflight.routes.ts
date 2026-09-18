@@ -1,0 +1,73 @@
+import {
+  ChatAgentPreflightRequestSchema,
+  type ChatAgentPreflightRequest,
+} from "@chatai/contracts";
+import type { FastifyInstance, FastifyRequest } from "fastify";
+import { ForbiddenError } from "../../shared/errors.js";
+import { withRequestId } from "../../shared/logger.js";
+import { getAuthenticatedWorkbenchScope } from "../workbench-platform-scope.js";
+import type { WorkbenchService } from "./workbench.service.js";
+
+export async function registerChatAgentPreflightRoutes(
+  app: FastifyInstance,
+) {
+  app.post<{ Body: ChatAgentPreflightRequest }>(
+    "/api/server/chat-agent/preflight",
+    {
+      preHandler: app.authenticate,
+      schema: { body: ChatAgentPreflightRequestSchema },
+    },
+    async (request, reply) => {
+      assertPreflightAccess(request);
+      const subUserId = request.user?.subUserId ?? "";
+      await getWorkbenchService(app, request).assertConversationOperable(
+        subUserId,
+        request.body.conversationId,
+      );
+
+      const abortController = new AbortController();
+      const abortOnRequestAborted = () => abortController.abort();
+      const abortOnResponseClosed = () => {
+        if (!reply.raw.writableEnded) {
+          abortController.abort();
+        }
+      };
+
+      request.raw.once("aborted", abortOnRequestAborted);
+      reply.raw.once("close", abortOnResponseClosed);
+
+      try {
+        return await app.chatAgentPreflightService.assess(
+          request.user.uid,
+          request.body,
+          abortController.signal,
+        );
+      } catch (error) {
+        if (abortController.signal.aborted) {
+          return;
+        }
+
+        throw error;
+      } finally {
+        request.raw.off("aborted", abortOnRequestAborted);
+        reply.raw.off("close", abortOnResponseClosed);
+      }
+    },
+  );
+}
+
+function assertPreflightAccess(request: FastifyRequest) {
+  if (request.user?.roles?.[0] === "viewer") {
+    throw new ForbiddenError("FORBIDDEN", "无权限访问");
+  }
+}
+
+function getWorkbenchService(
+  app: FastifyInstance,
+  request: FastifyRequest,
+): WorkbenchService {
+  return app.createWorkbenchService?.(
+    withRequestId(request.log, request.id),
+    getAuthenticatedWorkbenchScope(request.user),
+  ) ?? app.workbenchService;
+}

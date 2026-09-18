@@ -22,14 +22,14 @@ export function MessageMultiSelectToolbar({
   return (
     <div
       className={cn(
-        "flex items-center rounded-full bg-background px-3 py-1 shadow-[0_2px_12px_var(--shadow-medium)]",
+        "flex h-11 items-center rounded-[14px] border border-border bg-card p-1 shadow-[0_4px_16px_var(--shadow-soft)]",
         className,
       )}
       data-testid="message-multi-select-toolbar"
     >
       <button
         className={cn(
-          "inline-flex min-w-18 flex-col items-center gap-1 rounded-full px-3 py-2 text-[12px] text-foreground transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/20",
+          "inline-flex h-9 items-center gap-1.5 rounded-[10px] px-3 text-[12px] font-medium text-foreground transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/20",
           canForward ? "hover:bg-surface-hover" : "cursor-not-allowed opacity-45",
         )}
         disabled={!canForward}
@@ -40,15 +40,15 @@ export function MessageMultiSelectToolbar({
           aria-hidden="true"
           color="currentColor"
           icon={ArrowTurnForwardIcon}
-          size={20}
+          size={18}
           strokeWidth={1.8}
         />
         <span>逐条转发</span>
       </button>
-      <div aria-hidden="true" className="mx-1 h-8 w-px bg-divider" />
+      <div aria-hidden="true" className="mx-1 h-5 w-px bg-divider" />
       <button
         aria-label="退出多选"
-        className="inline-flex size-9 shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-surface-hover hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/20 disabled:cursor-not-allowed disabled:opacity-45"
+        className="inline-flex size-8 shrink-0 items-center justify-center rounded-[10px] text-muted-foreground transition-colors hover:bg-surface-hover hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/20 disabled:cursor-not-allowed disabled:opacity-45"
         disabled={disabled}
         onClick={onCancel}
         type="button"
@@ -57,7 +57,7 @@ export function MessageMultiSelectToolbar({
           aria-hidden="true"
           color="currentColor"
           icon={Cancel01Icon}
-          size={18}
+          size={16}
           strokeWidth={2}
         />
       </button>

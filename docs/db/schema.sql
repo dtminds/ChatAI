@@ -589,6 +589,26 @@ CREATE TABLE `xy_wap_embed_quick_reply` (
   KEY `idx_quick_reply_category_sort` (`uid`,`sub_uid`,`category_id`,`biz_status`,`sort`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci COMMENT='chatAI-快捷话术表';
 
+CREATE TABLE IF NOT EXISTS xy_wap_embed_chat_agent_preflight (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+  uid BIGINT UNSIGNED NOT NULL COMMENT '租户ID',
+  conversation_id BIGINT UNSIGNED NOT NULL COMMENT '会话ID',
+  trigger_message_seq BIGINT UNSIGNED NOT NULL COMMENT '触发预判的客户消息seq',
+  outcome VARCHAR(32) NOT NULL COMMENT '预判结果：no_response_needed、response_needed',
+  direction VARCHAR(32) NULL COMMENT '回应方向：provide_response、request_information、handle_request',
+  reasoning_summary VARCHAR(255) NOT NULL COMMENT '面向客服的对话进展摘要',
+  source VARCHAR(16) NOT NULL COMMENT '结果来源：model、fallback',
+  model VARCHAR(128) NULL COMMENT '实际请求的模型标识',
+  token_usage JSON NULL COMMENT '模型响应返回的Token用量',
+  create_time DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) COMMENT '创建时间',
+  update_time DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3)
+    ON UPDATE CURRENT_TIMESTAMP(3) COMMENT '更新时间',
+  PRIMARY KEY (id),
+  UNIQUE KEY uk_chat_agent_preflight_message (
+    uid, conversation_id, trigger_message_seq
+  )
+) COMMENT='客户回应预判记录';
+
 CREATE TABLE IF NOT EXISTS xy_wap_embed_ai_usage_outbox (
   id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '主键ID',
   uid BIGINT UNSIGNED NOT NULL COMMENT '租户ID',

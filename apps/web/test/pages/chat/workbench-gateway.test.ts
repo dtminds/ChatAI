@@ -5,6 +5,7 @@ import {
   CONVERSATION_MODE_LIMITS,
   UNREAD_CONVERSATION_MODE_LIMITS,
   loadGroupMembers,
+  loadSmartReplyReferenceMessages,
   loadAccountConversations,
   loadUnreadAccountConversationsByMode,
   loadAccountScope,
@@ -83,6 +84,55 @@ describe("workbench gateway message paging", () => {
       transVoiceTextPersisted: true,
     });
     expect(transcribeVoiceMessageSpy).toHaveBeenCalledWith(request);
+  });
+
+  it("loads smart reply reference messages through the dedicated batch endpoint", async () => {
+    const baseService = createMockWorkbenchService();
+    const getMessagesBySeqs = vi.fn(baseService.getMessagesBySeqs);
+    const getSmartReplyReferenceMessages = vi.fn(async () => ({
+      messages: [
+        {
+          content: {
+            appName: "品牌商城",
+            coverImageUrl: "https://example.com/serum.png",
+            title: "精华产品详情",
+          },
+          contentType: "mini-program" as const,
+          conversationId: "conv-source",
+          customerId: "customer-source",
+          msgid: "msg-3050",
+          rawMsgtype: "weapp",
+          seatId: "seat-source",
+          senderType: "agent" as const,
+          seq: 3050,
+          status: "sent" as const,
+        },
+      ],
+    }));
+
+    setWorkbenchService({
+      ...baseService,
+      getMessagesBySeqs,
+      getSmartReplyReferenceMessages,
+    });
+
+    await expect(
+      loadSmartReplyReferenceMessages("conv-001", [3050, 3051]),
+    ).resolves.toMatchObject([
+      {
+        content: {
+          coverImageUrl: "https://example.com/serum.png",
+          title: "精华产品详情",
+          type: "mini-program",
+        },
+        seq: 3050,
+      },
+    ]);
+    expect(getSmartReplyReferenceMessages).toHaveBeenCalledWith({
+      conversationId: "conv-001",
+      messageSeqs: [3050, 3051],
+    });
+    expect(getMessagesBySeqs).not.toHaveBeenCalled();
   });
 
   it("loads single and group conversations separately during bootstrap", async () => {

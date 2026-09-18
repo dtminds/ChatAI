@@ -1,6 +1,7 @@
 import {
   type DragEvent as ReactDragEvent,
   type ReactElement,
+  type ReactNode,
   type RefObject,
   useCallback,
   useEffect,
@@ -100,6 +101,7 @@ import {
   $insertComposerTextWithinMaxLength,
   $exportComposerSegments,
   $removeComposerTextRange,
+  $restoreComposerFromSegments,
 } from "@/pages/chat/components/composer/lexical-utils";
 import { WechatEmojiPicker } from "@/pages/chat/components/wechat-emoji-picker";
 import {
@@ -140,6 +142,10 @@ type ChatComposerProps = {
   isMobileLayout?: boolean;
   sendingCollectedExpressionId?: string | null;
   isSending: boolean;
+  initialSegments?: ComposerSegment[];
+  composerMode?: "message" | "suggestion";
+  notice?: ReactNode;
+  rightActions?: ReactNode;
   seatAIHostingAuth?: boolean;
   seatSemiAutoAuth?: boolean;
   /** 当前会话的 AI 托管开关配置状态 */
@@ -164,8 +170,11 @@ type ChatComposerProps = {
   onTopCollectedExpression?: (item: WorkbenchMaterialCollectionItemDto) => void;
   placeholder: string;
   quotedMessage: QuotedMessagePreviewContent | null;
+  sendLabel?: string;
   composerRef: RefObject<LexicalEditor | null>;
 };
+
+const EMPTY_COMPOSER_SEGMENTS: ComposerSegment[] = [];
 
 export type ComposerMaterialLibraryBizType =
   | typeof MATERIAL_COLLECTION_BIZ_TYPE.IMAGE
@@ -217,6 +226,10 @@ export function ChatComposer({
   isMobileLayout = false,
   sendingCollectedExpressionId,
   isSending,
+  initialSegments = EMPTY_COMPOSER_SEGMENTS,
+  composerMode = "message",
+  notice,
+  rightActions,
   seatAIHostingAuth = false,
   seatSemiAutoAuth = false,
   conversationAIHostingConfigured = false,
@@ -240,6 +253,7 @@ export function ChatComposer({
   onTopCollectedExpression,
   placeholder,
   quotedMessage,
+  sendLabel,
   composerRef,
 }: ChatComposerProps) {
   const emojiPickerRef = useRef<HTMLDivElement | null>(null);
@@ -247,7 +261,9 @@ export function ChatComposer({
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const imageDragDepthRef = useRef(0);
   const [draftText, setDraftText] = useState("");
-  const [segments, setSegments] = useState<ComposerSegment[]>([]);
+  const [segments, setSegments] = useState<ComposerSegment[]>(
+    () => initialSegments,
+  );
   const [cursorPosition, setCursorPosition] = useState(0);
   const [activeMentionIndex, setActiveMentionIndex] = useState(0);
   const [isMentionPickerDismissed, setIsMentionPickerDismissed] = useState(false);
@@ -258,6 +274,10 @@ export function ChatComposer({
     useState<ComposerImageDragState>(null);
   const editorConfig = useMemo(
     () => ({
+      editorState:
+        initialSegments.length > 0
+          ? () => $restoreComposerFromSegments(initialSegments)
+          : undefined,
       namespace: "ChatComposer",
       nodes: [ComposerEmojiNode, ComposerImageNode, ComposerLiteAttachmentNode, ComposerMentionNode],
       onError(error: Error) {
@@ -268,7 +288,7 @@ export function ChatComposer({
         root: "chat-composer-editor min-h-18 outline-none",
       },
     }),
-    [],
+    [initialSegments],
   );
   const mentionTrigger = useMemo(
     () => getMentionTrigger(draftText, cursorPosition),
@@ -701,7 +721,8 @@ export function ChatComposer({
   return (
     <TooltipProvider delayDuration={300}>
       <div
-        className="relative mx-auto mb-4 mt-3 flex w-[calc(100%-2rem)] max-w-[860px] flex-col gap-1.5 rounded-[18px] border border-divider bg-card px-4 pb-2 pt-3 shadow-[0_2px_8px_var(--shadow-soft)]"
+        className="chat-composer-surface relative z-10 mx-auto mb-4 mt-3 flex w-[calc(100%-2rem)] max-w-[860px] flex-col rounded-[18px] border"
+        data-composer-mode={composerMode}
         data-testid="chat-composer"
         onDragEnter={handleComposerDragEnter}
         onDragLeave={handleComposerDragLeave}
@@ -728,12 +749,18 @@ export function ChatComposer({
           </div>
         ) : null}
 
+        <div className="relative z-1 flex flex-col gap-1.5 px-4 pb-2 pt-3">
+
         {isMobileLayout ? (
           <div
-            className="order-last flex items-center justify-between gap-3 text-sm text-muted-foreground"
+            className="order-last flex h-8 items-center justify-between gap-3 text-sm text-muted-foreground"
             data-testid="chat-composer-mobile-toolbar"
           >
-            <div className="ml-[-6px] flex items-center gap-0.5">
+            {notice}
+            <div
+              className="ml-[-6px] flex items-center gap-0.5"
+              hidden={Boolean(notice)}
+            >
               <div className="relative" ref={emojiPickerRef}>
                 <Button
                   aria-label="微信表情"
@@ -988,29 +1015,45 @@ export function ChatComposer({
               />
             </div>
 
-            <Button
-              aria-label="发送消息"
-              aria-busy={isSending}
-              className="size-8 rounded-full p-0 shadow-none"
-              disabled={isSending || !canSubmitDraft}
-              onClick={handleSendDraft}
-              onMouseDown={(event) => event.preventDefault()}
-              size="icon"
-            >
-              {isSending ? (
-                <Spinner variant="classic" size={14} className="text-current" />
-              ) : (
-                <HugeiconsIcon
-                  icon={ArrowUp02Icon}
-                  size={14}
-                  strokeWidth={2}
-                />
-              )}
-            </Button>
+            <div className="flex items-center gap-0.5">
+              {notice ? null : rightActions}
+              <Button
+                aria-label={sendLabel ?? "发送消息"}
+                aria-busy={isSending}
+                className={cn(
+                  "h-8 shrink-0 shadow-none",
+                  sendLabel
+                    ? "ml-1 w-auto rounded-[8px] px-3 text-[13px]"
+                    : "size-8 rounded-full p-0",
+                  composerMode === "suggestion" &&
+                    "bg-ai-accent text-white hover:bg-ai-accent/90 hover:text-white",
+                )}
+                disabled={isSending || !canSubmitDraft}
+                onClick={handleSendDraft}
+                onMouseDown={(event) => event.preventDefault()}
+                size={sendLabel ? "sm" : "icon"}
+              >
+                {isSending ? (
+                  <Spinner variant="classic" size={14} className="text-current" />
+                ) : sendLabel ? (
+                  sendLabel
+                ) : (
+                  <HugeiconsIcon
+                    icon={ArrowUp02Icon}
+                    size={14}
+                    strokeWidth={2}
+                  />
+                )}
+              </Button>
+            </div>
           </div>
         ) : (
-          <div className="order-last flex items-center justify-between gap-3 text-sm text-muted-foreground">
-            <div className="ml-[-6px] flex items-center gap-0.5">
+          <div className="order-last flex h-8 items-center justify-between gap-3 text-sm text-muted-foreground">
+            {notice}
+            <div
+              className="ml-[-6px] flex items-center gap-0.5"
+              hidden={Boolean(notice)}
+            >
               <div className="relative" ref={emojiPickerRef}>
                 <ComposerActionTooltip
                   disabled={isSending || !canSendMessage}
@@ -1279,8 +1322,9 @@ export function ChatComposer({
 
             </div>
 
-            <div className="flex items-center gap-1">
-              {canSendMessage ? (
+            <div className="flex items-center gap-0.5">
+              {notice ? null : rightActions}
+              {canSendMessage && composerMode === "message" ? (
                 <Select
                   onValueChange={(value) =>
                     onEnterBehaviorChange(value as InputEnterBehavior)
@@ -1308,13 +1352,20 @@ export function ChatComposer({
               ) : null}
 
               <Button
-                aria-label="发送消息"
+                aria-label={sendLabel ?? "发送消息"}
                 aria-busy={isSending}
-                className="size-7 rounded-full p-0 shadow-none"
+                className={cn(
+                  "h-7 shrink-0 shadow-none",
+                  sendLabel
+                    ? "ml-1 w-auto rounded-[8px] px-3 text-[13px]"
+                    : "size-7 rounded-full p-0",
+                  composerMode === "suggestion" &&
+                    "bg-ai-accent text-white hover:bg-ai-accent/90 hover:text-white",
+                )}
                 disabled={isSending || !canSubmitDraft}
                 onClick={handleSendDraft}
                 onMouseDown={(event) => event.preventDefault()}
-                size="icon"
+                size={sendLabel ? "sm" : "icon"}
               >
                 {isSending ? (
                   <Spinner
@@ -1322,6 +1373,8 @@ export function ChatComposer({
                     size={14}
                     className="text-current"
                   />
+                ) : sendLabel ? (
+                  sendLabel
                 ) : (
                   <HugeiconsIcon
                     icon={ArrowUp02Icon}
@@ -1457,10 +1510,11 @@ export function ChatComposer({
               conversationId={conversationId}
             />
           </LexicalComposer>
+          </div>
         </div>
       </div>
     </div>
-    </TooltipProvider>
+  </TooltipProvider>
   );
 }
 

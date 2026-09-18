@@ -12,6 +12,7 @@ import {
   mergeSmartReplyRecommendedAttachments,
   resolveSmartReplyAttachmentCount,
   resolveSmartReplyAttachmentIds,
+  resolveSmartReplyReferenceMessageSeqs,
   collectNewSmartReplyPendingKeys,
   collectPendingSmartReplyPollMsgIds,
   collectQuestionImgs,
@@ -313,6 +314,20 @@ describe("smart-reply-adapter", () => {
         status: "thinking",
       }),
     ).toBe(false);
+  });
+
+  it("treats an attachment-only successful suggestion as ready", () => {
+    expect(
+      isSmartReplyReady({
+        assistantName: "智能助手",
+        content: "",
+        genAnswer:
+          '[{"fileUrl":"s5/msg/product.jpg","msgtype":"image"}]',
+        generateStatus: 2,
+        pollComplete: true,
+        status: "ready",
+      }),
+    ).toBe(true);
   });
 
   it("marks only newly appended customer messages as pending", () => {
@@ -684,7 +699,7 @@ describe("smart-reply-adapter", () => {
         generateStatus: 2,
         status: "ready",
       }),
-    ).toBe(false);
+    ).toBe(true);
     expect(
       shouldShowSmartReplyTriggerIcon(customerMessage, {
         assistantName: "护肤小助手",
@@ -1036,9 +1051,35 @@ describe("smart-reply-adapter", () => {
     expect(
       resolveSmartReplyAttachmentIds({
         genAnswer,
+        refAttachIds: ["2486"],
       }),
     ).toEqual([]);
     expect(resolveSmartReplyAttachmentCount({ genAnswer })).toBe(1);
+  });
+
+  it("collects forward message ids for one batch hydration request", () => {
+    expect(
+      resolveSmartReplyReferenceMessageSeqs([
+        {
+          fileName: "小程序",
+          fileType: "7",
+          id: "transmsg:weapp:3050",
+          transMsgInfoId: "3050",
+        },
+        {
+          fileName: "视频号",
+          fileType: "3",
+          id: "transmsg:sphfeed:3051",
+          transMsgInfoId: "3051",
+        },
+        {
+          fileName: "重复的小程序",
+          fileType: "7",
+          id: "transmsg:weapp:3050",
+          transMsgInfoId: "3050",
+        },
+      ]),
+    ).toEqual([3050, 3051]);
   });
 
   it("enriches forward mini-program attachments from conversation messages", () => {
@@ -1145,6 +1186,26 @@ describe("smart-reply-adapter", () => {
         type: "h5",
       },
     ]);
+  });
+
+  it("uses composer segments when the suggestion has been edited", () => {
+    const segments = [
+      { text: "编辑后的话术", type: "text" as const },
+      {
+        imageUrl: "https://example.com/emotion.png",
+        materialCollectionId: "emotion-1",
+        type: "emotion" as const,
+      },
+    ];
+
+    expect(
+      buildSmartReplySendSegments({
+        content: "服务端原始话术",
+        recommendedAttachments: [],
+        segments,
+        selectedAttachmentIds: [],
+      }),
+    ).toEqual(segments);
   });
 
   it("resolves attachment count from ids and inline attachments", () => {

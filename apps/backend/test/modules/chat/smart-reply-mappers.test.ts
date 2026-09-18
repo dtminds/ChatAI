@@ -318,4 +318,18 @@ describe("mapJavaUserHistoryAnswerList", () => {
 
     expect(response.suggestions[0]?.refAttachIds).toEqual(["101", "102", "103"]);
   });
+
+  it("does not expose forward message ids as attachment ids", () => {
+    const response = mapJavaUserHistoryAnswerList([
+      {
+        analyseMsgId: 1121,
+        assistantName: "护肤小助手",
+        genAnswer:
+          '[{"msgtype":"text","text":"请查看小程序"},{"msgtype":"weapp","transMsgInfoId":3050}]',
+        genStatus: 2,
+      },
+    ]);
+
+    expect(response.suggestions[0]?.refAttachIds).toBeUndefined();
+  });
 });

@@ -436,7 +436,9 @@ function extractJavaGenAnswerAttachmentIds(raw: unknown): string[] | undefined {
       continue;
     }
 
-    const attachmentId = readJavaGenAnswerSegmentAttachmentId(segment);
+    const attachmentId = isJavaForwardOnlyGenAnswerSegment(msgtype, segment)
+      ? undefined
+      : readJavaGenAnswerSegmentAttachmentId(segment);
 
     if (attachmentId && !seen.has(attachmentId)) {
       seen.add(attachmentId);
@@ -448,17 +450,77 @@ function extractJavaGenAnswerAttachmentIds(raw: unknown): string[] | undefined {
 }
 
 function readJavaGenAnswerSegmentAttachmentId(segment: Record<string, unknown>) {
-  for (const key of [
-    "id",
-    "attachId",
-    "refAttachId",
-    "transMsgInfoId",
-    "msgInfoId",
-  ]) {
+  return (
+    readJavaGenAnswerSegmentLibraryAttachmentId(segment) ??
+    readJavaGenAnswerSegmentTransMsgInfoId(segment)
+  );
+}
+
+function readJavaGenAnswerSegmentLibraryAttachmentId(
+  segment: Record<string, unknown>,
+) {
+  for (const key of ["id", "attachId", "refAttachId"]) {
     const normalized = normalizeJavaAttachmentId(segment[key]);
 
     if (normalized) {
       return normalized;
+    }
+  }
+
+  return undefined;
+}
+
+function readJavaGenAnswerSegmentTransMsgInfoId(
+  segment: Record<string, unknown>,
+) {
+  for (const key of ["transMsgInfoId", "msgInfoId"]) {
+    const normalized = normalizeJavaAttachmentId(segment[key]);
+
+    if (normalized) {
+      return normalized;
+    }
+  }
+
+  return undefined;
+}
+
+function isJavaForwardOnlyGenAnswerSegment(
+  msgtype: string | undefined,
+  segment: Record<string, unknown>,
+) {
+  if (!readJavaGenAnswerSegmentTransMsgInfoId(segment)) {
+    return false;
+  }
+
+  if (msgtype === "weapp" || msgtype === "sphfeed") {
+    return readJavaGenAnswerSegmentLibraryAttachmentId(segment) == null;
+  }
+
+  if (msgtype === "video") {
+    return (
+      readJavaGenAnswerSegmentLibraryAttachmentId(segment) == null &&
+      !readJavaGenAnswerSegmentPreviewPath(segment)
+    );
+  }
+
+  return false;
+}
+
+function readJavaGenAnswerSegmentPreviewPath(
+  segment: Record<string, unknown>,
+) {
+  for (const key of [
+    "fileUrl",
+    "url",
+    "coverUrl",
+    "localPath",
+    "slocalPath",
+    "content",
+  ]) {
+    const value = readString(segment[key]);
+
+    if (value?.trim()) {
+      return value;
     }
   }
 

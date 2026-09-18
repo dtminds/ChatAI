@@ -2,6 +2,7 @@
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
     "composite": true,
+    "lib": ["ES2023"],
     "outDir": "dist",
     "rootDir": "src",
     "tsBuildInfoFile": "./node_modules/.tmp/tsconfig.tsbuildinfo",

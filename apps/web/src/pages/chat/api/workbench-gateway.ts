@@ -33,6 +33,7 @@ import type {
   WorkbenchMessageQueryBySeqsRequest,
   WorkbenchMessageUpdateEventDto,
   WorkbenchSmartReplyPollRequest,
+  WorkbenchSmartReplyReferenceMessagesRequest,
   WorkbenchSmartReplySendAnswerRequest,
   WorkbenchKnowledgeFaqAddRequest,
   WorkbenchVoicePlaybackConfirmRequest,
@@ -502,6 +503,25 @@ export async function loadMessagesBySeqs(
   } satisfies WorkbenchMessageQueryBySeqsRequest);
 
   return adaptMessages(response.messages, context);
+}
+
+export async function loadSmartReplyReferenceMessages(
+  conversationId: string,
+  messageSeqs: number[],
+): Promise<Message[]> {
+  if (!messageSeqs.length) {
+    return [];
+  }
+
+  const response = await getWorkbenchService().getSmartReplyReferenceMessages({
+    conversationId,
+    messageSeqs,
+  } satisfies WorkbenchSmartReplyReferenceMessagesRequest);
+
+  return adaptMessages(response.messages, {
+    accounts: [],
+    customerProfilesById: {},
+  });
 }
 
 export async function loadConversationHistoryMessagesPage(

@@ -3,10 +3,11 @@ import type {
   ReactNode,
   RefObject,
 } from "react";
-import { useEffect, useLayoutEffect, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useState } from "react";
 import { Cancel01Icon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import type { LexicalEditor } from "lexical";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import {
   Sheet,
@@ -19,8 +20,23 @@ import {
   ChatComposer,
   type ComposerMaterialLibraryBizType,
 } from "@/pages/chat/components/chat-composer";
+import {
+  ChatAIAssistantStatusBar,
+  type ChatAIAssistantAction,
+  type ChatAIAssistantStatus,
+} from "@/pages/chat/components/chat-ai-assistant-status-bar";
+import {
+  ChatAIAssistantDebugMenu,
+} from "@/pages/chat/components/chat-ai-assistant-debug-menu";
 import { ChatAgentHostingStatusBar } from "@/pages/chat/components/chat-agent-hosting-status-bar";
+import { ChatAgentClarificationPrompt } from "@/pages/chat/components/chat-agent-clarification-prompt";
+import { ChatAgentToolApprovalPrompt } from "@/pages/chat/components/chat-agent-tool-approval-prompt";
+import { ChatAgentTurnTimeline } from "@/pages/chat/components/chat-agent-turn-timeline";
 import { ChatHandoffStatusBar } from "@/pages/chat/components/chat-handoff-status-bar";
+import { useSmartReplyComposer } from "@/pages/chat/components/use-smart-reply-composer";
+import { useChatAgentPreflight } from "@/pages/chat/components/use-chat-agent-preflight";
+import { useAgentTurnMock } from "@/pages/chat/components/use-agent-turn-mock";
+import { REPLACE_COMPOSER_COMMAND } from "@/pages/chat/components/composer/lexical-commands";
 import { ChatHeader } from "@/pages/chat/components/chat-header";
 import { CHAT_USER_MEMORY_RESERVED_WIDTH } from "@/pages/chat/components/chat-user-memory-popover";
 import { ChatMessagePanel } from "@/pages/chat/components/chat-message-panel";
@@ -43,6 +59,7 @@ import type {
 import type { TicketReminderDisplayMode } from "@/pages/chat/tickets/ticket-count-store";
 import { isConversationTicketSupported } from "@/pages/chat/tickets/conversation-ticket-policy";
 import type {
+  ChatAgentDirection,
   SettingsSidebarItem,
   WorkbenchMaterialCollectionItemDto,
   WorkbenchSeatAgentMode,
@@ -52,11 +69,28 @@ import {
   resolveAgentHostingStatus,
   type AgentHostingStatus,
 } from "@/pages/chat/lib/chat-agent-hosting-status";
-import type { SmartReplySendPayload } from "@/pages/chat/api/smart-reply-adapter";
+import {
+  SMART_REPLY_INLINE_LOADING_HINT,
+  type SmartReplySendPayload,
+} from "@/pages/chat/api/smart-reply-adapter";
 import { hasConversationHandoff } from "@/pages/chat/lib/conversation-handoff-preview";
+import { resolveConversationAIAssistantEligibility } from "@/pages/chat/lib/conversation-ai-assistant";
+import {
+  resolveSmartReplyAssistantUIPhase,
+  resolveSmartReplyAssistantTurn,
+  SMART_REPLY_DRAFT_CONFIRMATION_LABEL,
+  type SmartReplyAssistantPhase,
+} from "@/pages/chat/lib/smart-reply-assistant";
+import { useWorkbenchStore } from "@/store/workbench-store";
+import { useShallow } from "zustand/react/shallow";
 
 const WORKBENCH_SIDEBAR_COLLAPSED_STORAGE_KEY =
   "chatai.workbenchSidebarCollapsed";
+
+type AgentTurnTimelineState =
+  | { kind: "hidden"; terminalSettled: boolean }
+  | { expanded: boolean; kind: "visible" }
+  | { kind: "exiting" };
 
 export type ChatAuxiliaryPanel = "history" | "tickets" | null;
 
@@ -76,6 +110,9 @@ type ChatPanelProps = {
   fullAutoActionPending?: boolean;
   seatAgentModeActionPending?: boolean;
   fullAutoDisplayStatus?: AgentHostingStatus;
+  aiAssistantStatus?: ChatAIAssistantStatus;
+  aiAssistantStatusLabel?: string;
+  aiAssistantActions?: readonly ChatAIAssistantAction[];
   activeAccount?: Account;
   seatAIHostingEnabled?: boolean;
   conversationAIHostingConfigured?: boolean;
@@ -126,6 +163,7 @@ type ChatPanelProps = {
   activeAuxiliaryPanel?: ChatAuxiliaryPanel;
   onCustomerPanelResizeStart: (event: ReactPointerEvent<HTMLButtonElement>) => void;
   onComposerSegmentsChange: (segments: ComposerSegment[]) => void;
+  onComposerModeChange?: (mode: "message" | "suggestion") => void;
   onDraftChange: (draft: string) => void;
   onEmojiPickerOpenChange: (isOpen: boolean) => void;
   onEnterBehaviorChange: (behavior: InputEnterBehavior) => void;
@@ -179,12 +217,10 @@ type ChatPanelProps = {
   onRetryMessage: (uiMessageKey: string) => void | Promise<void>;
   onLoadSendFailReason?: (uiMessageKey: string) => Promise<string | undefined>;
   onSendSmartReply?: (message: ChatMessage, payload: SmartReplySendPayload) => void;
-  onFillSmartReplyComposer?: (message: ChatMessage, content: string) => void;
   onDismissSmartReply?: (message: ChatMessage) => void;
-  onMakeShorterSmartReply?: (message: ChatMessage) => void;
   onTriggerSmartReply?: (
     message: ChatMessage,
-    options?: { force?: boolean },
+    options?: { confirmedComposerOverwrite?: boolean; force?: boolean },
   ) => void;
   onToggleMessageSelection?: (message: ChatMessage) => void;
   onToggleTickets?: () => void;
@@ -195,7 +231,7 @@ type ChatPanelProps = {
   ) => void;
   onTranscribeVoice?: (message: ChatMessage) => Promise<string>;
   retryingMessageIds?: ReadonlySet<string>;
-  onSendDraft: (segments: ComposerSegment[]) => void;
+  onSendDraft: (segments: ComposerSegment[]) => boolean | Promise<boolean>;
   onDismissScopeTransitionError: () => void;
   onQuickReplyActiveChange?: (isActive: boolean) => void;
   quickReplyPanel?: ReactNode;
@@ -226,6 +262,9 @@ export function ChatPanel({
   fullAutoActionPending = false,
   seatAgentModeActionPending = false,
   fullAutoDisplayStatus,
+  aiAssistantStatus = "waiting",
+  aiAssistantStatusLabel,
+  aiAssistantActions,
   activeAccount,
   seatAIHostingEnabled = false,
   conversationAIHostingConfigured = false,
@@ -258,6 +297,7 @@ export function ChatPanel({
   activeAuxiliaryPanel,
   onCustomerPanelResizeStart,
   onComposerSegmentsChange,
+  onComposerModeChange,
   onDraftChange,
   onEmojiPickerOpenChange,
   onEnterBehaviorChange,
@@ -309,9 +349,7 @@ export function ChatPanel({
   onRetryMessage,
   onLoadSendFailReason,
   onSendSmartReply,
-  onFillSmartReplyComposer,
   onDismissSmartReply,
-  onMakeShorterSmartReply,
   onTriggerSmartReply,
   onToggleMessageSelection,
   onToggleTickets,
@@ -338,6 +376,155 @@ export function ChatPanel({
   const [isDesktopSidebarCollapsed, setIsDesktopSidebarCollapsed] = useState(
     readDesktopSidebarCollapsedPreference,
   );
+  const [approvedOverwriteLookupKey, setApprovedOverwriteLookupKey] =
+    useState<string>();
+  const [composerDraftText, setComposerDraftText] = useState("");
+  const activeConversationId = activeConversation?.id;
+  const latestCustomerMessageId = getLatestCustomerMessageId(messages);
+  const agentTurnMock = useAgentTurnMock({
+    composerRef,
+    conversationId: activeConversationId,
+    messageId: latestCustomerMessageId,
+  });
+  const [agentTurnTimelineState, setAgentTurnTimelineState] =
+    useState<AgentTurnTimelineState>({
+      kind: "hidden",
+      terminalSettled: true,
+    });
+  const isAgentTurnHistoryExpanded =
+    agentTurnTimelineState.kind === "visible" &&
+    agentTurnTimelineState.expanded;
+  const hasBlockingAgentInteraction = Boolean(
+    agentTurnMock.approval || agentTurnMock.clarification,
+  );
+  const hasBlockingAgentTurn = Boolean(
+    (agentTurnMock.isActive && !agentTurnMock.isTerminal) ||
+      agentTurnMock.isReplyReady,
+  );
+
+  useLayoutEffect(() => {
+    setAgentTurnTimelineState({ kind: "hidden", terminalSettled: false });
+  }, [activeConversationId, agentTurnMock.turnId]);
+
+  useLayoutEffect(() => {
+    const hideTimeline = (terminalSettled: boolean) => {
+      if (
+        agentTurnTimelineState.kind === "hidden" &&
+        agentTurnTimelineState.terminalSettled === terminalSettled
+      ) {
+        return;
+      }
+
+      setAgentTurnTimelineState({ kind: "hidden", terminalSettled });
+    };
+
+    if (hasBlockingAgentInteraction) {
+      hideTimeline(false);
+      return;
+    }
+
+    if (agentTurnMock.isRunning) {
+      if (agentTurnMock.hasActivities) {
+        if (
+          agentTurnTimelineState.kind !== "visible" ||
+          agentTurnTimelineState.expanded
+        ) {
+          setAgentTurnTimelineState({ kind: "visible", expanded: false });
+        }
+      } else {
+        hideTimeline(false);
+      }
+      return;
+    }
+
+    if (agentTurnMock.isTerminal) {
+      if (
+        agentTurnTimelineState.kind === "visible" &&
+        !agentTurnTimelineState.expanded
+      ) {
+        setAgentTurnTimelineState({ kind: "exiting" });
+      } else if (
+        agentTurnTimelineState.kind === "hidden" &&
+        !agentTurnTimelineState.terminalSettled
+      ) {
+        setAgentTurnTimelineState({ kind: "hidden", terminalSettled: true });
+      }
+      return;
+    }
+
+    if (!agentTurnMock.isActive) {
+      hideTimeline(true);
+    }
+  }, [
+    agentTurnMock.hasActivities,
+    agentTurnMock.isActive,
+    agentTurnMock.isRunning,
+    agentTurnMock.isTerminal,
+    agentTurnTimelineState,
+    hasBlockingAgentInteraction,
+  ]);
+
+  const showAgentTurnTimeline = Boolean(
+    agentTurnTimelineState.kind !== "hidden" &&
+      agentTurnMock.hasActivities &&
+      !hasBlockingAgentInteraction,
+  );
+  const isAgentTurnTerminalTransitioning = Boolean(
+    agentTurnMock.isTerminal &&
+      (agentTurnTimelineState.kind === "exiting" ||
+        (agentTurnTimelineState.kind === "hidden" &&
+          !agentTurnTimelineState.terminalSettled)),
+  );
+  const canExpandAgentTurnHistory = Boolean(
+    agentTurnMock.hasActivities &&
+    !agentTurnMock.isRunning &&
+    !hasBlockingAgentInteraction &&
+    !isAgentTurnHistoryExpanded &&
+    !isAgentTurnTerminalTransitioning,
+  );
+  const handleExpandAgentTurnHistory = () => {
+    if (!canExpandAgentTurnHistory) return;
+    setAgentTurnTimelineState({ kind: "visible", expanded: true });
+  };
+  const handleCollapseAgentTurnHistory = () => {
+    if (!isAgentTurnHistoryExpanded) return;
+    setAgentTurnTimelineState({ kind: "exiting" });
+  };
+  const handleAgentTurnTimelineExitComplete = () => {
+    setAgentTurnTimelineState({
+      kind: "hidden",
+      terminalSettled: agentTurnMock.isTerminal,
+    });
+  };
+  const smartReplyState = useWorkbenchStore(
+    useShallow((state) => ({
+      activeMessageKey: activeConversationId
+        ? state.smartReplyActiveMessageKeyByConversationId[activeConversationId]
+        : undefined,
+      autoPending: activeConversationId
+        ? state.smartReplyAutoPendingMessageKeysByConversationId[
+            activeConversationId
+          ]
+        : undefined,
+      composerHasContent: activeConversationId
+        ? state.composerHasContentByConversationId[activeConversationId]
+        : false,
+      draftConfirmationMessageKey: activeConversationId
+        ? state.smartReplyDraftConfirmationMessageKeyByConversationId[
+            activeConversationId
+          ]
+        : undefined,
+      hidden: activeConversationId
+        ? state.smartReplyHiddenMessageKeysByConversationId[activeConversationId]
+        : undefined,
+      pending: activeConversationId
+        ? state.smartReplyPendingMessageKeysByConversationId[activeConversationId]
+        : undefined,
+      suggestions: activeConversationId
+        ? state.smartReplyByMessageIdByConversationId[activeConversationId]
+        : undefined,
+    })),
+  );
   const resolvedAuxiliaryPanel = activeAuxiliaryPanel ?? null;
   const resolvedAgentHostingStatus =
     fullAutoDisplayStatus ??
@@ -348,6 +535,134 @@ export function ChatPanel({
     resolvedAgentHostingStatus === "exited"
       ? null
       : resolvedAgentHostingStatus;
+  const aiAssistantStatusVisible =
+    resolveConversationAIAssistantEligibility({
+      account: activeAccount,
+      canUseConversationActions: canSendMessage,
+      conversation: activeConversation,
+    }).canUse && !agentHostingStatus;
+  const canStartPreflightAgentTurn = import.meta.env.DEV
+    ? Boolean(activeConversationId)
+    : Boolean(onTriggerSmartReply);
+  const startAgentTurnForPreflight = useCallback(
+    ({
+      direction,
+      message,
+    }: {
+      direction: ChatAgentDirection;
+      message: ChatMessage;
+    }) => {
+      if (import.meta.env.DEV) {
+        void agentTurnMock.startScenario(
+          direction === "handle_request" ? "order_reply" : "knowledge_reply",
+        );
+        return;
+      }
+
+      onTriggerSmartReply?.(message, {
+        confirmedComposerOverwrite: true,
+      });
+    },
+    [agentTurnMock.startScenario, onTriggerSmartReply],
+  );
+  const sourceSmartReplyTurn = aiAssistantStatusVisible
+    ? resolveSmartReplyAssistantTurn({
+        activeMessageKey: smartReplyState.activeMessageKey,
+        autoPending: smartReplyState.autoPending,
+        draftConfirmationMessageKey:
+          smartReplyState.draftConfirmationMessageKey,
+        hidden: smartReplyState.hidden,
+        messages,
+        pending: smartReplyState.pending,
+        suggestions: smartReplyState.suggestions,
+      })
+    : undefined;
+  const chatAgentPreflight = useChatAgentPreflight({
+    blocked: Boolean(
+      hasBlockingAgentTurn ||
+        sourceSmartReplyTurn ||
+        isSendingDraft ||
+        isConversationLoading ||
+        multiSelectMode,
+    ),
+    conversationId:
+      activeConversation?.mode === "single" ? activeConversationId : undefined,
+    enabled:
+      activeConversation?.mode === "single" &&
+      aiAssistantStatusVisible &&
+      canStartPreflightAgentTurn,
+    messages,
+    onAccept: startAgentTurnForPreflight,
+  });
+  const smartReplyComposer = useSmartReplyComposer({
+    approvedOverwriteLookupKey,
+    composerRef,
+    conversationId: activeConversationId,
+    conversationMessages: messages,
+    draftText: composerDraftText,
+    isSending: isSendingDraft,
+    onSend: onSendSmartReply,
+    quotedMessage,
+    turn: sourceSmartReplyTurn,
+  });
+  const smartReplyUIPhase = resolveSmartReplyAssistantUIPhase({
+    composerHasContent: Boolean(
+      smartReplyState.composerHasContent ||
+        composerDraftText.trim().length > 0 ||
+        quotedMessage,
+    ),
+    hasAppliedSuggestion: smartReplyComposer.hasAppliedSuggestion,
+    isOverwriteApproved:
+      approvedOverwriteLookupKey === sourceSmartReplyTurn?.lookupKey,
+    isOverwriteConfirmationRequested:
+      smartReplyComposer.overwriteConfirmationLookupKey ===
+      sourceSmartReplyTurn?.lookupKey,
+    turn: sourceSmartReplyTurn,
+  });
+  const shouldConfirmComposerOverwrite =
+    smartReplyUIPhase === "draft_confirmation";
+  const smartReplyTurn =
+    sourceSmartReplyTurn && shouldConfirmComposerOverwrite
+      ? {
+          ...sourceSmartReplyTurn,
+          isComposerEditable: true,
+          label: SMART_REPLY_DRAFT_CONFIRMATION_LABEL,
+          phase: "draft_confirmation" as const,
+          showComposer: false,
+        }
+      : sourceSmartReplyTurn;
+  const isSmartReplySuggestionMode =
+    !agentTurnMock.isActive &&
+    smartReplyUIPhase !== "draft_confirmation" &&
+    smartReplyComposer.isSuggestionMode;
+  const isSuggestionComposerMode =
+    isSmartReplySuggestionMode || agentTurnMock.isReplyReady;
+  const hasComposerStatusOverlay =
+    Boolean(agentHostingStatus) || aiAssistantStatusVisible;
+  const presentedAgentTurnView = isAgentTurnTerminalTransitioning
+    ? {
+        label: "思考中",
+        status: "thinking" as const,
+      }
+    : agentTurnMock.view;
+  const resolvedAIAssistantStatus =
+    presentedAgentTurnView?.status ??
+    (chatAgentPreflight.phase === "confirmation"
+      ? "confirmation"
+      : smartReplyUIPhase === "applying"
+        ? "thinking"
+        : smartReplyTurn
+          ? getSmartReplyStatusBarStatus(smartReplyTurn.phase)
+          : aiAssistantStatus);
+  const resolvedAIAssistantStatusLabel =
+    chatAgentPreflight.phase === "confirmation" && chatAgentPreflight.label
+      ? chatAgentPreflight.label
+      : smartReplyUIPhase === "applying"
+        ? SMART_REPLY_INLINE_LOADING_HINT
+        : smartReplyTurn
+          ? smartReplyTurn.label
+          : aiAssistantStatusLabel;
+
   const hasActiveFileUpload = fileUploadQueue.length > 0;
   const hasActiveConversation = activeConversation !== undefined;
   const isTicketSupported = isConversationTicketSupported(activeConversation);
@@ -451,6 +766,27 @@ export function ChatPanel({
     setIsMobileSidebarOpen(false);
   }, [activeConversation?.id, isMobileLayout]);
 
+  useEffect(() => {
+    setApprovedOverwriteLookupKey(undefined);
+    setComposerDraftText("");
+  }, [activeConversation?.id]);
+
+  useEffect(() => {
+    onEmojiPickerOpenChange(false);
+  }, [isSuggestionComposerMode, onEmojiPickerOpenChange]);
+
+  useEffect(() => {
+    onComposerModeChange?.(
+      isSuggestionComposerMode ? "suggestion" : "message",
+    );
+  }, [isSuggestionComposerMode, onComposerModeChange]);
+
+  useEffect(() => {
+    if (!sourceSmartReplyTurn) {
+      setApprovedOverwriteLookupKey(undefined);
+    }
+  }, [sourceSmartReplyTurn]);
+
   useLayoutEffect(() => {
     onPersistentSidebarChange?.(hasPersistentDesktopSidebar);
   }, [hasPersistentDesktopSidebar, onPersistentSidebarChange]);
@@ -502,6 +838,159 @@ export function ChatPanel({
     }
     onToggleTickets?.();
   };
+  const handleComposerDraftChange = (nextDraft: string) => {
+    setComposerDraftText(nextDraft);
+    onDraftChange(nextDraft);
+  };
+  const handleDismissCurrentSmartReply = () => {
+    if (!sourceSmartReplyTurn || !onDismissSmartReply) {
+      return;
+    }
+
+    smartReplyComposer.clearTransientState();
+    if (smartReplyComposer.hasAppliedSuggestion) {
+      composerRef.current?.dispatchCommand(REPLACE_COMPOSER_COMMAND, {
+        segments: [],
+      });
+      onClearQuotedMessage();
+    }
+    setApprovedOverwriteLookupKey(undefined);
+    onDismissSmartReply(sourceSmartReplyTurn.message);
+  };
+  const handleApproveComposerOverwrite = () => {
+    if (!sourceSmartReplyTurn || !onTriggerSmartReply) {
+      return;
+    }
+
+    setApprovedOverwriteLookupKey(sourceSmartReplyTurn.lookupKey);
+    onTriggerSmartReply(sourceSmartReplyTurn.message, {
+      confirmedComposerOverwrite: true,
+    });
+  };
+  const handleRegenerateSmartReply = () => {
+    if (!sourceSmartReplyTurn || !onTriggerSmartReply) {
+      return;
+    }
+
+    smartReplyComposer.clearTransientState();
+    setApprovedOverwriteLookupKey(sourceSmartReplyTurn.lookupKey);
+    onTriggerSmartReply(sourceSmartReplyTurn.message, { force: true });
+  };
+  const handleTriggerSmartReplyFromMessage = useCallback(
+    (
+      message: ChatMessage,
+      options?: { force?: boolean },
+    ) => {
+      chatAgentPreflight.dismiss();
+      onTriggerSmartReply?.(message, options);
+    },
+    [chatAgentPreflight.dismiss, onTriggerSmartReply],
+  );
+  const handleAgentTurnMockScenarioSelect = (
+    scenario: Parameters<typeof agentTurnMock.startScenario>[0],
+  ) => {
+    chatAgentPreflight.dismiss();
+    if (sourceSmartReplyTurn) {
+      toast.error("请先处理当前话术建议");
+      return;
+    }
+
+    void agentTurnMock.startScenario(scenario);
+  };
+  const handleSendAgentTurnMockReply = (segments: ComposerSegment[]) => {
+    void Promise.resolve(onSendDraft(segments))
+      .then((didSend) => {
+        if (didSend) {
+          agentTurnMock.markReplyHandled();
+        }
+      })
+      .catch(() => {});
+  };
+  const resolvedAIAssistantActions: readonly ChatAIAssistantAction[] =
+    presentedAgentTurnView
+      ? isAgentTurnTerminalTransitioning
+        ? []
+        : agentTurnMock.actions
+      : chatAgentPreflight.phase === "confirmation"
+        ? [
+            {
+              id: "ignore-preflight",
+              label: "忽略",
+              onSelect: chatAgentPreflight.dismiss,
+              tone: "quiet",
+            },
+            {
+              disabled: !canStartPreflightAgentTurn,
+              id: "start-preflight",
+              label: getChatAgentPreflightActionLabel(
+                chatAgentPreflight.direction,
+              ),
+              onSelect: canStartPreflightAgentTurn
+                ? chatAgentPreflight.accept
+                : undefined,
+              tone: "primary",
+            },
+          ]
+        : smartReplyTurn?.phase === "draft_confirmation"
+          ? [
+              {
+                disabled: !onDismissSmartReply,
+                id: "ignore",
+                label: "忽略",
+                onSelect: onDismissSmartReply
+                  ? handleDismissCurrentSmartReply
+                  : undefined,
+                tone: "quiet",
+              },
+              {
+                disabled: !onTriggerSmartReply,
+                id: "draft",
+                label: "起草回复",
+                onSelect: onTriggerSmartReply
+                  ? handleApproveComposerOverwrite
+                  : undefined,
+                tone: "primary",
+              },
+            ]
+          : smartReplyUIPhase !== "applying" &&
+            smartReplyTurn &&
+            (smartReplyTurn.phase === "confirmation" ||
+              smartReplyTurn.phase === "failed")
+          ? [
+              {
+                disabled: !onDismissSmartReply,
+                id: "ignore",
+                label: "忽略",
+                onSelect: onDismissSmartReply
+                  ? handleDismissCurrentSmartReply
+                  : undefined,
+                tone: "quiet",
+              },
+              {
+                disabled: !onTriggerSmartReply,
+                id: "regenerate",
+                label: "重新生成",
+                onSelect: onTriggerSmartReply
+                  ? handleRegenerateSmartReply
+                  : undefined,
+                tone: "primary",
+              },
+            ]
+          : (aiAssistantActions ?? []);
+  const displayedAIAssistantActions = multiSelectMode
+    ? resolvedAIAssistantActions.map((action) => ({
+        ...action,
+        disabled: true,
+      }))
+    : resolvedAIAssistantActions;
+  const agentTurnProcessControl = canExpandAgentTurnHistory
+    ? {
+        disabled:
+          isAgentTurnHistoryExpanded ||
+          agentTurnTimelineState.kind !== "hidden",
+        onExpand: handleExpandAgentTurnHistory,
+      }
+    : undefined;
 
   return (
     <section className="flex h-full min-h-0 min-w-0 flex-col bg-surface">
@@ -568,7 +1057,7 @@ export function ChatPanel({
                   canCollectMaterialActions={canCollectMaterialActions}
                   canUseMessageActions={canSendMessage}
                   canUseMessageForward={canUseMessageForward}
-                  hasAgentHostingOverlay={!!agentHostingStatus}
+                  hasComposerStatusOverlay={hasComposerStatusOverlay}
                   hasMoreHistory={hasMoreHistory}
                   historyLoadLabel={historyLoadLabel}
                   isConversationLoading={isConversationLoading}
@@ -591,11 +1080,11 @@ export function ChatPanel({
                   onLoadOlderMessages={onLoadOlderMessages}
                   onOpenQuotedMessage={onOpenQuotedMessage}
                   onQuoteMessage={onQuoteMessage}
-                  onSendSmartReply={onSendSmartReply}
-                  onFillSmartReplyComposer={onFillSmartReplyComposer}
-                  onDismissSmartReply={onDismissSmartReply}
-                  onMakeShorterSmartReply={onMakeShorterSmartReply}
-                  onTriggerSmartReply={onTriggerSmartReply}
+                  onTriggerSmartReply={
+                    onTriggerSmartReply
+                      ? handleTriggerSmartReplyFromMessage
+                      : undefined
+                  }
                   onToggleMessageSelection={onToggleMessageSelection}
                   onRevokeMessage={onRevokeMessage}
                   onMessageViewportScroll={onMessageViewportScroll}
@@ -665,6 +1154,106 @@ export function ChatPanel({
                             status={agentHostingStatus}
                           />
                         </div>
+                      ) : aiAssistantStatusVisible ? (
+                        <div
+                          className={cn(
+                            "absolute left-1/2 top-1 z-0 w-[calc(100%-2rem)] max-w-[860px] -translate-x-1/2",
+                            showAgentTurnTimeline ||
+                              hasBlockingAgentInteraction
+                              ? "-translate-y-full"
+                              : "-translate-y-[42px]",
+                            multiSelectMode && "pointer-events-none",
+                          )}
+                          data-testid="chat-ai-assistant-status-bar-anchor"
+                          inert={multiSelectMode || undefined}
+                        >
+                          <div className="flex flex-col">
+                            <div className="relative z-10 order-2">
+                              {agentTurnMock.approval ? (
+                                <ChatAgentToolApprovalPrompt
+                                  approval={agentTurnMock.approval}
+                                  disabled={agentTurnMock.isResolvingApproval}
+                                  onApprove={() =>
+                                    void agentTurnMock.resolveApproval({
+                                      action: "approve",
+                                    })
+                                  }
+                                  onRedirect={(instruction) =>
+                                    void agentTurnMock.resolveApproval({
+                                      action: "redirect",
+                                      instruction,
+                                    })
+                                  }
+                                  onReject={() =>
+                                    void agentTurnMock.resolveApproval({
+                                      action: "reject",
+                                    })
+                                  }
+                                />
+                              ) : agentTurnMock.clarification ? (
+                                <ChatAgentClarificationPrompt
+                                  disabled={agentTurnMock.isResolvingClarification}
+                                  input={agentTurnMock.clarification}
+                                  onRespond={(response) =>
+                                    void agentTurnMock.resolveClarification(
+                                      response,
+                                    )
+                                  }
+                                  onTerminate={() =>
+                                    void agentTurnMock.terminate()
+                                  }
+                                />
+                              ) : (
+                                <ChatAIAssistantStatusBar
+                                  actions={displayedAIAssistantActions}
+                                  customerName={activeConversation.customerName}
+                                  delayTransitionMs={200}
+                                  immediateWaitingToThinking
+                                  key={activeConversation.id}
+                                  label={resolvedAIAssistantStatusLabel}
+                                  processControl={agentTurnProcessControl}
+                                  reason={
+                                    presentedAgentTurnView?.reason ??
+                                    smartReplyTurn?.reason
+                                  }
+                                  status={resolvedAIAssistantStatus}
+                                  waitingForCustomer={Boolean(
+                                    presentedAgentTurnView?.waitingForCustomer ||
+                                      (smartReplyTurn &&
+                                        smartReplyTurn.phase === "skipped"),
+                                  )}
+                                />
+                              )}
+                              <ChatAIAssistantDebugMenu
+                                className="absolute left-[calc(100%+0.5rem)] top-[21px] -translate-y-1/2 max-[940px]:left-auto max-[940px]:right-1"
+                                mockScenario={agentTurnMock.activeScenario}
+                                onMockScenarioSelect={
+                                  handleAgentTurnMockScenarioSelect
+                                }
+                              />
+                            </div>
+                            {showAgentTurnTimeline ? (
+                              <div className="relative z-0 order-1 mx-5 -mb-4">
+                                <ChatAgentTurnTimeline
+                                  events={agentTurnMock.events}
+                                  motion={
+                                    agentTurnTimelineState.kind === "exiting"
+                                      ? "exit"
+                                      : "enter"
+                                  }
+                                  onCollapse={
+                                    isAgentTurnHistoryExpanded
+                                      ? handleCollapseAgentTurnHistory
+                                      : undefined
+                                  }
+                                  onExitComplete={
+                                    handleAgentTurnTimelineExitComplete
+                                  }
+                                />
+                              </div>
+                            ) : null}
+                          </div>
+                        </div>
                       ) : null}
                       <div
                         className={cn(
@@ -679,7 +1268,18 @@ export function ChatPanel({
                           canToggleConversationAIHosting={
                             canToggleConversationAIHosting
                           }
-                          canSendMessage={canSendMessage}
+                          canSendMessage={
+                            agentTurnMock.isReplyReady
+                              ? canSendMessage
+                              : isSmartReplySuggestionMode
+                              ? smartReplyComposer.canEdit
+                              : canSendMessage
+                          }
+                          composerMode={
+                            isSuggestionComposerMode
+                              ? "suggestion"
+                              : "message"
+                          }
                           conversationId={activeConversation.id}
                           historyKey={activeConversation.id}
                           shouldShowConversationAIHostingControl={
@@ -732,7 +1332,12 @@ export function ChatPanel({
                           onDeleteCollectedExpression={
                             onDeleteCollectedExpression
                           }
-                          onDraftChange={onDraftChange}
+                          notice={
+                            isSmartReplySuggestionMode
+                              ? smartReplyComposer.notice
+                              : undefined
+                          }
+                          onDraftChange={handleComposerDraftChange}
                           onEmojiPickerOpenChange={onEmojiPickerOpenChange}
                           onEnterBehaviorChange={onEnterBehaviorChange}
                           onFileSelect={onFileSelect}
@@ -755,20 +1360,39 @@ export function ChatPanel({
                             onSelectCollectedExpression
                           }
                           onSegmentsChange={onComposerSegmentsChange}
-                          onSendDraft={onSendDraft}
+                          onSendDraft={
+                            agentTurnMock.isReplyReady
+                              ? handleSendAgentTurnMockReply
+                              : isSmartReplySuggestionMode
+                              ? smartReplyComposer.onSendDraft
+                              : onSendDraft
+                          }
                           onTopCollectedExpression={onTopCollectedExpression}
                           placeholder={
                             agentHostingStatus
                               ? "托管中，不支持发送消息"
+                              : isSuggestionComposerMode
+                                ? "编辑话术建议"
                               : composerPlaceholder
                           }
                           quotedMessage={quotedMessage}
+                          rightActions={
+                            isSmartReplySuggestionMode
+                              ? smartReplyComposer.rightActions
+                              : undefined
+                          }
+                          sendLabel={
+                            isSuggestionComposerMode
+                              ? "采纳并发送"
+                              : undefined
+                          }
                           composerRef={composerRef}
                         />
+                        {smartReplyComposer.dialog}
                       </div>
                       {multiSelectMode && multiSelectToolbar ? (
                         <div
-                          className="absolute inset-0 z-10 flex items-center justify-center bg-surface"
+                          className="absolute inset-x-0 bottom-0 top-1 z-10 flex items-center justify-center bg-surface/85"
                           data-testid="message-multi-select-composer-overlay"
                         >
                           {multiSelectToolbar}
@@ -857,7 +1481,51 @@ function writeDesktopSidebarCollapsedPreference(isCollapsed: boolean) {
   }
 }
 
+function getSmartReplyStatusBarStatus(
+  phase: SmartReplyAssistantPhase,
+): ChatAIAssistantStatus {
+  if (phase === "thinking") {
+    return "thinking";
+  }
+
+  if (
+    phase === "draft_confirmation" ||
+    phase === "confirmation" ||
+    phase === "failed"
+  ) {
+    return "confirmation";
+  }
+
+  return "waiting";
+}
+
+function getChatAgentPreflightActionLabel(
+  direction?: ChatAgentDirection,
+) {
+  if (direction === "provide_response") {
+    return "起草回复";
+  }
+
+  if (direction === "request_information") {
+    return "起草追问";
+  }
+
+  return "开始处理";
+}
+
 function noop() {}
+
+function getLatestCustomerMessageId(messages: Message[]) {
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const message = messages[index];
+
+    if (message?.role === "customer") {
+      return message.seq != null ? String(message.seq) : undefined;
+    }
+  }
+
+  return undefined;
+}
 
 function noopChangeSeatAgentMode() {}
 

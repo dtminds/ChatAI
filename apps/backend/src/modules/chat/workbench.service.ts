@@ -34,6 +34,8 @@ import type {
   WorkbenchSmartReplyGeneralAnswerResponse,
   WorkbenchSmartReplyPollRequest,
   WorkbenchSmartReplyPollResponse,
+  WorkbenchSmartReplyReferenceMessagesRequest,
+  WorkbenchSmartReplyReferenceMessagesResponse,
   WorkbenchKnowledgePageRequest,
   WorkbenchKnowledgePageResponse,
   WorkbenchKnowledgeConfigRequest,
@@ -235,6 +237,10 @@ function collectSmartReplyMessagePageCandidateIds(messages: WorkbenchMessageDto[
 }
 
 export type WorkbenchService = {
+  assertConversationOperable(
+    subUserId: string,
+    conversationId: string,
+  ): Promise<void> | void;
   getBroadcastProtectionStatus(
     uid: number,
   ):
@@ -443,6 +449,12 @@ export type WorkbenchService = {
   ):
     | Promise<WorkbenchSmartReplyAttachmentsResponse>
     | WorkbenchSmartReplyAttachmentsResponse;
+  getSmartReplyReferenceMessages(
+    subUserId: string,
+    request: WorkbenchSmartReplyReferenceMessagesRequest,
+  ):
+    | Promise<WorkbenchSmartReplyReferenceMessagesResponse>
+    | WorkbenchSmartReplyReferenceMessagesResponse;
   checkSmartReplyTextModeration(
     subUserId: string,
     request: WorkbenchSmartReplyTextModerationRequest,
@@ -703,6 +715,7 @@ export class MysqlWorkbenchService implements WorkbenchService {
     this.smartReplyService = new WorkbenchSmartReplyService(
       javaClient,
       this.access,
+      repository,
     );
   }
 
@@ -1004,6 +1017,14 @@ export class MysqlWorkbenchService implements WorkbenchService {
     }
 
     return hydrated;
+  }
+
+  async assertConversationOperable(
+    subUserId: string,
+    conversationId: string,
+  ): Promise<void> {
+    const scope = await this.getAuthenticatedWorkbenchScope(subUserId);
+    await this.getOperableConversation(subUserId, conversationId, scope);
   }
 
   async getMessages(
@@ -1751,6 +1772,16 @@ export class MysqlWorkbenchService implements WorkbenchService {
     request: WorkbenchSmartReplyAttachmentsRequest,
   ) {
     return this.smartReplyService.listSmartReplyAttachments(
+      subUserId,
+      request,
+    );
+  }
+
+  async getSmartReplyReferenceMessages(
+    subUserId: string,
+    request: WorkbenchSmartReplyReferenceMessagesRequest,
+  ) {
+    return this.smartReplyService.getSmartReplyReferenceMessages(
       subUserId,
       request,
     );

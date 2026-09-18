@@ -6,6 +6,7 @@ import {
   type WorkbenchSmartReplyGeneralAnswerRequest,
   type WorkbenchSmartReplyMakeShorterRequest,
   type WorkbenchSmartReplyPollRequest,
+  type WorkbenchSmartReplyReferenceMessagesRequest,
   type WorkbenchSmartReplySendAnswerRequest,
   type WorkbenchSmartReplyTextModerationRequest,
 } from "@chatai/contracts";
@@ -22,11 +23,13 @@ import {
   getSmartReplyJavaScope,
 } from "./workbench-smart-reply-scope.js";
 import { normalizeSmartReplyMsgIds } from "./smart-reply-mappers.js";
+import type { WorkbenchRepository } from "./workbench-repository.js";
 
 export class WorkbenchSmartReplyService {
   constructor(
     private readonly javaClient: WorkbenchJavaClient,
     private readonly access: WorkbenchAccess,
+    private readonly repository: WorkbenchRepository,
   ) {}
 
   async pollSmartReplies(
@@ -224,6 +227,25 @@ export class WorkbenchSmartReplyService {
     return this.javaClient.listAttachments({
       ids,
       uid: conversation.uid,
+    });
+  }
+
+  async getSmartReplyReferenceMessages(
+    subUserId: string,
+    request: WorkbenchSmartReplyReferenceMessagesRequest,
+  ) {
+    const scope = await this.access.getAuthenticatedWorkbenchScope(subUserId);
+    const conversation = await this.access.getAccessibleConversation(
+      subUserId,
+      request.conversationId,
+      scope,
+    );
+
+    return this.repository.listSmartReplyReferenceMessages({
+      conversation,
+      messageSeqs: request.messageSeqs,
+      platform: scope.platform,
+      uid: scope.uid,
     });
   }
 

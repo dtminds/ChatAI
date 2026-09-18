@@ -17,6 +17,8 @@ import { registerEmbedAuthRoutes } from "./modules/auth/embed-auth.routes.js";
 import { registerAiHostingRoutes } from "./modules/ai-hosting/ai-hosting.routes.js";
 import { registerUserMemoryRoutes } from "./modules/ai-hosting/user-memory/user-memory.routes.js";
 import { registerChatRoutes } from "./modules/chat/chat.routes.js";
+import { registerAgentTurnMockRoutes } from "./modules/chat/agent-turn-mock.routes.js";
+import { registerChatAgentPreflightRoutes } from "./modules/chat/chat-agent-preflight.routes.js";
 import { registerInsightsRoutes } from "./modules/insights/insights.routes.js";
 import { registerInsightsWorkerObservabilityRoutes } from "./modules/insights/insights-worker-observability.routes.js";
 import { registerSettingsRoutes } from "./modules/settings/settings.routes.js";
@@ -80,6 +82,10 @@ export async function buildApp(options: AppBuildOptions = {}) {
   await registerKbAttachmentRoutes(app);
   await registerKbRoutes(app);
   await registerChatRoutes(app);
+  await registerChatAgentPreflightRoutes(app);
+  if (process.env.NODE_ENV !== "production") {
+    await registerAgentTurnMockRoutes(app);
+  }
   await registerInsightsRoutes(app, workerObserverSubjects);
   await registerInsightsWorkerObservabilityRoutes(app, workerObserverSubjects);
   await registerSettingsRoutes(app);

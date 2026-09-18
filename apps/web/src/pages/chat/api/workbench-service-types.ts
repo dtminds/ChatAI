@@ -46,6 +46,8 @@ import {
   type WorkbenchSmartReplySendAnswerResponse,
   type WorkbenchSmartReplyPollRequest,
   type WorkbenchSmartReplyPollResponse,
+  type WorkbenchSmartReplyReferenceMessagesRequest,
+  type WorkbenchSmartReplyReferenceMessagesResponse,
   type WorkbenchKnowledgePageRequest,
   type WorkbenchKnowledgePageResponse,
   type WorkbenchKnowledgeConfigRequest,
@@ -242,6 +244,9 @@ export type WorkbenchService = {
   listSmartReplyAttachments: (
     request: WorkbenchSmartReplyAttachmentsRequest,
   ) => Promise<WorkbenchSmartReplyAttachmentsResponse>;
+  getSmartReplyReferenceMessages: (
+    request: WorkbenchSmartReplyReferenceMessagesRequest,
+  ) => Promise<WorkbenchSmartReplyReferenceMessagesResponse>;
   checkSmartReplyTextModeration: (
     request: WorkbenchSmartReplyTextModerationRequest,
   ) => Promise<WorkbenchSmartReplyTextModerationResponse>;

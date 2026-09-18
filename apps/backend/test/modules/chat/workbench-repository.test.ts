@@ -6224,6 +6224,74 @@ describe("WorkbenchRepository", () => {
     ]);
   });
 
+  it("loads smart reply reference messages across conversations in one tenant batch", async () => {
+    const db = createMessagesBySeqsDb([
+      createConversationMessageRow({
+        content: JSON.stringify({
+          description: "精华产品详情",
+          fileUrl: "products/serum.png",
+          title: "品牌商城",
+        }),
+        id: 3050,
+        msgid: "source-message-3050",
+        msgtype: "weapp",
+        third_external_id: "another-customer",
+        third_from_id: "another-customer",
+      }),
+      createConversationMessageRow({
+        id: 3051,
+        msgid: "source-message-3051",
+        third_external_id: "third-customer",
+        third_from_id: "third-customer",
+      }),
+    ]);
+    const repository = new WorkbenchRepository(db as never);
+
+    await expect(
+      repository.listSmartReplyReferenceMessages({
+        conversation: {
+          chatType: 1,
+          id: "144",
+          messageSourceThirdUserId: "seat-third-user-1",
+          platform: 5,
+          seatId: "12",
+          seatUnreadCount: 0,
+          thirdExternalUserId: "current-customer",
+          thirdUserId: "seat-third-user-1",
+          uid: 9001,
+          unreadCount: 0,
+        },
+        messageSeqs: [3050, 3051, 3050],
+        platform: 5,
+        uid: 9001,
+      }),
+    ).resolves.toMatchObject({
+      messages: [
+        {
+          content: {
+            appName: "品牌商城",
+            coverImageUrl: "https://b5.bokr.com.cn/products/serum.png",
+            title: "精华产品详情",
+          },
+          contentType: "mini-program",
+          conversationId: "144",
+          seq: 3050,
+        },
+        {
+          conversationId: "144",
+          seq: 3051,
+        },
+      ],
+    });
+
+    expect(db.messageQueries).toHaveLength(1);
+    expect(db.messageQueries[0]?.wheres).toEqual([
+      ["message.uid", "=", 9001],
+      ["message.platform", "=", 5],
+      ["message.id", "in", [3050, 3051]],
+    ]);
+  });
+
   it("hydrates quote previews when fetching messages by seqs", async () => {
     const db = createMessagesBySeqsDb(
       [

@@ -51,3 +51,10 @@ export type RestoreComposerPayload = {
 export const RESTORE_COMPOSER_COMMAND = createCommand<RestoreComposerPayload>(
   "RESTORE_COMPOSER_COMMAND",
 );
+
+export const REPLACE_COMPOSER_COMMAND = createCommand<RestoreComposerPayload>(
+  "REPLACE_COMPOSER_COMMAND",
+);
+
+export const INSERT_COMPOSER_SEGMENTS_COMMAND =
+  createCommand<RestoreComposerPayload>("INSERT_COMPOSER_SEGMENTS_COMMAND");

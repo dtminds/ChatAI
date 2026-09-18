@@ -1,9 +1,5 @@
 import { useCallback, useRef, type RefObject } from "react";
-import type { LexicalEditor } from "lexical";
-import {
-  CLEAR_COMPOSER_COMMAND,
-  INSERT_COMPOSER_TEXT_COMMAND,
-} from "@/pages/chat/components/composer/lexical-commands";
+import { toast } from "sonner";
 import type { SmartReplySendPayload } from "@/pages/chat/api/smart-reply-adapter";
 import type { ChatMessage, Conversation } from "@/pages/chat/chat-types";
 
@@ -22,11 +18,9 @@ type SendSmartReplyResult =
 type UseSmartReplyStateOptions = {
   activeConversation?: Conversation;
   canSendMessage: boolean;
-  composerRef: RefObject<LexicalEditor | null>;
   dismissSmartReply: (message: ChatMessage) => void;
   isMountedRef: RefObject<boolean>;
   isSendingDraftRef: RefObject<boolean>;
-  onDraftChange: (draft: string) => void;
   onSendFailure: (failure: {
     errorCode: string;
     errorMessage?: string;
@@ -36,9 +30,8 @@ type UseSmartReplyStateOptions = {
   onSent: () => void;
   requestSmartReplyGeneralAnswer: (
     message: ChatMessage,
-    options?: { force?: boolean },
+    options?: { confirmedComposerOverwrite?: boolean; force?: boolean },
   ) => Promise<void>;
-  requestSmartReplyMakeShorter: (message: ChatMessage) => Promise<void>;
   sendSmartReply: (
     message: ChatMessage,
     payload: SmartReplySendPayload,
@@ -48,16 +41,13 @@ type UseSmartReplyStateOptions = {
 export function useSmartReplyState({
   activeConversation,
   canSendMessage,
-  composerRef,
   dismissSmartReply,
   isMountedRef,
   isSendingDraftRef,
-  onDraftChange,
   onSendFailure,
   onSendingChange,
   onSent,
   requestSmartReplyGeneralAnswer,
-  requestSmartReplyMakeShorter,
   sendSmartReply,
 }: UseSmartReplyStateOptions) {
   const activeConversationId = activeConversation?.id;
@@ -129,25 +119,14 @@ export function useSmartReplyState({
     ],
   );
 
-  const handleFillSmartReplyComposer = useCallback(
-    (_message: ChatMessage, content: string) => {
-      const text = content.trim();
-
-      if (!text || !canSendMessage) {
-        return;
-      }
-
-      composerRef.current?.dispatchCommand(CLEAR_COMPOSER_COMMAND, undefined);
-      composerRef.current?.dispatchCommand(INSERT_COMPOSER_TEXT_COMMAND, text);
-      onDraftChange(text);
-      composerRef.current?.focus();
-    },
-    [canSendMessage, composerRef, onDraftChange],
-  );
-
   const handleTriggerSmartReply = useCallback(
-    (message: ChatMessage, options?: { force?: boolean }) => {
-      void requestSmartReplyGeneralAnswer(message, options);
+    (
+      message: ChatMessage,
+      options?: { confirmedComposerOverwrite?: boolean; force?: boolean },
+    ) => {
+      void requestSmartReplyGeneralAnswer(message, options).catch(() => {
+        toast.error("操作失败，请稍后重试");
+      });
     },
     [requestSmartReplyGeneralAnswer],
   );
@@ -159,17 +138,8 @@ export function useSmartReplyState({
     [dismissSmartReply],
   );
 
-  const handleMakeShorterSmartReply = useCallback(
-    (message: ChatMessage) => {
-      void requestSmartReplyMakeShorter(message);
-    },
-    [requestSmartReplyMakeShorter],
-  );
-
   return {
     handleDismissSmartReply,
-    handleFillSmartReplyComposer,
-    handleMakeShorterSmartReply,
     handleSendSmartReply,
     handleTriggerSmartReply,
   };

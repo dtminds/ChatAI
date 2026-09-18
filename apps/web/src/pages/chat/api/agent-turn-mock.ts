@@ -1,0 +1,113 @@
+import type {
+  AgentTurnEventEnvelope,
+  AgentTurnMockScenario,
+  LatestAgentTurnResponse,
+  ResolveAgentTurnDecisionRequest,
+  ResolveAgentTurnKfClarificationRequest,
+  StartAgentTurnMockRequest,
+  StartAgentTurnResponse,
+} from "@chatai/contracts";
+import { http } from "@/lib/request";
+
+export function getLatestAgentTurnMock(conversationId: string) {
+  return http.get<LatestAgentTurnResponse>(
+    `/server/conversations/${encodeURIComponent(conversationId)}/agent-turns/latest`,
+  );
+}
+
+export function startAgentTurnMock(input: {
+  conversationId: string;
+  messageId?: string;
+  scenario: AgentTurnMockScenario;
+}) {
+  const request: StartAgentTurnMockRequest = {
+    conversationId: input.conversationId,
+    scenario: input.scenario,
+    stepDelayMs: 700,
+    trigger: {
+      ...(input.messageId ? { messageId: input.messageId } : {}),
+      type: "agent_request",
+    },
+  };
+
+  return http.post<StartAgentTurnResponse, StartAgentTurnMockRequest>(
+    "/server/debug/agent-turn-mock/turns",
+    request,
+  );
+}
+
+export function resolveAgentTurnMockDecision(input: {
+  decisionId: string;
+  resolution: ResolveAgentTurnDecisionRequest;
+  turnId: string;
+}) {
+  return http.post<{ ok: true }, ResolveAgentTurnDecisionRequest>(
+    `/server/agent-turns/${encodeURIComponent(input.turnId)}/decisions/${encodeURIComponent(input.decisionId)}`,
+    input.resolution,
+  );
+}
+
+export function resolveAgentTurnMockClarification(input: {
+  callId: string;
+  response: ResolveAgentTurnKfClarificationRequest;
+  turnId: string;
+}) {
+  return http.post<{ ok: true }, ResolveAgentTurnKfClarificationRequest>(
+    `/server/agent-turns/${encodeURIComponent(input.turnId)}/tool-calls/${encodeURIComponent(input.callId)}/responses`,
+    input.response,
+  );
+}
+
+export function cancelAgentTurnMock(turnId: string) {
+  return http.post<{ ok: true }>(
+    `/server/agent-turns/${encodeURIComponent(turnId)}/cancel`,
+  );
+}
+
+export function subscribeAgentTurnMockEvents(
+  turnId: string,
+  handlers: {
+    onError: () => void;
+    onEvent: (event: AgentTurnEventEnvelope) => void;
+  },
+) {
+  const source = new EventSource(
+    `${resolveApiBaseUrl()}/server/agent-turns/${encodeURIComponent(turnId)}/events`,
+    { withCredentials: true },
+  );
+  let isClosed = false;
+  const close = () => {
+    if (isClosed) return;
+    isClosed = true;
+    source.removeEventListener("agent-turn", handleEvent as EventListener);
+    source.onerror = null;
+    source.close();
+  };
+  const handleEvent = (event: MessageEvent<string>) => {
+    if (isClosed) return;
+
+    const envelope = JSON.parse(event.data) as AgentTurnEventEnvelope;
+    handlers.onEvent(envelope);
+
+    if (
+      envelope.event.type === "turn.completed" ||
+      envelope.event.type === "turn.cancelled" ||
+      envelope.event.type === "turn.failed"
+    ) {
+      close();
+    }
+  };
+
+  source.addEventListener("agent-turn", handleEvent as EventListener);
+  source.onerror = () => {
+    if (isClosed) return;
+    close();
+    handlers.onError();
+  };
+
+  return close;
+}
+
+function resolveApiBaseUrl() {
+  return (import.meta.env.VITE_API_BASE_URL ?? "/api").replace(/\/$/, "");
+}

@@ -885,13 +885,12 @@ export function UiComponentDemoPage() {
             <div className="mt-5 grid gap-4 md:grid-cols-2">
               <div className="rounded-[10px] border border-border p-4">
                 <h3 className="text-sm font-semibold text-foreground">带扫光</h3>
-                <div className="mt-4 flex min-h-10 w-full max-w-[20rem] items-center rounded-full border border-border bg-background px-4 text-sm font-medium shadow-[0_10px_24px_var(--shadow-soft)]">
+                <div className="mt-4 flex min-h-10 w-full max-w-[20rem] items-center rounded-full border border-border bg-background px-4 text-sm font-medium text-muted-foreground shadow-[0_10px_24px_var(--shadow-soft)]">
                   <AnimatedTextSwitch
                     aria-label="文字切换示例"
                     className="min-w-0"
                     shiny
                     shinyDuration={1.15}
-                    shinyShimmerWidth={48}
                     staggerMs={12}
                     value={animatedText}
                   />

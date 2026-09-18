@@ -3977,4 +3977,5 @@ export interface DB {
 
 export type Database = DB
   & import("./ai-usage-schema.js").AiUsageTables
+  & import("./chat-agent-schema.js").ChatAgentPreflightTables
   & import("./workflow-schema.js").WorkflowTables;

@@ -650,6 +650,15 @@ export type WorkbenchSmartReplyAttachmentsResponse = {
   attachments: WorkbenchAttachmentDto[];
 };
 
+export type WorkbenchSmartReplyReferenceMessagesRequest = {
+  conversationId: string;
+  messageSeqs: number[];
+};
+
+export type WorkbenchSmartReplyReferenceMessagesResponse = {
+  messages: WorkbenchMessageDto[];
+};
+
 export type WorkbenchSmartReplyTextModerationRequest = {
   conversationId: string;
   content: string;

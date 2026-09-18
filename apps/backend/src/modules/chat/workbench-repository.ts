@@ -18,6 +18,7 @@ import {
   type WorkbenchChatRecordDetailResponse,
   type WorkbenchMessageUpdateEventDto,
   type WorkbenchSeatDto,
+  type WorkbenchSmartReplyReferenceMessagesResponse,
   type WorkbenchCustomerListResponse,
   WORKBENCH_ENTERPRISE_MEMBER_MAX_ITEMS,
   type WorkbenchCustomerLastConversationDto,
@@ -2585,6 +2586,74 @@ export class WorkbenchRepository {
     );
 
     return { messages };
+  }
+
+  async listSmartReplyReferenceMessages(input: {
+    conversation: ConversationLookup;
+    messageSeqs: number[];
+    platform: number;
+    uid: number;
+  }): Promise<WorkbenchSmartReplyReferenceMessagesResponse> {
+    const normalizedSeqs = uniquePositiveNumbers(
+      input.messageSeqs.filter(
+        (value) => Number.isSafeInteger(value) && value > 0,
+      ),
+    ).slice(0, 100);
+
+    if (!normalizedSeqs.length) {
+      return { messages: [] };
+    }
+
+    const rows = await this.db
+      .selectFrom("xy_wap_embed_msg_audit_info as message")
+      .select([
+        "message.id as id",
+        "message.msgid as msgid",
+        "message.chat_type as chat_type",
+        "message.from_type as from_type",
+        "message.third_user_id as third_user_id",
+        "message.third_external_id as third_external_id",
+        "message.third_from_id as third_from_id",
+        "message.third_group_id as third_group_id",
+        "message.content as content",
+        "message.msgtype as msgtype",
+        "message.msgtime as msgtime",
+        "message.opt_no as opt_no",
+        "message.revoke_status as revoke_status",
+        "message.source as source",
+        "message.status as status",
+        "message.update_time as update_time",
+      ])
+      .where("message.uid", "=", input.uid)
+      .where("message.platform", "=", input.platform)
+      .where("message.id", "in", normalizedSeqs)
+      .execute();
+    const messageRows = (rows as MessageRow[]).map((row) => ({
+      ...row,
+      conversation_external_id:
+        row.third_external_id ?? input.conversation.thirdExternalUserId ?? "",
+      conversation_group_id:
+        row.third_group_id ?? input.conversation.thirdGroupId ?? "",
+      conversation_group_seat_id: null,
+      conversation_id: input.conversation.id,
+      conversation_third_userid: input.conversation.thirdUserId,
+      seat_id: input.conversation.seatId,
+      third_external_id: row.third_external_id ?? undefined,
+      third_from_id: row.third_from_id ?? undefined,
+      third_group_id: row.third_group_id ?? undefined,
+      third_user_id: row.third_user_id ?? undefined,
+    }));
+    const hydrationSources = await this.getMessageHydrationSources(
+      messageRows,
+      input.uid,
+      input.platform,
+    );
+
+    return {
+      messages: hydrateMessageRows(messageRows, hydrationSources).map((row) =>
+        mapMessageRow(row),
+      ),
+    };
   }
 
   async getChatRecordDetail(

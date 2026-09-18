@@ -22,6 +22,7 @@
   --popover-foreground: oklch(0.32 0 0);
   --primary: oklch(0.62 0.19 259.76);
   --primary-foreground: oklch(1 0 0);
+  --ai-accent: oklch(0.62 0.18 295);
   --secondary: oklch(0.96 0 0);
   --secondary-foreground: oklch(0.45 0.015 257.68);
   --muted: oklch(0.98 0 0);
@@ -99,6 +100,7 @@
   --popover-foreground: oklch(0.92 0 0);
   --primary: oklch(0.62 0.19 259.76);
   --primary-foreground: oklch(1 0 0);
+  --ai-accent: oklch(0.55 0.18 295);
   --secondary: oklch(0.31 0 0);
   --secondary-foreground: oklch(0.92 0.005 259.76);
   --muted: oklch(0.27 0 0);
@@ -1011,6 +1013,7 @@ html.dark[data-appearance-theme="nature"] {
   --color-popover-foreground: var(--popover-foreground);
   --color-primary: var(--primary);
   --color-primary-foreground: var(--primary-foreground);
+  --color-ai-accent: var(--ai-accent);
   --color-secondary: var(--secondary);
   --color-secondary-foreground: var(--secondary-foreground);
   --color-muted: var(--muted);
@@ -1175,6 +1178,110 @@ html.dark[data-appearance-theme="nature"] {
     background-color: #FA9D3D;
   }
 
+  .chat-composer-surface {
+    border-color: transparent;
+    background:
+      linear-gradient(var(--card), var(--card)) padding-box,
+      linear-gradient(
+        to bottom,
+        color-mix(in oklch, var(--border) 65%, transparent),
+        color-mix(in oklch, var(--border) 84%, transparent)
+      ) border-box;
+    box-shadow: 0 3px 8px color-mix(in oklch, var(--shadow-soft) 65%, transparent);
+    transition: box-shadow 250ms cubic-bezier(0.2, 0, 0, 1);
+  }
+
+  .chat-agent-clarification-surface,
+  .chat-agent-turn-timeline-surface,
+  .chat-agent-tool-approval-surface {
+    box-shadow: none;
+  }
+
+  .chat-composer-surface::before {
+    content: "";
+    position: absolute;
+    inset: -1px;
+    border-radius: inherit;
+    border: 1px solid transparent;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 250ms cubic-bezier(0.2, 0, 0, 1);
+    z-index: 0;
+    background:
+      linear-gradient(
+          172deg,
+          color-mix(in srgb, var(--ai-accent) 7%, var(--card)),
+          color-mix(in srgb, var(--ai-accent) 2%, var(--card)) 45%,
+          var(--card)
+        )
+        padding-box,
+      linear-gradient(
+          135deg,
+          color-mix(in srgb, var(--ai-accent) 36%, transparent),
+          color-mix(in oklch, var(--border) 80%, transparent) 52%,
+          color-mix(in oklch, var(--border) 68%, transparent)
+        )
+        border-box;
+  }
+
+  .chat-composer-surface[data-composer-mode="suggestion"]::before {
+    opacity: 1;
+  }
+
+  .chat-ai-assistant-status-surface[data-status="waiting"] {
+    background:
+      linear-gradient(
+          172deg,
+          color-mix(in srgb, var(--ai-accent) 7%, var(--card)),
+          color-mix(in srgb, var(--ai-accent) 2%, var(--card)) 45%,
+          var(--card)
+        )
+        padding-box,
+      linear-gradient(
+          172deg,
+          color-mix(in srgb, var(--ai-accent) 32%, transparent),
+          color-mix(in oklch, var(--border) 80%, transparent) 52%,
+          color-mix(in oklch, var(--border) 68%, transparent)
+        )
+        border-box;
+  }
+
+  .dark .chat-composer-surface::before {
+    background:
+      linear-gradient(
+          172deg,
+          color-mix(in srgb, var(--ai-accent) 12%, var(--card)),
+          color-mix(in srgb, var(--ai-accent) 4%, var(--card)) 45%,
+          var(--card)
+        )
+        padding-box,
+      linear-gradient(
+          135deg,
+          color-mix(in srgb, var(--ai-accent) 56%, transparent),
+          color-mix(in oklch, var(--border) 54%, transparent) 52%,
+          color-mix(in oklch, var(--border) 40%, transparent)
+        )
+        border-box;
+  }
+
+  .dark .chat-ai-assistant-status-surface[data-status="waiting"] {
+    background:
+      linear-gradient(
+          172deg,
+          color-mix(in srgb, var(--ai-accent) 12%, var(--card)),
+          color-mix(in srgb, var(--ai-accent) 4%, var(--card)) 45%,
+          var(--card)
+        )
+        padding-box,
+      linear-gradient(
+          172deg,
+          color-mix(in srgb, var(--ai-accent) 42%, transparent),
+          color-mix(in oklch, var(--border) 54%, transparent) 52%,
+          color-mix(in oklch, var(--border) 40%, transparent)
+        )
+        border-box;
+  }
+
   .ai-hosting-tag-text {
     color: #2AB431;
     background-image: linear-gradient(90deg, #2AB431 0%, #38B03B 100%);
@@ -1184,29 +1291,33 @@ html.dark[data-appearance-theme="nature"] {
   }
 
   .shiny-text {
-    --shiny-text-duration: 1.35s;
-    --shiny-text-shimmer-width: 56px;
+    --shiny-text-base-color: color-mix(
+      in oklch,
+      var(--muted-foreground) 72%,
+      var(--muted)
+    );
+    --shiny-text-cycle-duration: 1.588s;
+    --shiny-text-highlight-color: var(--foreground);
     display: inline-block;
-    background-image:
-      linear-gradient(
-        110deg,
-        transparent 0%,
-        color-mix(in oklch, currentColor 24%, white) 34%,
-        white 50%,
-        color-mix(in oklch, currentColor 24%, white) 66%,
-        transparent 100%
-      ),
-      linear-gradient(
-        currentColor,
-        currentColor
-      );
-    background-repeat: no-repeat, no-repeat;
-    background-size: var(--shiny-text-shimmer-width) 100%, 100% 100%;
-    background-position: calc(-1 * var(--shiny-text-shimmer-width)) center, 0 0;
+    background-color: var(--shiny-text-base-color);
+    background-image: linear-gradient(
+      90deg,
+      var(--shiny-text-base-color) 35%,
+      var(--shiny-text-highlight-color) 50%,
+      var(--shiny-text-base-color) 65%
+    );
+    background-repeat: no-repeat;
+    background-size: 200% 100%;
+    background-position: 150% center;
     background-clip: text;
     -webkit-background-clip: text;
     -webkit-text-fill-color: transparent;
-    animation: shiny-text-sweep var(--shiny-text-duration) cubic-bezier(0.36, 0, 0.2, 1) infinite;
+    animation: shiny-text-sweep var(--shiny-text-cycle-duration) linear infinite;
+  }
+
+  [data-testid="image-preview-ocr-panel"] {
+    --image-preview-ocr-shiny-text-base: rgb(255 255 255 / 0.72);
+    --image-preview-ocr-shiny-text-highlight: rgb(255 255 255);
   }
 
   .animated-text-switch {
@@ -1246,6 +1357,38 @@ html.dark[data-appearance-theme="nature"] {
 
   .animated-text-switch__char--exit {
     animation: none;
+  }
+
+  .chat-ai-assistant-status-layer--exiting {
+    animation: chat-ai-assistant-status-exit 180ms cubic-bezier(0.42, 0, 1, 1) both;
+    pointer-events: none;
+  }
+
+  .chat-ai-assistant-status-layer--entering {
+    animation: chat-ai-assistant-status-enter 380ms cubic-bezier(0.34, 1.56, 0.64, 1) 250ms both;
+    pointer-events: none;
+  }
+
+  .chat-agent-turn-timeline-enter {
+    animation: chat-agent-turn-timeline-enter 280ms cubic-bezier(0.16, 1, 0.3, 1) both;
+    will-change: clip-path, opacity, transform;
+  }
+
+  .chat-agent-turn-timeline-exit {
+    animation: chat-agent-turn-timeline-exit 180ms cubic-bezier(0.42, 0, 1, 1) both;
+    pointer-events: none;
+    will-change: clip-path, opacity, transform;
+  }
+
+  .chat-agent-turn-timeline-activity-enter {
+    animation: chat-agent-turn-timeline-activity-enter 300ms cubic-bezier(0.23, 1, 0.32, 1) both;
+    will-change: opacity, transform;
+  }
+
+  .chat-agent-interaction-enter {
+    animation: chat-agent-interaction-enter 280ms cubic-bezier(0.16, 1.12, 0.3, 1) both;
+    transform-origin: bottom center;
+    will-change: opacity, transform;
   }
 
   .anim-pop-right {
@@ -1291,13 +1434,90 @@ html.dark[data-appearance-theme="nature"] {
   }
 }
 
-@keyframes shiny-text-sweep {
+@keyframes chat-ai-assistant-status-exit {
   0% {
-    background-position: calc(-1 * var(--shiny-text-shimmer-width)) center, 0 0;
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
   }
 
   100% {
-    background-position: calc(100% + var(--shiny-text-shimmer-width)) center, 0 0;
+    opacity: 0;
+    transform: translate3d(0, calc(100% + 8px), 0);
+  }
+}
+
+@keyframes chat-ai-assistant-status-enter {
+  0% {
+    opacity: 0;
+    transform: translate3d(0, calc(100% + 8px), 0);
+  }
+
+  100% {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
+  }
+}
+
+@keyframes chat-agent-turn-timeline-enter {
+  0% {
+    opacity: 0;
+    clip-path: inset(100% 0 0 0 round 18px);
+    transform: translateY(12px) scaleY(0.96);
+  }
+
+  100% {
+    opacity: 1;
+    clip-path: inset(0 0 0 0 round 18px);
+    transform: translateY(0) scaleY(1);
+  }
+}
+
+@keyframes chat-agent-turn-timeline-exit {
+  0% {
+    opacity: 1;
+    clip-path: inset(0 0 0 0 round 18px);
+    transform: translateY(0) scaleY(1);
+  }
+
+  100% {
+    opacity: 0;
+    clip-path: inset(100% 0 0 0 round 18px);
+    transform: translateY(14px) scaleY(0.96);
+  }
+}
+
+@keyframes chat-agent-turn-timeline-activity-enter {
+  0% {
+    opacity: 0;
+    transform: translate3d(0, 6px, 0);
+  }
+
+  100% {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
+  }
+}
+
+@keyframes chat-agent-interaction-enter {
+  0% {
+    opacity: 0;
+    transform: translate3d(0, 16px, 0);
+  }
+
+  100% {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
+  }
+}
+
+@keyframes shiny-text-sweep {
+  0% {
+    background-position: 150% center;
+  }
+
+  85%,
+  100% {
+    background-position: -50% center;
   }
 }
 
@@ -1373,6 +1593,21 @@ html.dark[data-appearance-theme="nature"] {
   .anim-pop-right,
   .anim-pop-left {
     animation: none;
+  }
+
+  .chat-ai-assistant-status-layer--entering,
+  .chat-ai-assistant-status-layer--exiting,
+  .chat-agent-interaction-enter,
+  .chat-agent-turn-timeline-activity-enter,
+  .chat-agent-turn-timeline-enter,
+  .chat-agent-turn-timeline-exit {
+    animation-delay: 0ms;
+    animation-duration: 1ms;
+  }
+
+  .chat-composer-surface,
+  .chat-composer-surface::before {
+    transition: none;
   }
 
   .animated-text-switch__char {

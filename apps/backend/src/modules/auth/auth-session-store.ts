@@ -281,6 +281,7 @@ function createSessionCacheKeys(
     authSession: (sessionId) => baseCacheKeys.authSession(`embed:${sessionId}`),
     authSessionIndex: (subUserId) =>
       baseCacheKeys.authSessionIndex(`embed:${subUserId}`),
+    chatAgentPreflightRate: baseCacheKeys.chatAgentPreflightRate,
     seatAccess: baseCacheKeys.seatAccess,
   };
 }

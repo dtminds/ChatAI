@@ -192,11 +192,12 @@ type MessagePaginationState = {
 };
 
 type PollState = {
-  status: "idle" | "error" | "paused";
+  status: "idle" | "error" | "paused" | "recovering";
   intervalMs: number;
   jitterMs: number;
   errorMessage?: string;
   pauseReason?: "cursor-invalidated";
+  recoveryAttempts?: number;
 };
 
 type HistoryPanelMode = "all" | "file" | "media" | "h5" | "mini-program";
@@ -365,6 +366,7 @@ type WorkbenchState = {
   loadHistoryMessages: (options?: { cursor?: string; direction?: "next" | "prev" }) => Promise<void>;
   refreshSeatSummaries: () => Promise<void>;
   pollWorkbench: () => Promise<boolean>;
+  recoverFromCursorInvalidation: () => Promise<boolean>;
   dismissSmartReply: (message: ChatMessage) => void;
   requestSmartReplyGeneralAnswer: (
     message: ChatMessage,
@@ -460,6 +462,7 @@ function createInitialState(): Omit<
   | "loadActiveGroupMembers"
   | "loadUnreadConversations"
   | "markConversationUnread"
+  | "recoverFromCursorInvalidation"
   | "sendAgentMessageSegments"
   | "sendAgentTextMessage"
   | "setChatSendPermission"
@@ -6164,6 +6167,27 @@ export function createWorkbenchStore() {
       const requestId = getScopeRequestId();
 
       try {
+        if (import.meta.env.DEV && typeof localStorage !== "undefined") {
+          const debugFlag = localStorage.getItem("chatai.debug.forceWorkbenchCursorInvalidate");
+          
+          if (debugFlag === "1") {
+            localStorage.removeItem("chatai.debug.forceWorkbenchCursorInvalidate");
+            throw {
+              code: "WORKBENCH_CURSOR_INVALIDATED",
+              message: "DEBUG: Forced cursor invalidation for testing (one-shot)",
+              status: 409,
+            };
+          }
+
+          if (debugFlag === "always") {
+            throw {
+              code: "WORKBENCH_CURSOR_INVALIDATED",
+              message: "DEBUG: Forced cursor invalidation for testing (always)",
+              status: 409,
+            };
+          }
+        }
+
         const activeConversationId = state.activeConversationId || undefined;
         const request = {
           ...(activeConversationId
@@ -6597,21 +6621,51 @@ export function createWorkbenchStore() {
           return false;
         }
 
-        set((currentState) => ({
-          pollState: isCursorInvalidationError(error)
-            ? {
+        if (isCursorInvalidationError(error)) {
+          const currentRecoveryAttempts = get().pollState.recoveryAttempts ?? 0;
+          const maxRecoveryAttempts = 3;
+
+          if (currentRecoveryAttempts < maxRecoveryAttempts) {
+            set((currentState) => ({
+              pollState: {
                 ...currentState.pollState,
                 errorMessage: undefined,
                 pauseReason: "cursor-invalidated",
-                status: "paused",
-              }
-            : {
-                ...currentState.pollState,
-                errorMessage: error instanceof Error ? error.message : "轮询失败",
-                pauseReason: undefined,
-                status: "error",
+                recoveryAttempts: currentRecoveryAttempts + 1,
+                status: "recovering",
               },
-        }));
+            }));
+
+            try {
+              const recovered = await get().recoverFromCursorInvalidation();
+
+              if (recovered) {
+                return false;
+              }
+            } catch (recoveryError) {
+              console.error("Cursor invalidation auto-recovery failed:", recoveryError);
+            }
+          }
+
+          set((currentState) => ({
+            pollState: {
+              ...currentState.pollState,
+              errorMessage: undefined,
+              pauseReason: "cursor-invalidated",
+              recoveryAttempts: currentRecoveryAttempts + 1,
+              status: "paused",
+            },
+          }));
+        } else {
+          set((currentState) => ({
+            pollState: {
+              ...currentState.pollState,
+              errorMessage: error instanceof Error ? error.message : "轮询失败",
+              pauseReason: undefined,
+              status: "error",
+            },
+          }));
+        }
 
         return false;
       } finally {
@@ -6619,6 +6673,147 @@ export function createWorkbenchStore() {
           runningPollRunId = undefined;
           isPollWorkbenchRunning = false;
         }
+      }
+    },
+    async recoverFromCursorInvalidation() {
+      const state = get();
+
+      if (state.pollState.status !== "recovering" && state.pollState.status !== "paused") {
+        return false;
+      }
+
+      set((currentState) => ({
+        pollState: {
+          ...currentState.pollState,
+          status: "recovering",
+        },
+      }));
+
+      try {
+        const activeConversationId = state.activeConversationId;
+        const activeMode = state.activeMode;
+
+        const bootstrapResult = await bootstrapWorkbench(
+          activeMode,
+          defaultCustomerProfiles,
+          MESSAGE_PAGE_SIZE,
+          Date.now(),
+          activeConversationId,
+        );
+
+        const conversationPage = bootstrapResult.conversationPage;
+        const loadedAt = Date.now();
+
+        const conversationListCacheSeatOrder = getConversationListCacheSeatOrder(
+          get().conversationListCacheSeatOrder,
+          bootstrapResult.activeAccountId,
+        );
+        const prunedConversationListCache = pruneConversationListCache({
+          activeAccountId: bootstrapResult.activeAccountId,
+          conversationListsByScope: {
+            ...get().conversationListsByScope,
+            ...bootstrapResult.conversationListsByScope,
+          },
+          conversationModeLoadedAtByScope: markAllConversationModesLoaded(
+            get().conversationModeLoadedAtByScope,
+            bootstrapResult.activeAccountId,
+            loadedAt,
+          ),
+          seatOrder: conversationListCacheSeatOrder,
+        });
+
+        const bootstrapSmartReplyState = {
+          ...get(),
+          accounts: bootstrapResult.accounts,
+          conversationListsByScope: prunedConversationListCache.conversationListsByScope,
+          me: bootstrapResult.me,
+        };
+        const bootstrapSmartReplyByMessageId = conversationPage
+          ? getPageSmartRepliesForConversation(bootstrapSmartReplyState, conversationPage)
+          : {};
+        const bootstrapSmartReplyHidden = conversationPage
+          ? buildSmartReplyHiddenKeys(
+              conversationPage.messages,
+              bootstrapSmartReplyByMessageId,
+            )
+          : {};
+        const bootstrapSmartReplyPending = mapSmartReplyPendingKeysFromSuggestions(
+          bootstrapSmartReplyByMessageId,
+          { hidden: bootstrapSmartReplyHidden },
+        );
+
+        set({
+          accounts: bootstrapResult.accounts,
+          activeAccountId: bootstrapResult.activeAccountId,
+          activeConversationId: bootstrapResult.activeConversationId,
+          activeMessageSeq: getActiveMessageSeq(
+            conversationPage
+              ? {
+                  [conversationPage.conversationId]: conversationPage.messages,
+                }
+              : {},
+            bootstrapResult.activeConversationId,
+          ),
+          activeMode: bootstrapResult.activeMode,
+          conversationListCacheSeatOrder: prunedConversationListCache.conversationListCacheSeatOrder,
+          conversationListsByScope: prunedConversationListCache.conversationListsByScope,
+          conversationModeLoadedAtByScope:
+            prunedConversationListCache.conversationModeLoadedAtByScope,
+          isPollBaselineFresh: true,
+          messageUpdateCursor: undefined,
+          messagesByConversationId: conversationPage
+            ? {
+                ...state.messagesByConversationId,
+                [conversationPage.conversationId]: upsertMessageList(
+                  state.messagesByConversationId[conversationPage.conversationId] ?? [],
+                  conversationPage.messages,
+                ),
+              }
+            : state.messagesByConversationId,
+          pollState: {
+            ...get().pollState,
+            errorMessage: undefined,
+            pauseReason: undefined,
+            status: "idle",
+          },
+          seatUpdateCursor: undefined,
+          sinceVersion: bootstrapResult.pollBaseline,
+          smartReplyPendingMessageKeysByConversationId: conversationPage
+            ? {
+                ...state.smartReplyPendingMessageKeysByConversationId,
+                [conversationPage.conversationId]: bootstrapSmartReplyPending,
+              }
+            : state.smartReplyPendingMessageKeysByConversationId,
+          smartReplyByMessageIdByConversationId: conversationPage
+            ? {
+                ...state.smartReplyByMessageIdByConversationId,
+                [conversationPage.conversationId]: bootstrapSmartReplyByMessageId,
+              }
+            : state.smartReplyByMessageIdByConversationId,
+          smartReplyHiddenMessageKeysByConversationId: conversationPage
+            ? {
+                ...state.smartReplyHiddenMessageKeysByConversationId,
+                [conversationPage.conversationId]: bootstrapSmartReplyHidden,
+              }
+            : state.smartReplyHiddenMessageKeysByConversationId,
+        });
+
+        await syncFullAutoAgentStatusForCurrentState();
+
+        return true;
+      } catch (error) {
+        console.error("Cursor invalidation recovery failed:", error);
+
+        set((currentState) => ({
+          pollState: {
+            ...currentState.pollState,
+            errorMessage: undefined,
+            pauseReason: "cursor-invalidated",
+            status: "paused",
+          },
+        }));
+
+        return false;
       }
     },
     async sendAgentMessageSegments(segments, options) {

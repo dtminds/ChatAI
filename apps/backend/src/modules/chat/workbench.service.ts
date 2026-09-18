@@ -170,7 +170,7 @@ import { WorkbenchQuickReplyService } from "./workbench-quick-reply.service.js";
 import { WorkbenchGroupMemberService } from "./workbench-group-member.service.js";
 import { WorkbenchSmartReplyService } from "./workbench-smart-reply.service.js";
 
-const POLL_CONVERSATION_CHANGE_LIMIT = 500;
+const POLL_CONVERSATION_CHANGE_LIMIT = 600;
 const POLL_LAST_MESSAGE_OVERLAP_MS = 1;
 const POLL_MESSAGE_UPDATE_LIMIT = 200;
 const POLL_SEAT_UPDATE_LIMIT = 200;

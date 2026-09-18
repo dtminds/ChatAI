@@ -318,6 +318,7 @@ function ChatRecordDetailMessageContent({ message }: { message: ChatMessage }) {
         content={message.content}
         isAgent={message.role === "agent"}
         isOwnMessage={message.isOwnMessage}
+        variant="plain"
       />
     );
   }

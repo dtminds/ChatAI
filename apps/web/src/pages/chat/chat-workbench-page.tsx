@@ -1593,7 +1593,11 @@ function ChatWorkbenchContent({
 
   const handleRevokeMessage = useCallback(
     async (message: ChatMessage) => {
-      if (!canSendMessage || message.rawMsgtype === VOICE_CALL_MSGTYPE) {
+      if (
+        !canSendMessage ||
+        message.content.type === "voice-call" ||
+        message.rawMsgtype === VOICE_CALL_MSGTYPE
+      ) {
         return;
       }
 
@@ -2338,6 +2342,7 @@ function ChatWorkbenchContent({
   const handleQuoteMessage = (message: ChatMessage) => {
     if (
       message.isRevoked ||
+      message.content.type === "voice-call" ||
       message.rawMsgtype === VOICE_CALL_MSGTYPE
     ) {
       return;

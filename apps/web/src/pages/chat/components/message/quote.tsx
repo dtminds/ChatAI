@@ -1,10 +1,10 @@
 import {
-  Call02Icon,
   FileEmpty01Icon,
   Image01Icon,
   IdentityCardIcon,
   Link04Icon,
   Location01Icon,
+  PhoneIcon,
   PlayCircle02Icon,
   SpeechIcon,
 } from "@hugeicons/core-free-icons";
@@ -278,7 +278,7 @@ function getQuoteTypeIcon(contentType: QuotedMessagePreviewContent["contentType"
     case "voice":
       return SpeechIcon;
     case "voice-call":
-      return Call02Icon;
+      return PhoneIcon;
     case "video":
       return PlayCircle02Icon;
     case "file":

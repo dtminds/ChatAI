@@ -698,7 +698,10 @@ describe("message feed row actions", () => {
 
     render(
       <MessageRow
-        message={createVoiceCallMessage()}
+        message={{
+          ...createVoiceCallMessage(),
+          rawMsgtype: undefined,
+        }}
         onQuoteMessage={onQuoteMessage}
       />,
     );
@@ -1259,6 +1262,7 @@ describe("message feed row actions", () => {
         message={{
           ...createVoiceCallMessage(),
           isOwnMessage: true,
+          rawMsgtype: undefined,
         }}
         onRevokeMessage={onRevokeMessage}
         onQuoteMessage={vi.fn()}

@@ -897,6 +897,7 @@ function MessageActionAvatar({
     !message.isRevoked &&
     isValidMessageSeq(message.seq) &&
     message.content.type !== "contact-card" &&
+    message.content.type !== "voice-call" &&
     message.rawMsgtype !== VOICE_CALL_MSGTYPE;
   const canCollectMessage = Boolean(onCollectMaterial) && canCollectMaterial(message);
   const canSelectCollectMessage = canCollectMaterialActions && !message.isRevoked;
@@ -1472,6 +1473,7 @@ function canShowRevokeMessageAction(message: ChatMessage, now = Date.now()) {
     message.revokePending ||
     message.status !== "sent" ||
     !isValidMessageSeq(message.seq) ||
+    message.content.type === "voice-call" ||
     message.rawMsgtype === VOICE_CALL_MSGTYPE
   ) {
     return false;

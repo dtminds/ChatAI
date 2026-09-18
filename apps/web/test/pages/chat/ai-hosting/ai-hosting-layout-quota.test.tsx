@@ -37,7 +37,7 @@ function setOwner(subUserId: string) {
     permissions: ["chat.access", "chat.send", "chat.takeover"],
     role: "admin",
     subUserId,
-    uid: 1,
+    uid: 999,
   });
 }
 
@@ -65,6 +65,17 @@ describe("AI hosting layout quota", () => {
     resetAiHostingQuotaCacheForTest();
     vi.mocked(getAiHostingQuota).mockReset();
     setOwner("101");
+  });
+
+  it("shows the Workflow navigation without a UID allowlist", async () => {
+    vi.mocked(getAiHostingQuota).mockResolvedValue(createQuota());
+
+    renderLayout();
+
+    expect(await screen.findByRole("link", { name: "工作流" })).toHaveAttribute(
+      "href",
+      "/chat/workflows",
+    );
   });
 
   it("clears and reloads sidebar quota when the account owner changes without unmounting", async () => {

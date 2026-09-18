@@ -332,8 +332,8 @@ function mockSession() {
     displayName: "运营主管",
     permissions: ["chat.access", "chat.send", "chat.takeover"],
     role: "admin",
-    subUserId: "101",
-    uid: 101,
+    subUserId: "999",
+    uid: 999,
   });
 }
 

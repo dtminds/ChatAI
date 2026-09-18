@@ -98,6 +98,7 @@ const WORKFLOW_TEMPLATE_MANAGER_SUBJECTS: ReadonlySet<string> = new Set([
   "101:2",
   "101:3",
   "2:139",
+  "2:147",
   "272:1",
   "272:4",
 ]);

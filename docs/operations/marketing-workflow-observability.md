@@ -35,11 +35,12 @@ Entry and Task error details are sampled independently by failure category, with
 | `workflow.entry.consume.summary` | `info` | `received`, `admitted`, `noMatch`, `deduplicated`, `rejected`, `runtimeRejected`, `nacked` |
 | `workflow.entry.consume.rejected` | `warn`, sampled | `code`, `messageId`, `topic`, `redeliveryCount`, `deadLetterTopic` |
 | `workflow.entry.consume.failed` | `warn`, sampled | `code`, `messageId`, `topic`, `redeliveryCount`, `deadLetterTopic` |
-| `workflow.task.consume.summary` | `info` | `received`, `completed`, `ackedBoundary`, `retryScheduled`, `capabilityFailed`, `nodeFailed`, `invalid`, `nacked` |
+| `workflow.task.consume.summary` | `info` | `received`, `completed`, `ackedBoundary`, `deferred`, `rateLimited`, `retryScheduled`, `capabilityFailed`, `nodeFailed`, `invalid`, `nacked` |
 | `workflow.task.consume.rejected` | `warn`, sampled | `code`, `messageId`, `topic`, `redeliveryCount`, `deadLetterTopic` |
 | `workflow.task.consume.failed` | `warn`, sampled | `messageId`, `topic`, `redeliveryCount`, `uid`, `runId`, `taskId`, `taskVersion`, `errorCode`, `err` |
 | `workflow.capability.retry.scheduled` | `warn`, sampled | `uid`, `runId`, `taskId`, `failureKind`, `errorCode`, `diagnosticMessage`, `retryAt` |
 | `workflow.capability.failed` | `warn`, sampled | `uid`, `runId`, `taskId`, `failureKind`, `errorCode`, `diagnosticMessage` |
+| `workflow.message.rate-limit.unavailable` | `warn`, at most once per Worker per minute | `uid`, `seatId`, `error` |
 | `workflow.node.failed` | `warn`, sampled | `uid`, `runId`, `taskId`, `nodeId`, `nodeKind`, `errorCode`, `diagnosticMessage` |
 
 Role results are flattened into the log event. Do not put counters under a nested `result` object. Internal pagination cursors are not logged. CLS should index at least `event`, `role`, `status`, `durationMs`, `uid`, `workflowId`, `workflowType`, `source`, `affectedDefinitions`, `dispatched`, `suspended`, `claimed`, `sent`, `failed`, `dead`, `cancelled`, `taskTransitionClaimed`, `taskTransitionFailed`, `taskTransitionDead`, `taskTransitionHasMore`, `taskTransitioned`, `taskLeasesRecovered`, `taskLeasesDead`, `taskStatusesReconciled`, `outboxLeasesRecovered`, `stalledTasksRepublished`, `inconsistentRunsFailed`, `staleTasksCancelled`, `terminalRunTasksCancelled`, `inboxDeleted`, `historyCleanupHasMore`, `runsDeleted`, `nodeExecutionsDeleted`, `tasksDeleted`, `outboxDeleted`, and `err`.

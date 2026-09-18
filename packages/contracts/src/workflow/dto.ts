@@ -23,6 +23,7 @@ export const WorkflowNodeKindSchema = Type.Union([
   Type.Literal("branch"),
   Type.Literal("ratio-split"),
   Type.Literal("message"),
+  Type.Literal("marketing-message"),
   Type.Literal("message-query"),
   Type.Literal("tag"),
   Type.Literal("coupon"),

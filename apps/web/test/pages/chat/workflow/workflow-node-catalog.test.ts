@@ -42,6 +42,7 @@ import {
   getNodeConfigSections,
   getWorkflowNodeConfigSchema,
 } from "@/pages/chat/workflow/node-config-schema";
+import { createStartNodeData } from "@/pages/chat/workflow/nodes/start/definition";
 import {
   getDefaultSourceHandleId,
   getAutoConnectSourceHandleDefinition,
@@ -206,8 +207,12 @@ describe("workflow node catalog", () => {
       expect(allowedInsertableNodeKinds).toContain("smartsheet-write");
       if (workflowType === "chatai_sop") {
         expect(allowedInsertableNodeKinds).toContain("ticket-create");
+        expect(allowedInsertableNodeKinds).toContain("order-bind");
+        expect(allowedInsertableNodeKinds).toContain("order-conversion");
       } else {
         expect(allowedInsertableNodeKinds).not.toContain("ticket-create");
+        expect(allowedInsertableNodeKinds).not.toContain("order-bind");
+        expect(allowedInsertableNodeKinds).not.toContain("order-conversion");
       }
     },
   );
@@ -228,6 +233,7 @@ describe("workflow node catalog", () => {
       "handoff",
       "llm",
       "message",
+      "marketing-message",
       "message-query",
       "order-bind",
       "order-query",
@@ -265,7 +271,7 @@ describe("workflow node catalog", () => {
     const schemaNodeKinds: WorkflowNodeKind[] = [
       "agent",
     ];
-    const customNodeKinds: WorkflowNodeKind[] = ["ai-collect", "ai-intent", "audience-filter", "branch", "coupon", "customer-update", "handoff", "llm", "message", "message-query", "order-bind", "order-query", "order-conversion", "ratio-split", "smartsheet-write", "ticket-create", "start", "tag", "tag-query", "wait", "wait-event"];
+    const customNodeKinds: WorkflowNodeKind[] = ["ai-collect", "ai-intent", "audience-filter", "branch", "coupon", "customer-update", "handoff", "llm", "message", "marketing-message", "message-query", "order-bind", "order-query", "order-conversion", "ratio-split", "smartsheet-write", "ticket-create", "start", "tag", "tag-query", "wait", "wait-event"];
 
     expect(Object.keys(nodeDefinitions)).toEqual(nodeKinds);
     expect(Object.keys(workflowNodeCatalog)).toEqual(nodeKinds);
@@ -378,6 +384,7 @@ describe("workflow node catalog", () => {
       "handoff",
       "llm",
       "message",
+      "marketing-message",
       "message-query",
       "order-bind",
       "order-query",
@@ -425,6 +432,16 @@ describe("workflow node catalog", () => {
         expect.objectContaining({ id: "sources" }),
         expect.objectContaining({ id: "triggers" }),
       ]));
+    expect(startBody.kind === "fields" ? startBody.getFields({
+      ...createStartNodeData("wecom_sop"),
+      entryMode: "direct-push",
+      workUserIds: [201],
+    }) : []).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        id: "triggers",
+        value: { kind: "text", text: "营销流转" },
+      }),
+    ]));
     expect(waitBody.kind === "fields" ? waitBody.getFields(createDefaultNodeData("wait")) : [])
       .toEqual([
         expect.objectContaining({
@@ -493,6 +510,7 @@ describe("workflow node catalog", () => {
       "operate",
       "operate",
       "message",
+      "message",
       "data",
       "message",
       "message",
@@ -519,7 +537,7 @@ describe("workflow node catalog", () => {
     }))).toEqual([
       { id: "flow", items: ["wait", "wait-event", "branch", "audience-filter", "ratio-split", "ai-intent"] },
       { id: "data", items: ["llm", "ai-collect", "order-query", "tag-query", "message-query", "smartsheet-write"] },
-      { id: "message", items: ["message", "handoff", "agent"] },
+      { id: "message", items: ["message", "marketing-message", "handoff", "agent"] },
       { id: "operate", items: ["tag", "customer-update", "order-bind", "ticket-create", "coupon", "order-conversion"] },
     ]);
     expect(getWorkflowPaletteItemGroups({
@@ -530,7 +548,7 @@ describe("workflow node catalog", () => {
     }))).toEqual([
       { id: "flow", items: ["wait", "wait-event", "branch", "audience-filter", "ratio-split", "ai-intent"] },
       { id: "data", items: ["llm", "ai-collect", "order-query", "tag-query", "message-query", "smartsheet-write"] },
-      { id: "message", items: ["message", "handoff", "agent"] },
+      { id: "message", items: ["message", "marketing-message", "handoff", "agent"] },
       { id: "operate", items: ["tag", "customer-update", "order-bind", "ticket-create", "coupon", "order-conversion"] },
     ]);
   });

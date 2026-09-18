@@ -84,7 +84,7 @@ export class InMemoryWorkflowRuntimeRepository implements WorkflowRuntimeReposit
 
   addRevisionCleanupRequest(input: {
     nodeId: string;
-    nodeKind: "ai-collect" | "wait" | "wait-event";
+    nodeKind: "ai-collect" | "marketing-message" | "wait" | "wait-event";
     revision: number;
     uid: number;
     workflowId: string;
@@ -179,6 +179,7 @@ export class InMemoryWorkflowRuntimeRepository implements WorkflowRuntimeReposit
         && item.status !== "dead");
       const expectedTaskType = cleanup.nodeKind === "wait" ? "wait"
         : cleanup.nodeKind === "wait-event" ? "wait-event"
+          : cleanup.nodeKind === "marketing-message" ? "marketing-message"
           : "ai-collect";
       if (!task
         || task.nodeKind !== cleanup.nodeKind
@@ -421,6 +422,7 @@ export class InMemoryWorkflowRuntimeRepository implements WorkflowRuntimeReposit
   }
 
   async beginFixedWait(input: WorkflowBeginFixedWaitInput) {
+    const taskType = input.taskType ?? "wait";
     if (this.inbox.some(item => item.consumer === input.inbox.consumer
       && item.messageId === input.inbox.messageId)) return alreadyProcessed();
     const run = this.runs.find(item => item.uid === input.uid && item.id === input.runId);
@@ -433,7 +435,7 @@ export class InMemoryWorkflowRuntimeRepository implements WorkflowRuntimeReposit
       || task.sequence !== run.sequence
       || task.revision !== run.revision
       || task.nodeId !== run.currentNodeId
-      || task.nodeKind !== "wait"
+      || task.nodeKind !== (taskType === "wait" ? "wait" : "marketing-message")
       || task.taskType !== "execute"
       || input.dueAt <= input.now) return conflict();
     let boundaryDecision: "cancel" | "defer" | "execute" = "execute";
@@ -449,7 +451,7 @@ export class InMemoryWorkflowRuntimeRepository implements WorkflowRuntimeReposit
     task.leaseExpiresAt = null;
     task.leaseOwner = null;
     task.status = boundaryDecision === "defer" ? "suspended" : transitionTask(task.status, "pending");
-    task.taskType = "wait";
+    task.taskType = taskType;
     task.taskVersion += 1;
     run.lockVersion += 1;
     run.nextExecuteAt = clone(input.dueAt);
@@ -612,6 +614,35 @@ export class InMemoryWorkflowRuntimeRepository implements WorkflowRuntimeReposit
     return { kind: "success" as const, task: clone(task) };
   }
 
+  async deferClaimedTask(
+    input: Parameters<WorkflowRuntimeRepository["deferClaimedTask"]>[0],
+  ) {
+    const run = this.runs.find(item => item.uid === input.uid && item.id === input.runId);
+    const task = this.tasks.find(item => item.uid === input.uid && item.id === input.taskId);
+    if (!run || !task || task.runId !== run.id) return notFound();
+    if (run.lockVersion !== input.expectedRunLockVersion
+      || run.status !== "running"
+      || task.taskVersion !== input.expectedTaskVersion
+      || task.status !== "running") return conflict();
+    const boundary = this.resolveWorkflowBoundary
+      ? await this.resolveWorkflowBoundary({ uid: task.uid, workflowId: task.workflowId })
+      : { bizStatus: 1 as const, runtimeStatus: "active" as const };
+    const boundaryDecision = boundary ? getWorkflowExecutionBoundaryDecision(boundary) : "cancel";
+    if (boundaryDecision === "cancel") return conflict();
+    task.attempt = Math.max(0, task.attempt - 1);
+    task.dueAt = clone(input.dueAt);
+    task.lastErrorCode = input.reasonCode;
+    task.leaseExpiresAt = null;
+    task.leaseOwner = null;
+    task.status = boundaryDecision === "defer" ? "suspended" : "pending";
+    task.taskVersion += 1;
+    run.lockVersion += 1;
+    run.nextExecuteAt = clone(input.dueAt);
+    run.status = transitionRun(run.status, "waiting");
+    this.touchRun(run);
+    return { kind: "success" as const, run: clone(run), task: clone(task) };
+  }
+
   async deferTask(input: Parameters<WorkflowRuntimeRepository["deferTask"]>[0]) {
     const task = this.tasks.find((item) => item.uid === input.uid && item.id === input.taskId);
     if (!task) return notFound();
@@ -740,6 +771,12 @@ export class InMemoryWorkflowRuntimeRepository implements WorkflowRuntimeReposit
   async findRun(uid: number, runId: string) {
     const run = this.runs.find((item) => item.uid === uid && item.id === runId);
     return run ? clone(run) : null;
+  }
+
+  async findNodeExecutionByExecutionKey(uid: number, executionKey: string) {
+    const execution = this.nodeExecutions.find(item =>
+      item.uid === uid && item.executionKey === executionKey);
+    return execution ? clone(execution) : null;
   }
 
   async findTask(uid: number, taskId: string) {
@@ -1698,6 +1735,7 @@ export class InMemoryWorkflowRuntimeRepository implements WorkflowRuntimeReposit
         || authoritativeTask.nodeId !== run.currentNodeId
         || (run.status === "waiting" && (
           (authoritativeTask.taskType !== "wait" && authoritativeTask.taskType !== "wait-event"
+            && authoritativeTask.taskType !== "marketing-message"
             && authoritativeTask.taskType !== "inference"
             && authoritativeTask.taskType !== "ai-collect"
             && !(authoritativeTask.taskType === "execute"

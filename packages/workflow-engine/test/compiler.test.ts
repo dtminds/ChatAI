@@ -52,16 +52,22 @@ describe("compileWorkflowDraft", () => {
     expect(spec.edges[0]).toMatchObject({ sourceOutletId: "default" });
   });
 
-  it("strips ChatAI start fields from WeCom drafts before contract checks", () => {
+  it("preserves the shared sending window while stripping ChatAI-only fields from WeCom drafts", () => {
     const draft = createDraft();
-    Object.assign(draft.nodes.find((item) => item.id === "start")!.data, {
+    const draftStartData = draft.nodes.find((item) => item.id === "start")!.data;
+    delete draftStartData.seatIds;
+    Object.assign(draftStartData, {
+      messageSendingWindow: { endTime: "21:00", startTime: "10:00" },
       workUserIds: [201],
     });
 
     const normalized = normalizeWorkflowDraft(draft);
     const startData = normalized.nodes.find((item) => item.id === "start")!.data;
 
-    expect(startData).not.toHaveProperty("messageSendingWindow");
+    expect(startData).toHaveProperty("messageSendingWindow", {
+      endTime: "21:00",
+      startTime: "10:00",
+    });
     expect(startData).not.toHaveProperty("seatIds");
     expect(startData).toEqual(expect.objectContaining({ workUserIds: [201] }));
     expect(isWorkflowNodeDraftConfig(
@@ -705,6 +711,36 @@ describe("compileWorkflowDraft", () => {
 
     expectCompilationIssues(draft, ["unsupported-runtime-node"]);
   });
+
+  it("compiles Marketing Message into its runtime execution config", () => {
+    const draft = createDraft();
+    draft.nodes.splice(2, 0, node("marketing-message", "marketing-message", {
+      plan: { planId: 701, planName: "双十一触达" },
+      wait: { mode: "fixed", duration: 30, unit: "minute" },
+    }));
+    draft.edges.splice(1, 1,
+      { id: "wait-marketing-message", source: "wait", target: "marketing-message" },
+      { id: "marketing-message-end", source: "marketing-message", target: "end" },
+    );
+
+    const spec = compileWorkflowDraft({
+      draft,
+      revision: 1,
+      workflowId: "42",
+      workflowType: "chatai_sop",
+    });
+
+    expect(spec.nodes.find(item => item.id === "marketing-message")).toEqual({
+      config: {
+        plan: { planId: 701, planName: "双十一触达" },
+        wait: { mode: "fixed", duration: 30, unit: "minute" },
+      },
+      id: "marketing-message",
+      kind: "marketing-message",
+      nodeSchemaVersion: 1,
+    });
+  });
+
   it("compiles a selected coupon into one bounded issuance command", () => {
     const draft = createDraft();
     draft.nodes.splice(1, 1, node("wait", "coupon", {

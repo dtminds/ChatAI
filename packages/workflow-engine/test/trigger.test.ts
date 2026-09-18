@@ -134,6 +134,19 @@ describe("workflow trigger matching", () => {
     }));
   });
 
+  it("adds the default sending window to WeCom starts during normalization", () => {
+    const normalized = normalizeWorkflowStartConfig({
+      entryPolicy,
+      triggers: [{ sourceIds: ["qr-code-1"], type: "contact.friend_added" }],
+      workUserIds: [201],
+    });
+
+    expect(normalized).toEqual(expect.objectContaining({
+      messageSendingWindow: { endTime: "20:00", startTime: "09:00" },
+      workUserIds: [201],
+    }));
+  });
+
   it("creates a direct-entry binding from resolved ChatAI work users", () => {
     const config: WorkflowStartConfig = {
       entryMode: "direct-push",

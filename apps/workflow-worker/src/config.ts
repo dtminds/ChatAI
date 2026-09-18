@@ -1,4 +1,5 @@
 import {
+  QUICK_REPLY_ATTACHMENT_MAX_COUNT,
   WORKFLOW_RUN_RETENTION_DAYS,
   WORKFLOW_TASK_OUTBOX_RETENTION_DAYS,
 } from "@chatai/contracts";
@@ -25,6 +26,10 @@ export type WorkflowWorkerConfig = {
   };
   logLevel: string;
   maxRedeliverCount: number;
+  messageRateLimit: {
+    burst: number;
+    ratePerMinute: number;
+  };
   pulsar: {
     serviceUrl: string | null;
     token: string | null;
@@ -125,10 +130,14 @@ export function loadWorkflowWorkerConfig(env: NodeJS.ProcessEnv = process.env): 
     60_000,
     "WORKFLOW_LEASE_DURATION_MS",
   );
+  const roles = parseRoles(env.WORKFLOW_WORKER_ROLES, nodeEnvironment);
   const redisEnabled = env.REDIS_ENABLED === "true";
   const redisUrl = optionalValue(env.REDIS_URL);
   if (redisEnabled && !redisUrl) {
     throw new Error("REDIS_URL must be configured when REDIS_ENABLED=true");
+  }
+  if (nodeEnvironment === "production" && roles.has("task-consumer") && !redisEnabled) {
+    throw new Error("REDIS_ENABLED must be true for the production Workflow task-consumer");
   }
   if (capabilityTimeoutMs * 2 > leaseDurationMs) {
     throw new Error("WORKFLOW_CAPABILITY_TIMEOUT_MS must not exceed half of WORKFLOW_LEASE_DURATION_MS");
@@ -158,7 +167,6 @@ export function loadWorkflowWorkerConfig(env: NodeJS.ProcessEnv = process.env): 
     nodeEnvironment,
     "WORKFLOW_TASK_CONCURRENCY",
   );
-  const roles = parseRoles(env.WORKFLOW_WORKER_ROLES, nodeEnvironment);
   const entryTopic = qualifyTopic(requireValue(env, "WORKFLOW_ENTRY_TOPIC"));
   const taskTopic = qualifyTopic(requireValue(env, "WORKFLOW_TASK_TOPIC"));
   const entryDeadLetterTopic = qualifyTopic(requireValue(env, "WORKFLOW_ENTRY_DLQ_TOPIC"));
@@ -197,6 +205,21 @@ export function loadWorkflowWorkerConfig(env: NodeJS.ProcessEnv = process.env): 
       5,
       "WORKFLOW_MAX_REDELIVER_COUNT",
     ),
+    messageRateLimit: {
+      burst: parseIntegerWithMinimum(
+        env.WORKFLOW_MESSAGE_SEAT_BURST,
+        QUICK_REPLY_ATTACHMENT_MAX_COUNT + 1,
+        "WORKFLOW_MESSAGE_SEAT_BURST",
+        QUICK_REPLY_ATTACHMENT_MAX_COUNT + 1,
+        1_000,
+      ),
+      ratePerMinute: parseInteger(
+        env.WORKFLOW_MESSAGE_SEAT_RATE_PER_MINUTE,
+        12,
+        "WORKFLOW_MESSAGE_SEAT_RATE_PER_MINUTE",
+        60_000,
+      ),
+    },
     pulsar: { serviceUrl: pulsarServiceUrl, token: pulsarToken },
     redis: {
       commandTimeoutMs: parseDurationMs(
@@ -387,6 +410,21 @@ function parseInteger(value: string | undefined, fallback: number, name: string,
   const parsed = Number(value);
   if (!Number.isSafeInteger(parsed) || parsed <= 0 || parsed > maximum) {
     throw new Error(`${name} must be an integer from 1 to ${maximum}`);
+  }
+  return parsed;
+}
+
+function parseIntegerWithMinimum(
+  value: string | undefined,
+  fallback: number,
+  name: string,
+  minimum: number,
+  maximum: number,
+) {
+  if (!optionalValue(value)) return fallback;
+  const parsed = Number(value);
+  if (!Number.isSafeInteger(parsed) || parsed < minimum || parsed > maximum) {
+    throw new Error(`${name} must be an integer from ${minimum} to ${maximum}`);
   }
   return parsed;
 }

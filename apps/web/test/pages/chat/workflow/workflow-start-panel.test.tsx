@@ -73,7 +73,7 @@ describe("StartConfig", () => {
       .toBeDisabled();
   });
 
-  it("switches to direct push and builds the public endpoint from the returned key", async () => {
+  it("waits for the direct-push draft to save before loading its public endpoint", async () => {
     const user = userEvent.setup();
     const node = createStartNode();
     const onNodeChange = vi.fn();
@@ -84,6 +84,7 @@ describe("StartConfig", () => {
         node={node}
         nodes={[node]}
         onNodeChange={onNodeChange}
+        testContext={{ draftVersion: 1, saveState: "saved", workflowId: "31" }}
         workflowId="31"
       />,
     );
@@ -105,6 +106,21 @@ describe("StartConfig", () => {
         node={directNode}
         nodes={[directNode]}
         onNodeChange={onNodeChange}
+        testContext={{ draftVersion: 1, saveState: "dirty", workflowId: "31" }}
+        workflowId="31"
+      />,
+    );
+
+    expect(directEntryApiMock.getWorkflowDirectEntryEndpoint).not.toHaveBeenCalled();
+
+    rerender(
+      <StartConfig
+        allowedEntryEventTypes={["contact.friend_added"]}
+        edges={[]}
+        node={directNode}
+        nodes={[directNode]}
+        onNodeChange={onNodeChange}
+        testContext={{ draftVersion: 2, saveState: "saved", workflowId: "31" }}
         workflowId="31"
       />,
     );
@@ -119,6 +135,19 @@ describe("StartConfig", () => {
       "/server/workflows",
     );
     expect(screen.getByRole("button", { name: "复制推送地址" })).toBeEnabled();
+
+    rerender(
+      <StartConfig
+        allowedEntryEventTypes={["contact.friend_added"]}
+        edges={[]}
+        node={directNode}
+        nodes={[directNode]}
+        onNodeChange={onNodeChange}
+        testContext={{ draftVersion: 3, saveState: "saved", workflowId: "31" }}
+        workflowId="31"
+      />,
+    );
+    expect(directEntryApiMock.getWorkflowDirectEntryEndpoint).toHaveBeenCalledTimes(1);
   });
 
   it("allows retrying a failed direct-entry key request", async () => {

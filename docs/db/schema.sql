@@ -1139,7 +1139,7 @@ CREATE TABLE IF NOT EXISTS xy_wap_embed_workflow_revision_cleanup (
   workflow_id BIGINT UNSIGNED NOT NULL COMMENT 'Workflow定义ID',
   revision INT UNSIGNED NOT NULL COMMENT '删除目标节点的发布Revision',
   node_id VARCHAR(128) NOT NULL COMMENT '被删除的阻塞节点ID',
-  node_kind VARCHAR(32) NOT NULL COMMENT '被删除的阻塞节点类型：wait、wait-event、ai-collect',
+  node_kind VARCHAR(32) NOT NULL COMMENT '被删除的阻塞节点类型：wait、wait-event、ai-collect、marketing-message',
   status VARCHAR(32) NOT NULL COMMENT '状态：pending、leased、done、obsolete、dead',
   after_run_id BIGINT UNSIGNED NULL COMMENT '已处理Run游标',
   attempt INT UNSIGNED NOT NULL DEFAULT 0 COMMENT '当前游标连续处理尝试次数',

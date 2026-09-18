@@ -59,3 +59,18 @@ export class WorkflowCapabilityExecutionError extends Error {
     this.diagnosticMessage = options.diagnosticMessage ?? safeMessage;
   }
 }
+
+export class WorkflowCapabilityDeferredError extends Error {
+  readonly diagnosticMessage: string;
+
+  constructor(
+    readonly code: string,
+    safeMessage: string,
+    readonly retryAt: Date,
+    options: { diagnosticMessage?: string } = {},
+  ) {
+    super(safeMessage);
+    this.name = "WorkflowCapabilityDeferredError";
+    this.diagnosticMessage = options.diagnosticMessage ?? safeMessage;
+  }
+}

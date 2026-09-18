@@ -162,6 +162,26 @@ describe("workflow worker config", () => {
     }))).toThrow("REDIS_URL must be configured when REDIS_ENABLED=true");
   });
 
+  it("loads the per-seat Message rate limit and requires Redis for production Task consumers", () => {
+    expect(loadWorkflowWorkerConfig(baseEnv()).messageRateLimit).toEqual({
+      burst: 6,
+      ratePerMinute: 12,
+    });
+    expect(loadWorkflowWorkerConfig(baseEnv({
+      WORKFLOW_MESSAGE_SEAT_BURST: "9",
+      WORKFLOW_MESSAGE_SEAT_RATE_PER_MINUTE: "18",
+    })).messageRateLimit).toEqual({ burst: 9, ratePerMinute: 18 });
+    expect(() => loadWorkflowWorkerConfig(productionEnv({
+      REDIS_ENABLED: "false",
+    }))).toThrow("REDIS_ENABLED must be true for the production Workflow task-consumer");
+  });
+
+  it("rejects a Message burst smaller than one maximum message group", () => {
+    expect(() => loadWorkflowWorkerConfig(baseEnv({
+      WORKFLOW_MESSAGE_SEAT_BURST: "5",
+    }))).toThrow("WORKFLOW_MESSAGE_SEAT_BURST must be an integer from 6 to 1000");
+  });
+
   it("starts every Phase 3 role by default with bounded runtime settings", () => {
     const config = loadWorkflowWorkerConfig(baseEnv());
 
@@ -369,6 +389,8 @@ function baseEnv(overrides: NodeJS.ProcessEnv = {}): NodeJS.ProcessEnv {
 function productionEnv(overrides: NodeJS.ProcessEnv = {}): NodeJS.ProcessEnv {
   return baseEnv({
     NODE_ENV: "production",
+    REDIS_ENABLED: "true",
+    REDIS_URL: "redis://localhost:6379/0",
     WORKFLOW_ENTRY_DLQ_TOPIC: "topic-workflow-entry-prod-dlq",
     WORKFLOW_ENTRY_SUBSCRIPTION: "consumer-chatai-worker-entry-prod",
     WORKFLOW_ENTRY_TOPIC: "topic-workflow-entry-prod",

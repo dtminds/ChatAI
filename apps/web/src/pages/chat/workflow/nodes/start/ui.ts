@@ -1,4 +1,5 @@
 import { StartConfig } from "./panel";
+import { getDirectEntryLabel } from "./entry-mode";
 import type { WorkflowNodeUiBinding } from "../ui-types";
 import { getStartNodeSourceIds, isChatAiStartNodeData } from "../../types";
 
@@ -26,7 +27,7 @@ export const startNodeUi: WorkflowNodeUiBinding<"start"> = {
         id: "triggers",
         label: "进入方式",
         value: data.entryMode === "direct-push"
-          ? { kind: "text", text: "外部推送" }
+          ? { kind: "text", text: getDirectEntryLabel(data) }
           : data.triggers.length
           ? {
               kind: "text",

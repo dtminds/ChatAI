@@ -20,6 +20,7 @@ const IDENTITY_FIELD_ORDER: readonly WorkflowIdentityField[] = [
   "externalUserId",
   "mallUserId",
   "thirdExternalUserId",
+  "workUserId",
   "xyId",
 ];
 
@@ -191,6 +192,7 @@ function createKnownWorkflowContactIdentity(input: {
     externalUserId: projection.externalUserId,
     mallUserId: projection.mallUserId,
     thirdExternalUserId: projection.thirdExternalUserId,
+    workUserId: projection.workUserId,
     xyId: projection.xyId,
   }));
   return identities;
@@ -220,11 +222,13 @@ function normalizeWorkflowContactIdentity(input: unknown): WorkflowContactIdenti
   const externalUserId = readPositiveSafeInteger(input.externalUserId);
   const mallUserId = readPositiveSafeInteger(input.mallUserId);
   const thirdExternalUserId = readNonEmptyString(input.thirdExternalUserId);
+  const workUserId = readPositiveSafeInteger(input.workUserId);
   const xyId = readPositiveSafeInteger(input.xyId);
   return {
     ...(externalUserId ? { externalUserId } : {}),
     ...(mallUserId ? { mallUserId } : {}),
     ...(thirdExternalUserId ? { thirdExternalUserId } : {}),
+    ...(workUserId ? { workUserId } : {}),
     ...(xyId ? { xyId } : {}),
   };
 }

@@ -163,7 +163,7 @@ export function createInMemoryWorkflowDraftRepository(): SyncWorkflowDraftReposi
         revision: currentDocument.revision + 1,
         savedAt: importedAt,
         status: "Draft",
-        trigger: getWorkflowTrigger(nextDraft) ?? currentDocument.trigger,
+        trigger: getWorkflowTrigger(nextDraft, currentDocument.workflowType) ?? currentDocument.trigger,
         updatedAt: importedAt,
       };
 
@@ -348,7 +348,7 @@ export function createInMemoryWorkflowDraftRepository(): SyncWorkflowDraftReposi
         revision: currentDocument.revision + 1,
         savedAt: restoredAt,
         status: "Draft",
-        trigger: getWorkflowTrigger(nextDraft) ?? currentDocument.trigger,
+        trigger: getWorkflowTrigger(nextDraft, currentDocument.workflowType) ?? currentDocument.trigger,
         updatedAt: restoredAt,
       };
 
@@ -386,7 +386,7 @@ export function createInMemoryWorkflowDraftRepository(): SyncWorkflowDraftReposi
         nodes: persistedDraft.nodes.length,
         revision: shouldCreateDraftRevision ? currentDocument.revision + 1 : currentDocument.revision,
         savedAt,
-        trigger: getWorkflowTrigger(nextDraft) ?? currentDocument.trigger,
+        trigger: getWorkflowTrigger(nextDraft, currentDocument.workflowType) ?? currentDocument.trigger,
         updatedAt,
       };
 
@@ -415,7 +415,7 @@ export function createInMemoryWorkflowDraftRepository(): SyncWorkflowDraftReposi
         revision: currentDocument.revision + 1,
         savedAt: "刚刚",
         status: "Draft",
-        trigger: getWorkflowTrigger(nextDraft) ?? currentDocument.trigger,
+        trigger: getWorkflowTrigger(nextDraft, currentDocument.workflowType) ?? currentDocument.trigger,
         updatedAt: "刚刚",
       });
       workflowDocuments[documentIndex] = nextDocument;

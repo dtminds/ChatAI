@@ -93,6 +93,10 @@ const draftConfigs = {
     userPrompt: [],
   },
   message: { attachments: [], content: [], contentMode: "custom" },
+  "marketing-message": {
+    plan: { planId: 301, planName: "双十一触达" },
+    wait: { mode: "fixed", duration: 30, unit: "minute" },
+  },
   "message-query": {
     limit: 10,
     take: "latest",
@@ -179,7 +183,7 @@ describe("workflow node contracts", () => {
   it("registers every production kind with an explicit maturity", () => {
     const entries = Object.entries(workflowNodeContractRegistry);
 
-    expect(entries).toHaveLength(23);
+    expect(entries).toHaveLength(24);
     for (const [kind, contract] of entries) {
       expect(Value.Check(WorkflowNodeKindSchema, kind)).toBe(true);
       expect(["action", "composite", "core", "inference", "query"])
@@ -193,7 +197,7 @@ describe("workflow node contracts", () => {
       .toEqual(["ratio-split"]);
 
     expect(entries.filter(([, contract]) => contract.maturity === "runtime-ready").map(([kind]) => kind))
-      .toEqual(["ai-collect", "ai-intent", "audience-filter", "branch", "ratio-split", "coupon", "customer-update", "end", "handoff", "llm", "message", "message-query", "order-bind", "order-query", "order-conversion", "start", "tag", "tag-query", "wait", "wait-event", "smartsheet-write", "ticket-create"]);
+      .toEqual(["ai-collect", "ai-intent", "audience-filter", "branch", "ratio-split", "coupon", "customer-update", "end", "handoff", "llm", "message", "marketing-message", "message-query", "order-bind", "order-query", "order-conversion", "start", "tag", "tag-query", "wait", "wait-event", "smartsheet-write", "ticket-create"]);
     expect(entries.filter(([, contract]) => contract.maturity === "draft-ready").map(([kind]) => kind))
       .toEqual([]);
     expect(entries.filter(([, contract]) => contract.maturity === "placeholder").map(([kind]) => kind))
@@ -514,6 +518,7 @@ describe("workflow node contracts", () => {
     expectTypeOf(getWorkflowNodeContract("message-query").executionClass).toEqualTypeOf<"query">();
     expectTypeOf(getWorkflowNodeContract("llm").executionClass).toEqualTypeOf<"inference">();
     expectTypeOf(getWorkflowNodeContract("ai-collect").executionClass).toEqualTypeOf<"composite">();
+    expectTypeOf(getWorkflowNodeContract("marketing-message").executionClass).toEqualTypeOf<"composite">();
 
     expect(Object.fromEntries(Object.entries(workflowNodeContractRegistry).map(([kind, contract]) => [
       kind,
@@ -530,6 +535,7 @@ describe("workflow node contracts", () => {
       handoff: "action",
       llm: "inference",
       message: "action",
+      "marketing-message": "composite",
       "message-query": "query",
       "order-bind": "action",
       "order-query": "query",
@@ -561,6 +567,7 @@ describe("workflow node contracts", () => {
       handoff: ["thirdExternalUserId"],
       llm: [],
       message: ["thirdExternalUserId"],
+      "marketing-message": ["externalUserId", "workUserId"],
       "message-query": ["thirdExternalUserId"],
       "order-bind": ["externalUserId"],
       "order-query": [],
@@ -900,6 +907,15 @@ describe("workflow node contracts", () => {
 
     expect(isWorkflowNodeDraftConfig("start", config)).toBe(true);
     expect(isWorkflowNodeExecutionConfig("start", config)).toBe(false);
+  });
+
+  it("rejects an invalid WeCom message sending window at execution time", () => {
+    expect(isWorkflowNodeExecutionConfig("start", {
+      entryPolicy: { mode: "never" },
+      messageSendingWindow: { endTime: "09:00", startTime: "20:00" },
+      triggers: [{ sourceIds: ["qr-code-1"], type: "contact.friend_added" }],
+      workUserIds: [201],
+    })).toBe(false);
   });
 
   it("requires semantically complete LLM and AI Intent execution configs", () => {

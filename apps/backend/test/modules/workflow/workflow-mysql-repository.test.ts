@@ -442,6 +442,39 @@ describe("MysqlWorkflowRepository", () => {
     ]);
   });
 
+  it("writes cleanup requests for Marketing Message nodes removed by a published revision", async () => {
+    const db = createPublicationDbMock({
+      previousExecutionSpec: executionSpecWithMarketingMessage(),
+      publishedRevision: 1,
+    });
+    const repository = new MysqlWorkflowRepository(db as never);
+    const input = enableInput();
+    db.reviewRows = [createReviewRow({
+      ...input,
+      executionSpec: { ...input.executionSpec, revision: 2 },
+    }, 1)];
+
+    const result = await repository.publishRevision({
+      candidateHash: input.specHash,
+      opSubUserId: input.opSubUserId,
+      reviewId: "7",
+      uid: input.uid,
+      workflowId: input.workflowId,
+    });
+
+    expect(result.kind).toBe("success");
+    expect(db.revisionCleanupInserts).toEqual([
+      expect.objectContaining({
+        node_id: "marketing-1",
+        node_kind: "marketing-message",
+        revision: 2,
+        status: "pending",
+        uid: 8,
+        workflow_id: "42",
+      }),
+    ]);
+  });
+
   it("rejects first enable when fifty tenant Workflows are already active", async () => {
     const db = createPublicationDbMock({
       activeDefinitionCount: 50,
@@ -873,6 +906,30 @@ function executionSpecWithAiCollect() {
         },
         id: "collect-1",
         kind: "ai-collect" as const,
+        nodeSchemaVersion: 1,
+      },
+      input.executionSpec.nodes[1]!,
+    ],
+  };
+}
+
+function executionSpecWithMarketingMessage() {
+  const input = enableInput();
+  return {
+    ...input.executionSpec,
+    edges: [
+      { id: "edge-start-marketing", source: "start", sourceOutletId: "default", target: "marketing-1" },
+      { id: "edge-marketing-end", source: "marketing-1", sourceOutletId: "default", target: "end" },
+    ],
+    nodes: [
+      input.executionSpec.nodes[0]!,
+      {
+        config: {
+          plan: { planId: 701, planName: "双十一触达" },
+          wait: { mode: "fixed", duration: 1, unit: "hour" as const },
+        },
+        id: "marketing-1",
+        kind: "marketing-message" as const,
         nodeSchemaVersion: 1,
       },
       input.executionSpec.nodes[1]!,

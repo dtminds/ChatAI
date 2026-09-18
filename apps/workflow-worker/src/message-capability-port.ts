@@ -1,10 +1,12 @@
 import {
+  DEFAULT_H5_COVER_URL,
   decodeJavaInternalApiEnvelope,
   WORKBENCH_MESSAGE_SOURCE,
   WorkflowMessageCommandSchema,
   type WorkflowMessageCommand,
 } from "@chatai/contracts";
 import type { Database } from "@chatai/database";
+import { WorkflowCapabilityDeferredError } from "@chatai/workflow-engine";
 import {
   WORKFLOW_MESSAGE_CAPABILITY_BINDING,
   type WorkflowCapabilityDefinition,
@@ -24,6 +26,7 @@ import {
   terminalError,
 } from "./capability-port-support.js";
 import { findWorkflowSeat } from "./workflow-seat.js";
+import type { WorkflowMessageRateLimiter } from "./message-rate-limiter.js";
 
 const JAVA_SEND_MESSAGE_PATH = "/third-internal/wap-embed/conversation/send-message";
 const JAVA_SEND_TYPE_SINGLE = 1;
@@ -48,6 +51,8 @@ export class MysqlWorkflowMessageCapabilityPort implements WorkflowCapabilityPor
     private readonly options: {
       baseUrl: string;
       fetch?: typeof fetch;
+      now?: () => Date;
+      rateLimiter: WorkflowMessageRateLimiter;
       token?: string | null;
     },
   ) {
@@ -87,6 +92,8 @@ export class MysqlWorkflowMessageCapabilityPort implements WorkflowCapabilityPor
       command: structuredClone(request.command) as WorkflowMessageCommand,
       fetch: this.fetch,
       idempotencyKey: request.idempotencyKey,
+      now: this.options.now?.() ?? new Date(),
+      rateLimiter: this.options.rateLimiter,
       signal: request.signal,
       token: this.options.token ?? null,
       uid: request.uid,
@@ -102,6 +109,8 @@ export async function executeWorkflowMessage(
     command: WorkflowMessageCommand;
     fetch: typeof fetch;
     idempotencyKey: string;
+    now?: Date;
+    rateLimiter?: WorkflowMessageRateLimiter;
     signal: AbortSignal;
     token: string | null;
     uid: number;
@@ -115,6 +124,24 @@ export async function executeWorkflowMessage(
   });
   throwIfAborted(input.signal);
   const messages = buildWorkflowJavaMessages(input.command);
+  if (input.rateLimiter) {
+    const admission = await input.rateLimiter.acquire({
+      cost: messages.length,
+      seatId: input.command.seatId,
+      uid: input.uid,
+    });
+    if (!admission.allowed) {
+      const retryAt = new Date((input.now ?? new Date()).getTime() + admission.retryAfterMs);
+      throw new WorkflowCapabilityDeferredError(
+        "WORKFLOW_MESSAGE_RATE_LIMITED",
+        "消息正在排队发送",
+        retryAt,
+        {
+          diagnosticMessage: `Workflow Message seat rate limit reached for uid ${input.uid} seat ${input.command.seatId}`,
+        },
+      );
+    }
+  }
 
   for (const [index, msgData] of messages.entries()) {
     throwIfAborted(input.signal);
@@ -193,7 +220,7 @@ function buildWorkflowJavaAttachment(
     ]);
     const desc = readFirstContentString(attachment.content, ["desc", "description"]);
     return {
-      ...(coverUrl ? { coverUrl } : {}),
+      coverUrl: coverUrl || DEFAULT_H5_COVER_URL,
       ...(desc ? { desc } : {}),
       href: requireFirstContentString(attachment.content, ["href", "url", "linkUrl"]),
       msgtype: "link",
@@ -283,10 +310,11 @@ async function sendWorkflowJavaMessage(input: {
     );
   }
   if (envelope.kind === "rejected") {
+    const reason = envelope.errorMsg.trim();
     throw terminalError(
       "WORKFLOW_MESSAGE_SEND_REJECTED",
-      "执行所需数据不可用，流程已停止",
-      `Workflow Message Java endpoint rejected the request: ${envelope.error} ${envelope.errorMsg.trim()}`.trim(),
+      reason ? `消息发送失败：${reason}` : "消息发送失败，流程已停止",
+      `Workflow Message Java endpoint rejected the request: ${envelope.error} ${reason}`.trim(),
     );
   }
   const optNo = isRecord(envelope.payload.data) ? envelope.payload.data.optNo : undefined;

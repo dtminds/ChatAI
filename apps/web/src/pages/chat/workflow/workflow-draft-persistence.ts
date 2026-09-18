@@ -1,3 +1,4 @@
+import type { WorkflowType } from "@chatai/contracts";
 import {
   canonicalizeWorkflowDraft,
   hydrateWorkflowDraft,
@@ -244,10 +245,12 @@ function hashWorkflowValue(prefix: "draft" | "publish", serializedValue: string)
   return `${prefix}_${(hash >>> 0).toString(36)}_${serializedValue.length.toString(36)}`;
 }
 
-export function getWorkflowTrigger(draft: WorkflowDraft) {
+export function getWorkflowTrigger(draft: WorkflowDraft, workflowType: WorkflowType) {
   const entryNode = findWorkflowEntryNode(draft.nodes);
   if (entryNode?.data.kind !== "start") return undefined;
-  if (entryNode.data.entryMode === "direct-push") return "外部推送";
+  if (entryNode.data.entryMode === "direct-push") {
+    return workflowType === "wecom_sop" ? "营销流转" : "外部推送";
+  }
   const triggerLabels = entryNode.data.triggers.map(trigger => {
     if (trigger.type === "contact.friend_added") return "添加好友";
     if (trigger.type === "contact.tag_added") return "添加标签";

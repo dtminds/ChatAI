@@ -15,6 +15,7 @@ import {
   type WorkflowMessageCommand,
 } from "@chatai/contracts";
 import type { Database } from "@chatai/database";
+import { WorkflowCapabilityDeferredError } from "@chatai/workflow-engine";
 import {
   WORKFLOW_MESSAGE_CAPABILITY_BINDING,
 } from "@chatai/workflow-runtime";
@@ -62,6 +63,22 @@ describe("Workflow Message capability port", () => {
       { msgtype: "weapp", transMsgInfoId: 301 },
       { msgtype: "sphfeed", transMsgInfoId: 302 },
     ]);
+  });
+
+  it("uses the default cover when an H5 attachment has no cover", () => {
+    expect(buildWorkflowJavaMessages(messageCommand({
+      attachments: [attachment("h5", {
+        description: "活动介绍",
+        title: "本周活动",
+        url: "https://example.com/campaign",
+      })],
+    }))).toEqual([{
+      coverUrl: "https://b5.bokr.com.cn/dist/default-cover.png",
+      desc: "活动介绍",
+      href: "https://example.com/campaign",
+      msgtype: "link",
+      title: "本周活动",
+    }]);
   });
 
   it("uses the Run-frozen seat and sends ordered messages with stable child keys", async () => {
@@ -131,6 +148,7 @@ describe("Workflow Message capability port", () => {
     const port = new MysqlWorkflowMessageCapabilityPort(database, {
       baseUrl: "https://java.example.com",
       fetch: fetchMock as typeof fetch,
+      rateLimiter: { acquire: async () => ({ allowed: true }) },
     });
 
     await expect(port.execute(WORKFLOW_MESSAGE_CAPABILITY_BINDING.definition, {
@@ -156,6 +174,47 @@ describe("Workflow Message capability port", () => {
       sourceId: "workflow-1",
       thirdExternalUserid: "customer-1",
     });
+  });
+
+  it("defers the whole message group before sending when the seat rate limit is exhausted", async () => {
+    const { database } = createRecordingDatabase(() => ({
+      rows: [seatRow(101, "work-user-1")],
+    }));
+    const fetchMock = vi.fn();
+    const acquire = vi.fn(async () => ({ allowed: false as const, retryAfterMs: 10_000 }));
+    const port = new MysqlWorkflowMessageCapabilityPort(database, {
+      baseUrl: "https://java.example.com",
+      fetch: fetchMock as typeof fetch,
+      now: () => new Date("2026-09-18T00:00:00.000Z"),
+      rateLimiter: { acquire },
+    });
+
+    await expect(port.execute(WORKFLOW_MESSAGE_CAPABILITY_BINDING.definition, {
+      command: messageCommand({
+        attachments: [attachment("image", { fileUrl: "https://cdn.example.com/image.png" })],
+        content: "欢迎咨询",
+      }),
+      deadlineAt: new Date("2026-09-18T00:01:00.000Z"),
+      execution: {
+        nodeId: "message-1",
+        revision: 1,
+        runId: "run-1",
+        sequence: 2,
+        workflowId: "workflow-1",
+      },
+      identities: { thirdExternalUserId: "customer-1" },
+      idempotencyKey: "9:run-1:message-1:2",
+      signal: new AbortController().signal,
+      subjectId: "customer-1",
+      subjectType: "chatai_contact",
+      uid: 9,
+    })).rejects.toEqual(expect.objectContaining({
+      code: "WORKFLOW_MESSAGE_RATE_LIMITED",
+      retryAt: new Date("2026-09-18T00:00:10.000Z"),
+    } satisfies Partial<WorkflowCapabilityDeferredError>));
+
+    expect(acquire).toHaveBeenCalledWith({ cost: 2, seatId: 101, uid: 9 });
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 
   it("does not substitute another seat when the Run-frozen seat is unavailable", async () => {
@@ -190,14 +249,14 @@ describe("Workflow Message capability port", () => {
       ...baseInput,
       fetch: vi.fn(async () => javaResponse({
         data: null,
-        error: 40001,
-        errorMsg: "客户关系不可用",
+        error: 999,
+        errorMsg: "无效的发送内容",
         success: false,
       })) as typeof fetch,
     })).rejects.toMatchObject({
       code: "WORKFLOW_MESSAGE_SEND_REJECTED",
       failureKind: "terminal",
-      message: "执行所需数据不可用，流程已停止",
+      message: "消息发送失败：无效的发送内容",
     });
 
     await expect(executeWorkflowMessage(database, {
@@ -210,6 +269,7 @@ describe("Workflow Message capability port", () => {
     })).rejects.toMatchObject({
       code: "WORKFLOW_MESSAGE_SEND_REJECTED",
       failureKind: "terminal",
+      message: "消息发送失败，流程已停止",
     });
 
     await expect(executeWorkflowMessage(database, {

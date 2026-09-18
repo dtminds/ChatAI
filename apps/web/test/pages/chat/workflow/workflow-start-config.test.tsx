@@ -52,6 +52,19 @@ describe("workflow start configuration", () => {
       seatIds: [],
       triggers: data.triggers,
     });
+
+    const weComData = createStartNodeData("wecom_sop");
+    expect(projectWorkflowNodeExecutionConfig({
+      data: weComData,
+      kind: "start",
+      workflowType: "wecom_sop",
+    })).toEqual({
+      entryMode: "event",
+      entryPolicy: { maxEntries: 1, mode: "lifetime_limit" },
+      messageSendingWindow: { endTime: "20:00", startTime: "09:00" },
+      triggers: [],
+      workUserIds: [],
+    });
   });
 
   it("accepts direct push without an entry event", () => {
@@ -97,6 +110,30 @@ describe("workflow start configuration", () => {
     await user.click(screen.getByRole("button", { name: "消息发送开始时间确认" }));
     expect(onNodeChange).toHaveBeenLastCalledWith(expect.objectContaining({
       messageSendingWindow: { endTime: "20:00", startTime: "10:00" },
+    }));
+  });
+
+  it("configures the same message sending window for WeCom workflows", async () => {
+    const user = userEvent.setup();
+    const onNodeChange = vi.fn();
+    render(
+      <StartConfig
+        allowedEntryEventTypes={["contact.friend_added"]}
+        edges={[]}
+        node={createStartNode(createStartNodeData("wecom_sop"))}
+        nodes={[]}
+        onNodeChange={onNodeChange}
+      />,
+    );
+
+    expect(screen.getByRole("button", { name: "消息发送开始时间" })).toHaveTextContent("09:00");
+    expect(screen.getByRole("button", { name: "消息发送结束时间" })).toHaveTextContent("20:00");
+
+    await user.click(screen.getByRole("button", { name: "消息发送结束时间" }));
+    await user.click(screen.getByRole("button", { name: "21时" }));
+    await user.click(screen.getByRole("button", { name: "消息发送结束时间确认" }));
+    expect(onNodeChange).toHaveBeenLastCalledWith(expect.objectContaining({
+      messageSendingWindow: { endTime: "21:00", startTime: "09:00" },
     }));
   });
 
@@ -246,23 +283,59 @@ describe("workflow start configuration", () => {
       .not.toBeInTheDocument();
   });
 
-  it("disables external push entry for the embedded WeCom surface", () => {
-    const node = createStartNode(createStartNodeData("wecom_sop"));
+  it("exposes marketing flow without a push URL for the embedded WeCom surface", async () => {
+    const user = userEvent.setup();
+    const onNodeChange = vi.fn();
+    const node = createStartNode({
+      ...createStartNodeData("wecom_sop"),
+      workUserIds: [201],
+    });
 
-    render(
+    const { rerender } = render(
       <WorkflowSurfaceProvider surface="sop_embed">
         <StartConfig
           allowedEntryEventTypes={["contact.friend_added", "contact.tag_added"]}
           edges={[]}
           node={node}
           nodes={[node]}
-          onNodeChange={vi.fn()}
+          onNodeChange={onNodeChange}
+          workflowId="31"
         />
       </WorkflowSurfaceProvider>,
     );
 
     expect(screen.getByRole("radio", { name: "事件触发" })).toBeChecked();
-    expect(screen.getByRole("radio", { name: "外部推送" })).toBeDisabled();
+    const marketingFlow = screen.getByRole("radio", { name: "营销流转" });
+    expect(marketingFlow).toBeEnabled();
+
+    await user.click(marketingFlow);
+    expect(onNodeChange).toHaveBeenLastCalledWith(expect.objectContaining({
+      entryMode: "direct-push",
+      metric: "1 个企微成员 · 营销流转",
+      status: "ready",
+      triggers: [],
+    }));
+
+    const directNode = {
+      ...node,
+      data: { ...node.data, entryMode: "direct-push" as const, triggers: [] },
+    };
+    rerender(
+      <WorkflowSurfaceProvider surface="sop_embed">
+        <StartConfig
+          allowedEntryEventTypes={["contact.friend_added", "contact.tag_added"]}
+          edges={[]}
+          node={directNode}
+          nodes={[directNode]}
+          onNodeChange={onNodeChange}
+          workflowId="31"
+        />
+      </WorkflowSurfaceProvider>,
+    );
+
+    expect(screen.getByRole("radio", { name: "营销流转" })).toBeChecked();
+    expect(screen.queryByText("推送地址")).not.toBeInTheDocument();
+    expect(screen.queryByText("正在加载")).not.toBeInTheDocument();
   });
 
   it("commits WeCom members only after confirming the picker dialog", async () => {

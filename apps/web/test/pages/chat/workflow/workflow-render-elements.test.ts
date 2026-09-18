@@ -85,6 +85,7 @@ describe("createWorkflowRenderElements", () => {
       "customer-update",
       "order-bind",
       "message",
+      "marketing-message",
       "message-query",
       "handoff",
       "agent",

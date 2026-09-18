@@ -31,6 +31,10 @@ import {
   WORKFLOW_MESSAGES_SCHEMA_REF,
 } from "./messages.js";
 import {
+  WorkflowMarketingMessageDraftConfigSchema,
+  WorkflowMarketingMessageExecutionConfigSchema,
+} from "./marketing-message.js";
+import {
   getWorkflowCapabilityProfile,
   getWorkflowGuaranteedVariableCatalog,
   type WorkflowType,
@@ -99,6 +103,7 @@ export const WorkflowIdentityFieldSchema = Type.Union([
   Type.Literal("externalUserId"),
   Type.Literal("mallUserId"),
   Type.Literal("thirdExternalUserId"),
+  Type.Literal("workUserId"),
   Type.Literal("xyId"),
 ]);
 
@@ -108,6 +113,7 @@ export type WorkflowContactIdentity = Partial<{
   externalUserId: number;
   mallUserId: number;
   thirdExternalUserId: string;
+  workUserId: number;
   xyId: number;
 }>;
 
@@ -735,6 +741,13 @@ export const workflowNodeContractRegistry = {
     WorkflowMessageExecutionConfigSchema,
     ["thirdExternalUserId"],
   ),
+  "marketing-message": runtimeReadyContract(
+    "composite",
+    1,
+    WorkflowMarketingMessageDraftConfigSchema,
+    WorkflowMarketingMessageExecutionConfigSchema,
+    ["externalUserId", "workUserId"],
+  ),
   "message-query": runtimeReadyContract(
     "query",
     1,
@@ -1078,9 +1091,8 @@ export function isWorkflowDynamicTimeRangeProvablyInvalid(
 }
 
 function isWorkflowStartMessageSendingWindowValid(value: unknown) {
-  const config = value as { messageSendingWindow?: unknown; seatIds?: unknown };
-  return config.seatIds === undefined
-    || config.messageSendingWindow === undefined
+  const config = value as { messageSendingWindow?: unknown };
+  return config.messageSendingWindow === undefined
     || isWorkflowMessageSendingWindowValid(config.messageSendingWindow);
 }
 
@@ -1165,6 +1177,15 @@ export function getWorkflowNodeOutputContracts(
         key: "rangeEnd",
         usages: ["time-reference", "variable"],
         valueType: { kind: "datetime" },
+      },
+    ];
+  }
+  if (kind === "marketing-message") {
+    return [
+      {
+        key: "pushSuccess",
+        usages: ["variable"],
+        valueType: { kind: "boolean" },
       },
     ];
   }

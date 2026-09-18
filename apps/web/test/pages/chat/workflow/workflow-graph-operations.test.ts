@@ -62,7 +62,8 @@ describe("workflow graph operations", () => {
 
     expect(nodeKinds).toEqual([
       "agent", "ai-collect", "ai-intent", "audience-filter", "branch", "coupon",
-      "customer-update", "end", "handoff", "llm", "message", "message-query",
+      "customer-update", "end", "handoff", "llm", "message", "marketing-message",
+      "message-query",
       "order-bind", "order-query", "order-conversion", "ratio-split", "smartsheet-write", "start",
       "tag", "tag-query", "ticket-create", "wait", "wait-event",
     ]);
@@ -87,7 +88,7 @@ describe("workflow graph operations", () => {
     expect(orderedNodeDefinitions.map((definition) => definition.kind)).toEqual([
       "start", "wait", "wait-event", "branch", "audience-filter", "ratio-split",
       "ai-intent", "llm", "ai-collect", "order-query", "tag-query", "tag",
-      "customer-update", "order-bind", "message", "message-query", "handoff",
+      "customer-update", "order-bind", "message", "marketing-message", "message-query", "handoff",
       "agent", "ticket-create", "coupon", "order-conversion", "smartsheet-write", "end",
     ]);
   });

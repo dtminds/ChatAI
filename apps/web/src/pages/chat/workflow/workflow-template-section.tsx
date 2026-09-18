@@ -25,7 +25,7 @@ import { toast } from "sonner";
 import { Link, useNavigate } from "react-router-dom";
 import { AiHostingLayout } from "../ai-hosting/ai-hosting-layout";
 import { createEmptyWorkflowTemplateRepository, createWorkflowTemplateRepository, type WorkflowTemplateRepository } from "./workflow-template-repository";
-import { canCreateWorkflows, canManageWorkflowTemplates } from "./workflow-template-access";
+import { canManageWorkflowTemplates } from "./workflow-template-access";
 import { getWorkflowOperationErrorMessage } from "./workflow-error-messages";
 import { WORKFLOW_TEMPLATE_METADATA_DIALOG_CLASS_NAME, WorkflowTemplateMetadataFields, type WorkflowTemplateMetadataValue } from "./workflow-template-metadata-fields";
 import { useWorkflowSurface, WorkflowSurfaceProvider } from "./workflow-surface";
@@ -102,7 +102,6 @@ export function WorkflowTemplateSection({ repository }: { repository?: WorkflowT
   const [editOpen, setEditOpen] = useState(false);
   const [editing, setEditing] = useState(false);
   const canManageTemplates = canManageWorkflowTemplates(useAuthStore(state => state.subUser));
-  const canCreateWorkflow = canCreateWorkflows(useAuthStore(state => state.subUser));
   const applyRequestRef = useRef<{ requestId: string; templateId: string } | null>(null);
   const clearDetail = () => {
     setDetail(null);
@@ -204,11 +203,11 @@ export function WorkflowTemplateSection({ repository }: { repository?: WorkflowT
         <DialogHeader className={detail ? "shrink-0 flex-row items-center justify-between gap-4 space-y-0" : "shrink-0"}>
           <DialogTitle className={detail ? "w-0 min-w-0 flex-1 truncate" : undefined}>{detail?.name ?? detailItem?.name ?? "模板详情"}</DialogTitle>
           {detail ? <TemplateDetailActions
-            actionLabel={canCreateWorkflow ? (applyingTemplateId === detail.id ? "使用中" : "使用模板") : undefined}
+            actionLabel={applyingTemplateId === detail.id ? "使用中" : "使用模板"}
             actionClassName="bg-black text-white hover:bg-black/85"
             actionIcon={DashboardCircleAddIcon}
             actionPending={applyingTemplateId === detail.id || withdrawing || editing}
-            onAction={canCreateWorkflow ? () => void applyTemplate(detail.id) : undefined}
+            onAction={() => void applyTemplate(detail.id)}
             overflowItems={canManageTemplates && detail.status === "published" ? [
               ...(templateRepository.updateInfo ? [{ label: "编辑信息", onSelect: () => setEditOpen(true) }] : []),
               ...(templateRepository.withdraw ? [{ destructive: true, label: "撤回为草稿", onSelect: () => setWithdrawConfirmOpen(true) }] : []),
@@ -275,7 +274,6 @@ function WorkflowTemplateCenterContent({ repository }: { repository?: WorkflowTe
   const [editOpen, setEditOpen] = useState(false);
   const [editing, setEditing] = useState(false);
   const canManageTemplates = canManageWorkflowTemplates(useAuthStore(state => state.subUser));
-  const canCreateWorkflow = canCreateWorkflows(useAuthStore(state => state.subUser));
   const [open, setOpen] = useState(false);
   const clearDetail = () => {
     setDetail(null);
@@ -438,11 +436,11 @@ function WorkflowTemplateCenterContent({ repository }: { repository?: WorkflowTe
           <DialogHeader className={detail ? "shrink-0 flex-row items-center justify-between gap-4 space-y-0" : "shrink-0"}>
             <DialogTitle className={detail ? "w-0 min-w-0 flex-1 truncate" : undefined}>{detail?.name ?? detailItem?.name ?? "模板详情"}</DialogTitle>
             {detail ? <TemplateDetailActions
-              actionLabel={canCreateWorkflow ? (applyingTemplateId === detail.id ? "使用中" : "使用模板") : undefined}
+              actionLabel={applyingTemplateId === detail.id ? "使用中" : "使用模板"}
               actionClassName="bg-black text-white hover:bg-black/85"
               actionIcon={DashboardCircleAddIcon}
               actionPending={applyingTemplateId === detail.id || withdrawing || editing}
-              onAction={canCreateWorkflow ? () => void applyTemplate(detail.id) : undefined}
+              onAction={() => void applyTemplate(detail.id)}
               overflowItems={canManageTemplates && detail.status === "published" ? [
                 ...(templateRepository.updateInfo ? [{ label: "编辑信息", onSelect: () => setEditOpen(true) }] : []),
                 ...(templateRepository.withdraw ? [{ destructive: true, label: "撤回为草稿", onSelect: () => setWithdrawConfirmOpen(true) }] : []),

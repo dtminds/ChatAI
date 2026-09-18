@@ -160,7 +160,7 @@ export function AudienceGroupSelector({
             </div>
           </div>
 
-          <div className="shrink-0 px-6 pb-3 pt-4">
+          <div className="shrink-0 px-6 pb-3">
             <div className="relative w-[280px] max-w-full">
               <HugeiconsIcon
                 aria-hidden="true"

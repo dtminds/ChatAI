@@ -682,7 +682,6 @@ export function normalizeWorkflowDraft(draft: WorkflowDraft): WorkflowDraft {
     if (node.data.kind !== "start") continue;
     data.entryPolicy = normalizeWorkflowEntryPolicy(data.entryPolicy);
     if (Array.isArray(data.workUserIds)) {
-      delete data.messageSendingWindow;
       delete data.seatIds;
     } else if (Array.isArray(data.seatIds)) {
       delete data.workUserIds;

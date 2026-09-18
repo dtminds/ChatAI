@@ -40,6 +40,7 @@ export * from "./workflow/inference.js";
 export * from "./workflow/local-date-time.js";
 export * from "./workflow/message.js";
 export * from "./workflow/message-query.js";
+export * from "./workflow/marketing-message.js";
 export * from "./workflow/messages.js";
 export * from "./workflow/node-contract.js";
 export * from "./workflow/observability.js";

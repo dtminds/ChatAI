@@ -1753,7 +1753,7 @@ function toDefinitionListItem(
     publishedRevision: record.publishedRevision,
     runtimeStatus: record.runtimeStatus,
     successRatePercent: metric?.successRatePercent ?? null,
-    trigger: getWorkflowListTrigger(record.draft),
+    trigger: getWorkflowListTrigger(record.draft, record.workflowType),
     totalRunCount: metric?.totalRunCount ?? 0,
     updatedAt: record.updatedAt.toISOString(),
     wecomMemberCount: wecomMemberIds.length,
@@ -1779,13 +1779,15 @@ function getWorkflowListWeComMemberIds(draft: WorkflowDraft) {
   return (config as WorkflowStartDraftConfig & { workUserIds: number[] }).workUserIds;
 }
 
-function getWorkflowListTrigger(draft: WorkflowDraft) {
+function getWorkflowListTrigger(draft: WorkflowDraft, workflowType: WorkflowType) {
   const entryNode = draft.nodes.find(node => node.data.kind === "start");
   if (!entryNode) return "未配置";
   const config = extractWorkflowNodeDraftConfig("start", entryNode.data);
   if (!Value.Check(WorkflowStartDraftConfigSchema, config)) return "未配置";
   const startConfig = config as WorkflowStartDraftConfig;
-  if (startConfig.entryMode === "direct-push") return "外部推送";
+  if (startConfig.entryMode === "direct-push") {
+    return workflowType === "wecom_sop" ? "营销流转" : "外部推送";
+  }
   const labels = startConfig.triggers.map((trigger) => {
     if (trigger.type === "contact.friend_added") return "添加好友";
     if (trigger.type === "contact.tag_added") return "添加标签";
@@ -2322,7 +2324,7 @@ function assertWorkflowTemplateManage(scope: WorkflowOperatorScope) {
 
 
 function toTemplateListItem(item: any) {
-  return { coverUrl: item.coverUrl, description: item.description, id: item.id, name: item.name, nodeKinds: getTemplateNodeKinds(item.draft), nodeCount: item.draft.nodes.length, publishedAt: item.updatedAt.toISOString(), sortOrder: item.sortOrder ?? 0, tags: normalizeWorkflowTemplateTagIds(item.tags), trigger: getWorkflowListTrigger(item.draft), updatedAt: item.updatedAt.toISOString(), version: item.templateVersion, workflowType: item.workflowType };
+  return { coverUrl: item.coverUrl, description: item.description, id: item.id, name: item.name, nodeKinds: getTemplateNodeKinds(item.draft), nodeCount: item.draft.nodes.length, publishedAt: item.updatedAt.toISOString(), sortOrder: item.sortOrder ?? 0, tags: normalizeWorkflowTemplateTagIds(item.tags), trigger: getWorkflowListTrigger(item.draft, item.workflowType), updatedAt: item.updatedAt.toISOString(), version: item.templateVersion, workflowType: item.workflowType };
 }
 
 function assertWorkflowTemplateTagIds(tags: readonly string[] | null | undefined) {

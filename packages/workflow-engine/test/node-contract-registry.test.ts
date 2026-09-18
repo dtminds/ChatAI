@@ -50,6 +50,24 @@ describe("workflow node projection registry", () => {
     });
   });
 
+  it("projects the sending window into a WeCom Start execution config", () => {
+    expect(projectWorkflowNodeExecutionConfig({
+      data: {
+        entryPolicy: { mode: "never" },
+        triggers: [{ sourceIds: ["qr-code-1"], type: "contact.friend_added" }],
+        workUserIds: [201],
+      },
+      kind: "start",
+      workflowType: "wecom_sop",
+    })).toEqual({
+      entryMode: "event",
+      entryPolicy: { mode: "never" },
+      messageSendingWindow: { endTime: "20:00", startTime: "09:00" },
+      triggers: [{ sourceIds: ["qr-code-1"], type: "contact.friend_added" }],
+      workUserIds: [201],
+    });
+  });
+
   it("drops draft triggers when projecting a direct-push Start", () => {
     expect(projectWorkflowNodeExecutionConfig({
       data: {
@@ -160,6 +178,10 @@ const projectableDraftData = {
     attachments: [],
     content: [{ type: "text", value: "hello" }],
     contentMode: "custom",
+  },
+  "marketing-message": {
+    plan: { planId: 301, planName: "双十一触达" },
+    wait: { mode: "fixed", duration: 30, unit: "minute" },
   },
   "message-query": {
     limit: 10,

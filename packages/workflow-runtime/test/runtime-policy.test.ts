@@ -120,7 +120,7 @@ describe("Workflow runtime policy", () => {
     });
   });
 
-  it("uses the WeCom Start schema before ignoring stale ChatAI fields", async () => {
+  it("uses the WeCom Start schema while ignoring stale ChatAI-only fields", async () => {
     const spec = createExecutionSpec("wecom-workflow");
     spec.nodes[0]!.config = {
       ...spec.nodes[0]!.config,
@@ -140,7 +140,9 @@ describe("Workflow runtime policy", () => {
 
     expect(result).toMatchObject({ kind: "success" });
     if (result.kind !== "success") throw new Error("Expected admitted Run");
-    expect(result.run.context.workflow).toEqual({});
+    expect(result.run.context.workflow).toEqual({
+      message: { sendingWindow: { endTime: "20:00", startTime: "09:00" } },
+    });
   });
 
   it("does not fall back to individual reads when a batched runtime snapshot is missing", async () => {
@@ -636,6 +638,7 @@ describe("Workflow runtime policy", () => {
       capabilityPort: true,
       contactCustomFieldPort: true,
       entitlement: async () => ({ activeRunLimit: 10_000, entitled: true }),
+      marketingMessagePort: true,
       messageQueryPort: true,
     });
     expect(() => complete.service.assertRuntimeComposition()).not.toThrow();
@@ -651,6 +654,7 @@ function createHarness(options: {
   deactivationResult?: number;
   entitlement: () => Promise<WorkflowTypeEntitlementResult>;
   executionSpec?: WorkflowExecutionSpec;
+  marketingMessagePort?: boolean;
   messageQueryPort?: boolean;
 }) {
   const runtime = new InMemoryWorkflowRuntimeRepository(undefined, () => now);
@@ -734,6 +738,14 @@ function createHarness(options: {
         ? { contactCustomFieldPort: { getContactCustomFields: async () => [] } }
         : {}),
       entitlementPort: { check: options.entitlement },
+      ...(options.marketingMessagePort
+        ? {
+            marketingMessagePort: {
+              pushUser: async () => {},
+              queryPushResult: async () => ({ pushSuccess: true }),
+            },
+          }
+        : {}),
       onEntitlementDeactivated,
       ...(options.messageQueryPort
         ? { messageQueryPort: { execute: async () => ({}) } }

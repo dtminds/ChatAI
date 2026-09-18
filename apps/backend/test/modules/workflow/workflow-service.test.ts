@@ -1027,6 +1027,24 @@ describe("WorkflowService", () => {
     expect(page.items[0]?.trigger).toBe("外部推送");
   });
 
+  it("shows marketing flow for a direct-push WeCom Start draft", async () => {
+    const service = createService();
+    const created = await service.create(operator, { workflowType: "wecom_sop" });
+    await service.saveDraft(operator, created.id, {
+      draft: withStartConfig(created.draft, {
+        entryMode: "direct-push",
+        entryPolicy: { mode: "never" },
+        triggers: [],
+        workUserIds: [201],
+      }),
+      expectedDraftVersion: created.draftVersion,
+    });
+
+    const page = await service.list(operator, { limit: 1, status: "all" });
+
+    expect(page.items[0]?.trigger).toBe("营销流转");
+  });
+
   it("loads persisted Run metrics for only the current Workflow page", async () => {
     const repository = new InMemoryWorkflowRepository();
     const created = await createService(repository).create(operator, { workflowType: "chatai_sop" });
@@ -1754,6 +1772,7 @@ describe("WorkflowService", () => {
         "start",
         "wait",
         "message-query",
+        "marketing-message",
         "tag",
         "customer-update",
         "llm",
@@ -2138,6 +2157,38 @@ describe("WorkflowService", () => {
       },
       revision: 1,
       subjectType: "chatai_contact",
+      workflowId: created.id,
+    }]);
+  });
+
+  it("publishes WeCom marketing-flow entries with selected work-user bindings", async () => {
+    const repository = new InMemoryWorkflowRepository();
+    const service = createService(repository);
+    const created = await service.create(operator, { workflowType: "wecom_sop" });
+    const saved = await service.saveDraft(operator, created.id, {
+      draft: withStartConfig(created.draft, {
+        entryMode: "direct-push",
+        entryPolicy: { mode: "never" },
+        triggers: [],
+        workUserIds: [201, 202],
+      }),
+      expectedDraftVersion: created.draftVersion,
+    });
+
+    await publishApprovedDraft(service, created.id, saved.draftVersion);
+    await service.enable(operator, created.id);
+
+    await expect(repository.listActiveTriggerBindings(
+      operator.uid,
+      "workflow.direct_entry",
+    )).resolves.toMatchObject([{
+      filter: {
+        entryPolicy: { mode: "never" },
+        eventType: "workflow.direct_entry",
+        workUserIds: [201, 202],
+      },
+      revision: 1,
+      subjectType: "wecom_contact",
       workflowId: created.id,
     }]);
   });

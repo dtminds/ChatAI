@@ -9,7 +9,6 @@ import {
   Setting07Icon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { SignedInAccountMenu } from "@/pages/chat/components/signed-in-account-menu";
@@ -78,12 +77,6 @@ export function InsightsLayout({
             <div className="min-w-0">
               <div className="flex items-center gap-1.5 text-sm font-semibold">
                 <span>会话洞察</span>
-                <Badge
-                  aria-hidden="true"
-                  className="h-5 shrink-0 rounded-[5px] px-1.5 py-0 text-[10px] leading-none"
-                >
-                  Beta
-                </Badge>
               </div>
             </div>
           </div>

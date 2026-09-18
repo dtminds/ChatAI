@@ -537,7 +537,7 @@ function toDocument(
           ? "Stopped"
           : definition.publishedRevision !== null ? "Published" : "Draft",
     successRatePercent: null,
-    trigger: getWorkflowTrigger(draft) ?? "未配置",
+    trigger: getWorkflowTrigger(draft, definition.workflowType) ?? "未配置",
     totalRunCount: 0,
     updatedAt: formatWorkflowDisplayTime(definition.updatedAt),
     wecomMemberCount: 0,

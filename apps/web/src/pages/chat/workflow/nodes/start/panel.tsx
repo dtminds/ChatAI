@@ -10,7 +10,7 @@ import {
 } from "@chatai/contracts";
 import { Copy01Icon, HelpCircleIcon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -31,6 +31,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import type { NodeSettingsProps } from "../../panels/types";
+import type { WorkflowDraftSaveStatus } from "../../workflow-repository-types";
 import {
   getStartNodeSourceIds,
   isChatAiStartNodeData,
@@ -48,6 +49,7 @@ import { ManagedAccountSelection } from "./managed-account-selection";
 import { MessageKeywords } from "./message-keywords";
 import { WecomMemberSelection } from "./wecom-member-selection";
 import { getWorkflowDirectEntryEndpoint } from "./direct-entry-api";
+import { getDirectEntryLabel } from "./entry-mode";
 import { WecomTagSelector } from "../../../components/wecom-tag-selector";
 import { useWorkflowSurface } from "../../workflow-surface";
 import { createWeComMemberRootsFromOptions } from "../../workflow-wecom-member-resource";
@@ -58,6 +60,7 @@ export function StartConfig({
   onNodeChange,
   resources,
   seats,
+  testContext,
   workflowId,
   workUsers = getWorkflowStartFixtureWorkUsers(),
 }: NodeSettingsProps<"start"> & {
@@ -67,14 +70,15 @@ export function StartConfig({
   const startData = node.data;
   const { entryPolicy, triggers } = startData;
   const surface = useWorkflowSurface();
-  const canUseDirectPush = !surface.embedded;
-  const entryMode = canUseDirectPush ? (startData.entryMode ?? "event") : "event";
   const chatAiStartData = isChatAiStartNodeData(startData) ? startData : undefined;
   const isChatAi = chatAiStartData !== undefined;
+  const canUseDirectPush = !isChatAi || !surface.embedded;
+  const entryMode = canUseDirectPush ? (startData.entryMode ?? "event") : "event";
+  const directEntryLabel = getDirectEntryLabel(startData);
   const sourceIds = getStartNodeSourceIds(startData);
   const managedAccounts = resources?.managedAccounts;
   const wecomMembers = resources?.wecomMembers;
-  const messageSendingWindow = chatAiStartData?.messageSendingWindow
+  const messageSendingWindow = startData.messageSendingWindow
     ?? DEFAULT_WORKFLOW_MESSAGE_SENDING_WINDOW;
   const sourceOptions = isChatAi
     ? seats ?? managedAccounts?.options ?? getWorkflowStartFixtureSeats()
@@ -98,7 +102,7 @@ export function StartConfig({
     onNodeChange({
       ...patch,
       metric: configured
-        ? `${nextSourceIds.length} 个${sourceLabel} · ${formatEntryModeMetric(nextEntryMode, nextTriggers.length)}`
+        ? `${nextSourceIds.length} 个${sourceLabel} · ${formatEntryModeMetric(nextEntryMode, nextTriggers.length, directEntryLabel)}`
         : "待配置进入方式",
       status: configured ? "ready" : "warning",
     } as WorkflowNodeConfigPatch<"start">);
@@ -156,7 +160,7 @@ export function StartConfig({
             </label>
             <label className="flex items-center gap-2 text-[13px] text-foreground">
               <RadioGroupItem disabled={!canUseDirectPush} value="direct-push" />
-              <span>外部推送</span>
+              <span>{directEntryLabel}</span>
             </label>
           </RadioGroup>
         </section>
@@ -230,9 +234,12 @@ export function StartConfig({
             ) : null}
             </div>
           </section>
-        ) : (
-          <DirectEntryEndpoint workflowId={workflowId} />
-        )}
+        ) : isChatAi ? (
+          <DirectEntryEndpoint
+            saveState={testContext?.saveState ?? "saved"}
+            workflowId={workflowId}
+          />
+        ) : null}
       </div>
 
       <section>
@@ -269,106 +276,95 @@ export function StartConfig({
         </div>
       </section>
 
-      {isChatAi ? (
-        <>
-          <section>
-            <div className="flex items-center gap-1.5 px-1 py-3">
-              <h3 className="text-[15px] font-semibold text-foreground">消息发送时段</h3>
-              <TooltipProvider>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button
-                      aria-label="查看消息发送时段说明"
-                      className="size-5 rounded-full p-0 text-muted-foreground"
-                      size="icon"
-                      type="button"
-                      variant="ghost"
-                    >
-                      <HugeiconsIcon icon={HelpCircleIcon} size={15} strokeWidth={1.8} />
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent className="max-w-80" side="top" sideOffset={6}>
-                    <ol className="list-decimal space-y-1 pl-4">
-                      <li>消息仅在每日设置的有效时段内发送，时段外不会立即触发</li>
-                      <li>若消息节点在时段外到达，系统会延迟到下一个允许发送的时间段再发送，降低打扰风险</li>
-                    </ol>
-                  </TooltipContent>
-                </Tooltip>
-              </TooltipProvider>
-            </div>
-            <div className="px-1 pb-3">
-              <div className="flex items-center gap-2">
-                <TimePicker
-                  aria-label="消息发送开始时间"
-                  className="min-w-0 flex-1"
-                  onValueChange={(startTime) => updateStartConfig({
-                    messageSendingWindow: { ...messageSendingWindow, startTime },
-                  })}
-                  value={messageSendingWindow.startTime}
-                />
-                <span className="shrink-0 text-[13px] text-muted-foreground">至</span>
-                <TimePicker
-                  aria-label="消息发送结束时间"
-                  className="min-w-0 flex-1"
-                  onValueChange={(endTime) => updateStartConfig({
-                    messageSendingWindow: { ...messageSendingWindow, endTime },
-                  })}
-                  value={messageSendingWindow.endTime}
-                />
-              </div>
-            </div>
-          </section>
-
-        </>
-      ) : null}
+      <section>
+        <div className="flex items-center gap-1.5 px-1 py-3">
+          <h3 className="text-[15px] font-semibold text-foreground">消息发送时段</h3>
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  aria-label="查看消息发送时段说明"
+                  className="size-5 rounded-full p-0 text-muted-foreground"
+                  size="icon"
+                  type="button"
+                  variant="ghost"
+                >
+                  <HugeiconsIcon icon={HelpCircleIcon} size={15} strokeWidth={1.8} />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent className="max-w-80" side="top" sideOffset={6}>
+                <ol className="list-decimal space-y-1 pl-4">
+                  <li>消息和触达任务仅在每日设置的有效时段内下发，时段外不会立即执行</li>
+                  <li>若节点在时段外到达，系统会延迟到下一个允许发送的时间段，降低打扰风险</li>
+                </ol>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+        </div>
+        <div className="px-1 pb-3">
+          <div className="flex items-center gap-2">
+            <TimePicker
+              aria-label="消息发送开始时间"
+              className="min-w-0 flex-1"
+              onValueChange={(startTime) => updateStartConfig({
+                messageSendingWindow: { ...messageSendingWindow, startTime },
+              })}
+              value={messageSendingWindow.startTime}
+            />
+            <span className="shrink-0 text-[13px] text-muted-foreground">至</span>
+            <TimePicker
+              aria-label="消息发送结束时间"
+              className="min-w-0 flex-1"
+              onValueChange={(endTime) => updateStartConfig({
+                messageSendingWindow: { ...messageSendingWindow, endTime },
+              })}
+              value={messageSendingWindow.endTime}
+            />
+          </div>
+        </div>
+      </section>
     </div>
   );
 }
 
-function DirectEntryEndpoint({ workflowId }: { workflowId?: string }) {
+function DirectEntryEndpoint({ saveState, workflowId }: {
+  saveState: WorkflowDraftSaveStatus;
+  workflowId?: string;
+}) {
   const surface = useWorkflowSurface();
+  const loadedWorkflowIdRef = useRef<string | null>(null);
   const [requestVersion, setRequestVersion] = useState(0);
   const [state, setState] = useState<
     | { kind: "error" }
     | { kind: "loading" }
-    | { endpointUrl: string; kind: "ready" }
+    | { endpointUrl: string; kind: "ready"; workflowId: string }
   >({ kind: "loading" });
 
   useEffect(() => {
-    if (!workflowId) return;
+    if (!workflowId || saveState !== "saved" || loadedWorkflowIdRef.current === workflowId) return;
     let active = true;
     setState({ kind: "loading" });
     void getWorkflowDirectEntryEndpoint(workflowId, surface.apiBasePath).then(({ endpointKey }) => {
       if (!active) return;
       const endpointUrl = new URL("/workflow/endpoint", window.location.origin);
       endpointUrl.searchParams.set("key", endpointKey);
-      setState({ endpointUrl: endpointUrl.toString(), kind: "ready" });
+      loadedWorkflowIdRef.current = workflowId;
+      setState({ endpointUrl: endpointUrl.toString(), kind: "ready", workflowId });
     }).catch(() => {
       if (active) setState({ kind: "error" });
     });
     return () => {
       active = false;
     };
-  }, [requestVersion, surface.apiBasePath, workflowId]);
+  }, [requestVersion, saveState, surface.apiBasePath, workflowId]);
 
   if (!workflowId) return null;
+  const endpointReady = state.kind === "ready" && state.workflowId === workflowId;
   return (
     <section className="pb-3">
       <div className="space-y-2.5 rounded-[8px] border bg-card p-3">
         <p className="text-[13px] font-medium text-foreground">推送地址</p>
-        {state.kind === "loading" ? (
-          <div className="flex h-9 items-center gap-2 text-[13px] text-muted-foreground" role="status">
-            <Spinner size={14} variant="classic" />
-            <span>正在加载</span>
-          </div>
-        ) : state.kind === "error" ? (
-          <div className="flex h-9 items-center justify-between gap-3">
-            <span className="text-[13px] text-destructive">加载失败</span>
-            <Button onClick={() => setRequestVersion(version => version + 1)} size="sm" type="button" variant="outline">
-              重试
-            </Button>
-          </div>
-        ) : (
+        {endpointReady ? (
           <div className="flex min-w-0 items-center gap-2">
             <Input aria-label="推送地址" className="min-w-0 flex-1" readOnly value={state.endpointUrl} />
             <Button
@@ -383,7 +379,26 @@ function DirectEntryEndpoint({ workflowId }: { workflowId?: string }) {
               <HugeiconsIcon icon={Copy01Icon} size={16} strokeWidth={1.8} />
             </Button>
           </div>
-        )}
+        ) : saveState === "dirty" || saveState === "saving" ? (
+          <div className="flex h-9 items-center gap-2 text-[13px] text-muted-foreground" role="status">
+            <Spinner size={14} variant="classic" />
+            <span>正在保存</span>
+          </div>
+        ) : saveState === "error" ? (
+          <div className="flex h-9 items-center text-[13px] text-destructive">保存失败</div>
+        ) : state.kind === "loading" ? (
+          <div className="flex h-9 items-center gap-2 text-[13px] text-muted-foreground" role="status">
+            <Spinner size={14} variant="classic" />
+            <span>正在加载</span>
+          </div>
+        ) : state.kind === "error" ? (
+          <div className="flex h-9 items-center justify-between gap-3">
+            <span className="text-[13px] text-destructive">加载失败</span>
+            <Button onClick={() => setRequestVersion(version => version + 1)} size="sm" type="button" variant="outline">
+              重试
+            </Button>
+          </div>
+        ) : null}
       </div>
     </section>
   );
@@ -398,8 +413,12 @@ async function copyDirectEntryEndpoint(endpointUrl: string) {
   }
 }
 
-function formatEntryModeMetric(mode: WorkflowStartEntryMode, triggerCount: number) {
-  if (mode === "direct-push") return "外部推送";
+function formatEntryModeMetric(
+  mode: WorkflowStartEntryMode,
+  triggerCount: number,
+  directEntryLabel: string,
+) {
+  if (mode === "direct-push") return directEntryLabel;
   return `${triggerCount} 个触发条件`;
 }
 

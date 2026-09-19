@@ -18,11 +18,17 @@ export type WorkflowTaskCapacityAdmission =
 
 export type WorkflowTaskCapacityPort = {
   acquire(input: {
+    leaseDurationMs: number;
     now: Date;
     taskId: string;
     taskVersion: number;
     uid: number;
   }): Promise<WorkflowTaskCapacityAdmission>;
+  renew(input: {
+    lease: WorkflowTaskCapacityLease;
+    leaseDurationMs: number;
+    uid: number;
+  }): Promise<void>;
   release(input: {
     lease: WorkflowTaskCapacityLease;
     uid: number;

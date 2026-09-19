@@ -203,6 +203,7 @@ describe("Workflow runtime policy", () => {
         reasonCode: "WORKFLOW_TASK_TENANT_CAPACITY_LIMITED" as const,
         retryAt: new Date(now.getTime() + 60_000),
       })),
+      renew: vi.fn(async () => {}),
       release: vi.fn(async () => {}),
     };
     const harness = createHarness({
@@ -223,6 +224,7 @@ describe("Workflow runtime policy", () => {
       task: { attempt: 0, status: "pending", taskVersion: 2 },
     });
     expect(taskCapacityPort.acquire).toHaveBeenCalledWith(expect.objectContaining({
+      leaseDurationMs: expect.any(Number),
       taskId: started.task.id,
       taskVersion: 1,
       uid: 9,
@@ -234,6 +236,7 @@ describe("Workflow runtime policy", () => {
     const lease = { leaseId: "9|task|1", token: "lease-token" };
     const taskCapacityPort: WorkflowTaskCapacityPort = {
       acquire: vi.fn(async () => ({ kind: "allowed" as const, lease })),
+      renew: vi.fn(async () => {}),
       release: vi.fn(async () => {}),
     };
     const harness = createHarness({

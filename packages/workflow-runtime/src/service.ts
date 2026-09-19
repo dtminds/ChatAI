@@ -624,6 +624,7 @@ export class WorkflowRuntimeService {
     let capacityLease: WorkflowTaskCapacityLease | null = null;
     if (this.taskCapacityPort) {
       const admission = await this.taskCapacityPort.acquire({
+        leaseDurationMs: taskLeaseDurationMs,
         now: input.now,
         taskId: task.id,
         taskVersion: input.taskVersion,
@@ -645,6 +646,29 @@ export class WorkflowRuntimeService {
       capacityLease = admission.lease;
     }
 
+    let capacityRenewalTimer: ReturnType<typeof setTimeout> | undefined;
+    let capacityRenewalInFlight: Promise<void> | undefined;
+    let capacityRenewalStopped = false;
+    if (capacityLease && this.taskCapacityPort) {
+      const renewalIntervalMs = Math.max(1_000, Math.floor(taskLeaseDurationMs / 2));
+      const renew = () => {
+        if (capacityRenewalStopped) return;
+        capacityRenewalInFlight = this.taskCapacityPort!.renew({
+          lease: capacityLease!,
+          leaseDurationMs: taskLeaseDurationMs,
+          uid: input.uid,
+        }).catch(() => {}).finally(() => {
+          capacityRenewalInFlight = undefined;
+          if (!capacityRenewalStopped) {
+            capacityRenewalTimer = setTimeout(renew, renewalIntervalMs);
+            capacityRenewalTimer.unref?.();
+          }
+        });
+      };
+      capacityRenewalTimer = setTimeout(renew, renewalIntervalMs);
+      capacityRenewalTimer.unref?.();
+    }
+
     try {
       const claimed = await this.runtimeRepository.claimTask({
         expectedTaskVersion: input.taskVersion,
@@ -661,7 +685,7 @@ export class WorkflowRuntimeService {
     if (claimed.kind !== "success") throw staleTaskError();
 
     if (node.kind === "wait-event") {
-      return this.executeWaitEventTask({
+      return await this.executeWaitEventTask({
         nodeExecutionKey,
         claimedTask: claimed.task,
         existingSubscription: existingEventSubscription,
@@ -875,7 +899,7 @@ export class WorkflowRuntimeService {
         };
       }
       if (!requiresPreparedExecution && isCoreNodeExecutionFailure(error)) {
-        return this.commitCoreNodeFailure({
+        return await this.commitCoreNodeFailure({
           nodeExecutionKey,
           error,
           input,
@@ -968,6 +992,9 @@ export class WorkflowRuntimeService {
     if (committed.kind !== "success") throw staleTaskError();
       return committed;
     } finally {
+      capacityRenewalStopped = true;
+      if (capacityRenewalTimer) clearTimeout(capacityRenewalTimer);
+      if (capacityRenewalInFlight) await capacityRenewalInFlight;
       if (capacityLease && this.taskCapacityPort) {
         await this.taskCapacityPort.release({
           lease: capacityLease,

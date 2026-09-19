@@ -30,10 +30,13 @@ local lease_key = KEYS[4]
 local existing_token = redis.call("HGET", lease_key, "token")
 local existing_expires_at = tonumber(redis.call("HGET", lease_key, "expires_at_ms") or "0")
 if existing_token and existing_expires_at > now_ms then
+  local expires_at = now_ms + tonumber(ARGV[7])
   redis.call("HINCRBY", lease_key, "references", 1)
+  redis.call("HSET", lease_key, "expires_at_ms", expires_at)
   redis.call("PEXPIRE", lease_key, ARGV[7])
-  redis.call("ZADD", KEYS[1], existing_expires_at, ARGV[2])
-  redis.call("ZADD", KEYS[2], existing_expires_at, ARGV[2])
+  redis.call("ZADD", KEYS[1], expires_at, ARGV[2])
+  redis.call("ZADD", KEYS[2], expires_at, ARGV[2])
+  redis.call("PEXPIRE", KEYS[2], tonumber(ARGV[7]) * 2)
   return {1, 0, existing_token, now_ms}
 end
 if existing_token then redis.call("DEL", lease_key) end
@@ -57,7 +60,23 @@ redis.call("HSET", lease_key, "uid", ARGV[1], "token", ARGV[3], "expires_at_ms",
 redis.call("PEXPIRE", lease_key, ARGV[7])
 redis.call("ZADD", KEYS[1], expires_at, ARGV[2])
 redis.call("ZADD", KEYS[2], expires_at, ARGV[2])
+redis.call("PEXPIRE", KEYS[2], tonumber(ARGV[7]) * 2)
 return {1, 0, ARGV[3], now_ms}
+`;
+
+const RENEW_SCRIPT = `
+local stored_uid = redis.call("HGET", KEYS[3], "uid")
+local stored_token = redis.call("HGET", KEYS[3], "token")
+if stored_uid ~= ARGV[1] or stored_token ~= ARGV[2] then return 0 end
+local now = redis.call("TIME")
+local now_ms = now[1] * 1000 + math.floor(now[2] / 1000)
+local expires_at = now_ms + tonumber(ARGV[4])
+redis.call("HSET", KEYS[3], "expires_at_ms", expires_at)
+redis.call("PEXPIRE", KEYS[3], ARGV[4])
+redis.call("ZADD", KEYS[1], expires_at, ARGV[3])
+redis.call("ZADD", KEYS[2], expires_at, ARGV[3])
+redis.call("PEXPIRE", KEYS[2], tonumber(ARGV[4]) * 2)
+return 1
 `;
 
 const RELEASE_SCRIPT = `
@@ -79,6 +98,13 @@ const RELEASE_LOCK_SCRIPT = `
 if redis.call("GET", KEYS[1]) == ARGV[1] then
   redis.call("DEL", KEYS[1])
   return 1
+end
+return 0
+`;
+
+const RENEW_LOCK_SCRIPT = `
+if redis.call("GET", KEYS[1]) == ARGV[1] then
+  return redis.call("PEXPIRE", KEYS[1], ARGV[2])
 end
 return 0
 `;
@@ -116,6 +142,7 @@ export function createWorkflowTaskCapacity(input: {
 class RedisWorkflowTaskCapacity implements WorkflowTaskCapacityPort, WorkflowTaskCapacityController {
   private lastUnavailableLogAt = Number.NEGATIVE_INFINITY;
   private lastReleaseErrorLogAt = Number.NEGATIVE_INFINITY;
+  private lastReleaseMismatchLogAt = Number.NEGATIVE_INFINITY;
 
   constructor(
     private readonly client: Redis,
@@ -126,6 +153,7 @@ class RedisWorkflowTaskCapacity implements WorkflowTaskCapacityPort, WorkflowTas
 
   async acquire(input: {
     now: Date;
+    leaseDurationMs: number;
     taskId: string;
     taskVersion: number;
     uid: number;
@@ -147,7 +175,7 @@ class RedisWorkflowTaskCapacity implements WorkflowTaskCapacityPort, WorkflowTas
         this.config.globalConcurrency,
         calculateTenantQuota(this.config.globalConcurrency, this.config.tenantMaxSharePercent),
         this.config.demandWindowMs + this.config.controllerIntervalMs,
-        this.config.leaseTtlMs,
+        Math.max(1_000, input.leaseDurationMs),
       );
       if (!Array.isArray(result) || result.length < 3) {
         throw new Error("Workflow Task capacity returned an invalid Redis result");
@@ -177,9 +205,30 @@ class RedisWorkflowTaskCapacity implements WorkflowTaskCapacityPort, WorkflowTas
     }
   }
 
+  async renew(input: {
+    lease: WorkflowTaskCapacityLease;
+    leaseDurationMs: number;
+    uid: number;
+  }): Promise<void> {
+    const result = await this.client.eval(
+      RENEW_SCRIPT,
+      3,
+      this.globalLeasesKey(),
+      this.uidLeasesKey(input.uid),
+      this.leaseKey(input.lease.leaseId),
+      input.uid,
+      input.lease.token,
+      input.lease.leaseId,
+      Math.max(1_000, input.leaseDurationMs),
+    );
+    if (Number(result) !== 1) {
+      throw new Error("Workflow Task capacity lease renewal was rejected");
+    }
+  }
+
   async release(input: { lease: WorkflowTaskCapacityLease; uid: number }): Promise<void> {
     try {
-      await this.client.eval(
+      const result = await this.client.eval(
         RELEASE_SCRIPT,
         3,
         this.globalLeasesKey(),
@@ -189,6 +238,16 @@ class RedisWorkflowTaskCapacity implements WorkflowTaskCapacityPort, WorkflowTas
         input.lease.token,
         input.lease.leaseId,
       );
+      if (Number(result) !== 1) {
+        const now = Date.now();
+        if (now - this.lastReleaseMismatchLogAt >= CAPACITY_RELEASE_ERROR_LOG_INTERVAL_MS) {
+          this.lastReleaseMismatchLogAt = now;
+          this.logger.warn({
+            event: "workflow.task-capacity.release.mismatch",
+            uid: input.uid,
+          }, "Workflow Task capacity release did not match an active lease");
+        }
+      }
     } catch (error) {
       const now = Date.now();
       if (now - this.lastReleaseErrorLogAt >= CAPACITY_RELEASE_ERROR_LOG_INTERVAL_MS) {
@@ -226,17 +285,34 @@ class RedisWorkflowTaskCapacity implements WorkflowTaskCapacityPort, WorkflowTas
       }, startedAt);
     }
 
+    let lockRenewalTimer: ReturnType<typeof setInterval> | undefined;
     try {
-      const nowMs = input.now.getTime();
+      const nowMs = await this.redisNowMs();
+      let lockRenewalInFlight: Promise<unknown> | undefined;
+      lockRenewalTimer = setInterval(() => {
+        if (lockRenewalInFlight) return;
+        lockRenewalInFlight = this.client.eval(
+          RENEW_LOCK_SCRIPT,
+          1,
+          this.controllerLockKey(),
+          owner,
+          this.config.controllerLockTtlMs,
+        ).finally(() => {
+          lockRenewalInFlight = undefined;
+        });
+        lockRenewalTimer?.unref?.();
+      }, Math.max(1_000, Math.floor(this.config.controllerLockTtlMs / 2)));
+      lockRenewalTimer.unref?.();
       await this.client.zremrangebyscore(this.globalLeasesKey(), "-inf", nowMs);
       await this.client.zremrangebyscore(this.demandKey(), "-inf", nowMs - this.config.demandWindowMs);
       const scan = await input.repository.listDueTaskUids({ limit: this.config.scanLimit, now: input.now });
       const demandUids = await this.client.zrangebyscore(
         this.demandKey(),
         nowMs - this.config.demandWindowMs,
-        nowMs,
+        "+inf",
       );
       const activeLeases = await this.client.zrange(this.globalLeasesKey(), 0, -1);
+      const restrictedUids = await this.client.smembers(this.restrictedUidsKey());
       const contenders = new Set<number>(scan.uids);
       for (const uid of demandUids) addUid(contenders, uid);
       for (const leaseId of activeLeases) addUid(contenders, leaseId);
@@ -244,13 +320,29 @@ class RedisWorkflowTaskCapacity implements WorkflowTaskCapacityPort, WorkflowTas
       let quotaChangedCount = 0;
       if (contenderCount >= 2) {
         const quota = Math.max(1, Math.floor(this.config.globalConcurrency / contenderCount));
+        const writes = [];
         for (const uid of contenders) {
-          await this.writeQuota(uid, quota, 0);
-          quotaChangedCount += 1;
+          const current = await this.client.hget(this.quotaKey(uid), "quota");
+          const currentQuota = Number(current);
+          const effectiveQuota = scan.scanComplete || !Number.isFinite(currentQuota)
+            ? quota
+            : Math.min(quota, currentQuota);
+          writes.push({ stableCycles: 0, uid, quota: effectiveQuota });
         }
-      } else if (contenderCount === 1 && scan.scanComplete) {
-        const [uid] = contenders;
-        if (uid !== undefined && await this.restoreQuotaIfStable(uid)) quotaChangedCount += 1;
+        await this.writeQuotaBatch(writes);
+        quotaChangedCount += writes.length;
+      }
+      if (scan.scanComplete) {
+        const currentUids = new Set(contenders);
+        for (const rawUid of restrictedUids) {
+          const uid = Number(rawUid);
+          if (!Number.isSafeInteger(uid) || uid <= 0 || currentUids.has(uid)) continue;
+          if (await this.restoreQuotaIfStable(uid)) quotaChangedCount += 1;
+        }
+        if (contenderCount < 2) {
+          const [uid] = contenders;
+          if (uid !== undefined && await this.restoreQuotaIfStable(uid)) quotaChangedCount += 1;
+        }
       }
       const summary = this.summary({
         controllerLockSkipped: false,
@@ -264,6 +356,7 @@ class RedisWorkflowTaskCapacity implements WorkflowTaskCapacityPort, WorkflowTas
         "Workflow Task capacity controller completed");
       return summary;
     } finally {
+      if (lockRenewalTimer) clearInterval(lockRenewalTimer);
       await this.client.eval(RELEASE_LOCK_SCRIPT, 1, this.controllerLockKey(), owner);
     }
   }
@@ -275,6 +368,7 @@ class RedisWorkflowTaskCapacity implements WorkflowTaskCapacityPort, WorkflowTas
     const maxQuota = calculateTenantQuota(this.config.globalConcurrency, this.config.tenantMaxSharePercent);
     if (!Number.isFinite(quota) || quota >= maxQuota) {
       await this.writeQuota(uid, maxQuota, 0);
+      await this.client.srem(this.restrictedUidsKey(), uid);
       return false;
     }
     const nextStableCycles = stableCycles + 1;
@@ -283,6 +377,7 @@ class RedisWorkflowTaskCapacity implements WorkflowTaskCapacityPort, WorkflowTas
       return true;
     }
     await this.writeQuota(uid, maxQuota, 0);
+    await this.client.srem(this.restrictedUidsKey(), uid);
     return true;
   }
 
@@ -294,6 +389,32 @@ class RedisWorkflowTaskCapacity implements WorkflowTaskCapacityPort, WorkflowTas
       updated_at_ms: String(Date.now()),
     });
     await this.client.pexpire(key, this.config.quotaTtlMs);
+    if (quota < calculateTenantQuota(this.config.globalConcurrency, this.config.tenantMaxSharePercent)) {
+      await this.client.sadd(this.restrictedUidsKey(), uid);
+    }
+  }
+
+  private async writeQuotaBatch(entries: Array<{ uid: number; quota: number; stableCycles: number }>) {
+    if (entries.length === 0) return;
+    const pipeline = this.client.pipeline();
+    const maxQuota = calculateTenantQuota(this.config.globalConcurrency, this.config.tenantMaxSharePercent);
+    for (const entry of entries) {
+      const key = this.quotaKey(entry.uid);
+      pipeline.hset(key, {
+        quota: String(entry.quota),
+        stable_cycles: String(entry.stableCycles),
+        updated_at_ms: String(Date.now()),
+      });
+      pipeline.pexpire(key, this.config.quotaTtlMs);
+      if (entry.quota < maxQuota) pipeline.sadd(this.restrictedUidsKey(), entry.uid);
+      else pipeline.srem(this.restrictedUidsKey(), entry.uid);
+    }
+    await pipeline.exec();
+  }
+
+  private async redisNowMs() {
+    const [seconds, microseconds] = await this.client.time();
+    return Number(seconds) * 1_000 + Math.floor(Number(microseconds) / 1_000);
   }
 
   private summary(
@@ -341,6 +462,10 @@ class RedisWorkflowTaskCapacity implements WorkflowTaskCapacityPort, WorkflowTas
   private controllerLockKey() {
     return `${this.keyPrefix}workflow:task-capacity:controller-lock`;
   }
+
+  private restrictedUidsKey() {
+    return `${this.keyPrefix}workflow:task-capacity:restricted-uids`;
+  }
 }
 
 class InMemoryWorkflowTaskCapacity implements WorkflowTaskCapacityPort {
@@ -351,6 +476,7 @@ class InMemoryWorkflowTaskCapacity implements WorkflowTaskCapacityPort {
   constructor(private readonly config: TaskCapacityConfig) {}
 
   async acquire(input: {
+    leaseDurationMs: number;
     now: Date;
     taskId: string;
     taskVersion: number;
@@ -361,6 +487,7 @@ class InMemoryWorkflowTaskCapacity implements WorkflowTaskCapacityPort {
     const existing = this.leases.get(leaseId);
     if (existing) {
       existing.references += 1;
+      existing.expiresAt = input.now.getTime() + Math.max(1_000, input.leaseDurationMs);
       return {
         kind: "allowed",
         lease: { leaseId, token: existing.token },
@@ -379,7 +506,7 @@ class InMemoryWorkflowTaskCapacity implements WorkflowTaskCapacityPort {
     }
     const token = randomUUID();
     this.leases.set(leaseId, {
-      expiresAt: input.now.getTime() + this.config.leaseTtlMs,
+      expiresAt: input.now.getTime() + Math.max(1_000, input.leaseDurationMs),
       references: 1,
       token,
       uid: input.uid,
@@ -387,9 +514,21 @@ class InMemoryWorkflowTaskCapacity implements WorkflowTaskCapacityPort {
     return { kind: "allowed", lease: { leaseId, token } };
   }
 
-  async release(input: { lease: WorkflowTaskCapacityLease }): Promise<void> {
+  async renew(input: {
+    lease: WorkflowTaskCapacityLease;
+    leaseDurationMs: number;
+    uid: number;
+  }): Promise<void> {
     const existing = this.leases.get(input.lease.leaseId);
-    if (existing?.token !== input.lease.token) return;
+    if (!existing || existing.uid !== input.uid || existing.token !== input.lease.token) {
+      throw new Error("Workflow Task capacity lease renewal was rejected");
+    }
+    existing.expiresAt = Date.now() + Math.max(1_000, input.leaseDurationMs);
+  }
+
+  async release(input: { lease: WorkflowTaskCapacityLease; uid: number }): Promise<void> {
+    const existing = this.leases.get(input.lease.leaseId);
+    if (existing?.uid !== input.uid || existing.token !== input.lease.token) return;
     if (existing.references > 1) {
       existing.references -= 1;
       return;

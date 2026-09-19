@@ -79,10 +79,15 @@ function createTaskObservation(
   }
   const outcome = result as Record<string, unknown>;
   if (outcome.kind === "deferred") {
+    const code = outcome.reasonCode === "WORKFLOW_MESSAGE_RATE_LIMITED"
+      ? "rate_limited"
+      : outcome.reasonCode === "WORKFLOW_TASK_TENANT_CAPACITY_LIMITED"
+        ? "tenant_capacity_limited"
+        : outcome.reasonCode === "WORKFLOW_TASK_CAPACITY_UNAVAILABLE"
+          ? "capacity_unavailable"
+          : "deferred";
     return {
-      code: outcome.reasonCode === "WORKFLOW_MESSAGE_RATE_LIMITED"
-        ? "rate_limited"
-        : "deferred",
+      code,
       command: pickTaskIdentity(command),
       disposition: "ack",
       retryAt: outcome.retryAt,

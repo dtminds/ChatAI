@@ -136,6 +136,27 @@ describe("workflow task consumer", () => {
   });
 
   it.each([
+    ["WORKFLOW_TASK_TENANT_CAPACITY_LIMITED", "tenant_capacity_limited"],
+    ["WORKFLOW_TASK_CAPACITY_UNAVAILABLE", "capacity_unavailable"],
+  ])("classifies %s without counting it as message rate limited", async (reasonCode, code) => {
+    const observe = vi.fn();
+    const message = createBrokerMessage(taskMessage());
+    const retryAt = new Date("2026-09-18T00:01:00.000Z");
+    const handler = createTaskConsumerHandler({
+      observe,
+      runtimeService: {
+        executeTask: vi.fn(async () => ({ kind: "deferred", reasonCode, retryAt })),
+      },
+      workerId: "worker-1",
+    });
+
+    await handler(message);
+
+    expect(message.ack).toHaveBeenCalledTimes(1);
+    expect(observe).toHaveBeenCalledWith(message, expect.objectContaining({ code, retryAt }));
+  });
+
+  it.each([
     {
       event: "workflow.capability.retry.scheduled",
       result: {

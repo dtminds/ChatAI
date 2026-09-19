@@ -6,6 +6,7 @@ import type {
   WorkflowInferenceRepository,
   WorkflowChatCompletionPort,
   WorkflowLlmTestAttemptRepository,
+  WorkflowTaskCapacityRepository,
   WorkflowTriggerBindingReader,
 } from "@chatai/workflow-runtime";
 import {
@@ -23,6 +24,7 @@ import {
   type WorkflowWorkerLogger,
 } from "./observability.js";
 import type { startTaskConsumer } from "./task-consumer.js";
+import type { WorkflowTaskCapacityController } from "./task-capacity.js";
 import type { processWorkflowInferenceBatch } from "./inference-worker.js";
 import type { processWorkflowConversationDirectiveDisableBatch } from "./conversation-directive-worker.js";
 import type { processWorkflowLlmTestAttemptBatch } from "./llm-test-attempt-worker.js";
@@ -121,6 +123,8 @@ export async function startWorkflowWorkerRuntime(input: {
   runtimeService: WorkerRuntimeService;
   scheduler(input: Parameters<typeof scheduleWorkflowTasks>[0]): ReturnType<typeof scheduleWorkflowTasks>;
   schedulerRepository: Parameters<typeof scheduleWorkflowTasks>[0]["repository"];
+  taskCapacityController?: WorkflowTaskCapacityController;
+  taskCapacityRepository?: WorkflowTaskCapacityRepository;
   taskConsumer: typeof startTaskConsumer;
   triggerBindingReader: WorkflowTriggerBindingReader;
   workerId: string;
@@ -171,6 +175,26 @@ export async function startWorkflowWorkerRuntime(input: {
         workerId: input.workerId,
       }));
       readiness.roles["task-consumer"] = true;
+      if (input.taskCapacityController && input.taskCapacityRepository) {
+        loops.push(input.roleLoop({
+          intervalMs: input.config.taskCapacity.controllerIntervalMs,
+          onError: error => input.logger.error({
+            err: error,
+            event: "workflow.task-capacity.controller.failed",
+            role: "task-capacity-controller",
+          }, "Workflow Task capacity controller iteration failed"),
+          onHeartbeat: heartbeat => input.logger.info({
+            event: "workflow.task-capacity.controller.heartbeat",
+            result: heartbeat.result,
+            role: "task-capacity-controller",
+          }, "Workflow Task capacity controller heartbeat"),
+          role: "task-capacity-controller",
+          run: () => input.taskCapacityController!.run({
+            now: now(),
+            repository: input.taskCapacityRepository!,
+          }),
+        }));
+      }
     }
     if (input.config.roles.has("scheduler")) {
       loops.push(startBackgroundRole("scheduler", input.config.runtime.schedulerIntervalMs, () =>

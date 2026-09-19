@@ -2125,6 +2125,27 @@ export class InMemoryWorkflowRuntimeRepository implements WorkflowRuntimeReposit
     return result;
   }
 
+  async listDueTaskUids(input: { limit: number; now: Date }) {
+    const limit = Math.max(0, Math.floor(input.limit));
+    if (limit === 0) return { scanComplete: true, scannedTaskCount: 0, uids: [] };
+    const candidates = this.tasks
+      .filter(task => (task.status === "pending" || task.status === "dispatched")
+        && task.dueAt <= input.now)
+      .sort((first, second) => compareDateAndId(
+        first.dueAt,
+        first.id,
+        second.dueAt,
+        second.id,
+      ));
+    const complete = candidates.length <= limit;
+    const selected = complete ? candidates : candidates.slice(0, limit);
+    return {
+      scanComplete: complete,
+      scannedTaskCount: selected.length,
+      uids: [...new Set(selected.map(task => task.uid))],
+    };
+  }
+
   async processTaskStatusTransitionBatch(
     _input: Parameters<WorkflowRuntimeRepository["processTaskStatusTransitionBatch"]>[0],
   ) {

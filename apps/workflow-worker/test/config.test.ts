@@ -176,6 +176,35 @@ describe("workflow worker config", () => {
     }))).toThrow("REDIS_ENABLED must be true for the production Workflow task-consumer");
   });
 
+  it("loads the shared Task capacity defaults and requires production capacity", () => {
+    expect(loadWorkflowWorkerConfig(baseEnv()).taskCapacity).toMatchObject({
+      controllerIntervalMs: 300_000,
+      deferDelayMs: 60_000,
+      deferJitterMs: 30_000,
+      demandWindowMs: 600_000,
+      globalConcurrency: 10,
+      leaseTtlMs: 60_000,
+      quotaTtlMs: 900_000,
+      scanLimit: 10_000,
+      stableCycles: 2,
+      tenantMaxSharePercent: 90,
+    });
+    expect(() => loadWorkflowWorkerConfig(productionEnv({
+      WORKFLOW_TASK_GLOBAL_CONCURRENCY: undefined,
+    }))).toThrow("Missing required environment variable: WORKFLOW_TASK_GLOBAL_CONCURRENCY");
+  });
+
+  it("rejects Task capacity settings that cause rapid retries or stale quotas", () => {
+    expect(() => loadWorkflowWorkerConfig(baseEnv({
+      WORKFLOW_TASK_CAPACITY_DEFER_DELAY_MS: "29999",
+    }))).toThrow("WORKFLOW_TASK_CAPACITY_DEFER_DELAY_MS must be at least 30000");
+    expect(() => loadWorkflowWorkerConfig(baseEnv({
+      WORKFLOW_TASK_CAPACITY_QUOTA_TTL_MS: "899999",
+    }))).toThrow(
+      "WORKFLOW_TASK_CAPACITY_QUOTA_TTL_MS must be at least demand window plus controller interval",
+    );
+  });
+
   it("rejects a Message burst smaller than one maximum message group", () => {
     expect(() => loadWorkflowWorkerConfig(baseEnv({
       WORKFLOW_MESSAGE_SEAT_BURST: "5",
@@ -397,6 +426,7 @@ function productionEnv(overrides: NodeJS.ProcessEnv = {}): NodeJS.ProcessEnv {
     WORKFLOW_TASK_DLQ_TOPIC: "topic-workflow-task-prod-dlq",
     WORKFLOW_TASK_SUBSCRIPTION: "consumer-chatai-worker-task-prod",
     WORKFLOW_TASK_TOPIC: "topic-workflow-task-prod",
+    WORKFLOW_TASK_GLOBAL_CONCURRENCY: "30",
     WORKFLOW_WORKER_ROLES: "entry-consumer,task-consumer,scheduler",
     ...overrides,
   });

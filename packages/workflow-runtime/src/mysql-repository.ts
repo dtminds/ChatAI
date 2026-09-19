@@ -75,6 +75,7 @@ import type {
   WorkflowRuntimeSnapshotReadResult,
   WorkflowRuntimeSnapshotRecord,
   WorkflowTaskRecord,
+  WorkflowTaskCapacityRepository,
   WorkflowTriggerBindingReader,
   WorkflowTriggerBindingRecord,
 } from "./types.js";
@@ -1291,6 +1292,33 @@ export class MysqlWorkflowRuntimeRepository implements
       }
       return result;
     });
+  }
+
+  async listDueTaskUids(input: Parameters<WorkflowTaskCapacityRepository["listDueTaskUids"]>[0]) {
+    // Capacity control has its own bounded read budget; it is intentionally larger
+    // than the write-oriented runtime batch ceiling used by Scheduler transitions.
+    const limit = Number.isFinite(input.limit) && input.limit > 0
+      ? Math.min(Math.trunc(input.limit), 10_000)
+      : 0;
+    if (limit <= 0) return { scanComplete: true, scannedTaskCount: 0, uids: [] };
+    const rows = await this.db.selectFrom(`${TASK_TABLE} as task`)
+      .modifyFront(sql`/*+ INDEX(task idx_workflow_task_schedule) */`)
+      .select("task.uid")
+      .where("task.status", "in", ["pending", "dispatched"])
+      .where("task.bucket_time", "<=", floorToMinute(input.now))
+      .where("task.due_at", "<=", input.now)
+      .orderBy("task.bucket_time", "asc")
+      .orderBy("task.due_at", "asc")
+      .orderBy("task.id", "asc")
+      .limit(limit + 1)
+      .execute();
+    const complete = rows.length <= limit;
+    const selected = complete ? rows : rows.slice(0, limit);
+    return {
+      scanComplete: complete,
+      scannedTaskCount: selected.length,
+      uids: [...new Set(selected.map(row => normalizeTenantId(row.uid)))],
+    };
   }
 
   async processTaskStatusTransitionBatch(

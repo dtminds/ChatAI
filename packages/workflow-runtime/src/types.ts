@@ -602,6 +602,17 @@ export type WorkflowSchedulerRepository = {
   }>;
 };
 
+export type WorkflowTaskCapacityRepository = {
+  listDueTaskUids(input: {
+    limit: number;
+    now: Date;
+  }): Promise<{
+    scanComplete: boolean;
+    scannedTaskCount: number;
+    uids: number[];
+  }>;
+};
+
 export type WorkflowOutboxRepository = {
   claimOutboxBatch(input: {
     leaseExpiresAt: Date;

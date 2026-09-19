@@ -41,6 +41,19 @@ export type WorkflowWorkerConfig = {
     keyPrefix: string;
     url: string | null;
   };
+  taskCapacity: {
+    controllerIntervalMs: number;
+    controllerLockTtlMs: number;
+    deferDelayMs: number;
+    deferJitterMs: number;
+    demandWindowMs: number;
+    globalConcurrency: number;
+    leaseTtlMs: number;
+    quotaTtlMs: number;
+    scanLimit: number;
+    stableCycles: number;
+    tenantMaxSharePercent: number;
+  };
   roles: ReadonlySet<WorkflowWorkerRole>;
   runtime: {
     capabilityMaxRetryDelayMs: number;
@@ -167,6 +180,12 @@ export function loadWorkflowWorkerConfig(env: NodeJS.ProcessEnv = process.env): 
     nodeEnvironment,
     "WORKFLOW_TASK_CONCURRENCY",
   );
+  const taskCapacityGlobalConcurrency = parseTaskCapacityGlobalConcurrency(
+    env.WORKFLOW_TASK_GLOBAL_CONCURRENCY,
+    nodeEnvironment,
+    roles,
+    taskConsumerConcurrency,
+  );
   const entryTopic = qualifyTopic(requireValue(env, "WORKFLOW_ENTRY_TOPIC"));
   const taskTopic = qualifyTopic(requireValue(env, "WORKFLOW_TASK_TOPIC"));
   const entryDeadLetterTopic = qualifyTopic(requireValue(env, "WORKFLOW_ENTRY_DLQ_TOPIC"));
@@ -237,6 +256,7 @@ export function loadWorkflowWorkerConfig(env: NodeJS.ProcessEnv = process.env): 
       url: redisUrl,
     },
     roles,
+    taskCapacity: parseTaskCapacityConfig(env, taskCapacityGlobalConcurrency, leaseDurationMs),
     runtime: {
       capabilityMaxRetryDelayMs: parseDurationMs(
         env.WORKFLOW_CAPABILITY_MAX_RETRY_DELAY_MS,
@@ -373,6 +393,89 @@ export function loadWorkflowWorkerConfig(env: NodeJS.ProcessEnv = process.env): 
       entry: entryTopic,
       task: taskTopic,
     },
+  };
+}
+
+function parseTaskCapacityGlobalConcurrency(
+  value: string | undefined,
+  nodeEnvironment: string | undefined,
+  roles: ReadonlySet<WorkflowWorkerRole>,
+  fallback: number,
+) {
+  if (nodeEnvironment === "production" && roles.has("task-consumer") && !optionalValue(value)) {
+    throw new Error("Missing required environment variable: WORKFLOW_TASK_GLOBAL_CONCURRENCY");
+  }
+  return parseInteger(value, fallback, "WORKFLOW_TASK_GLOBAL_CONCURRENCY", 100_000);
+}
+
+function parseTaskCapacityConfig(
+  env: NodeJS.ProcessEnv,
+  globalConcurrency: number,
+  leaseTtlMs: number,
+) {
+  const controllerIntervalMs = parseDurationMs(
+    env.WORKFLOW_TASK_CAPACITY_CONTROLLER_INTERVAL_MS,
+    300_000,
+    "WORKFLOW_TASK_CAPACITY_CONTROLLER_INTERVAL_MS",
+  );
+  const demandWindowMs = parseDurationMs(
+    env.WORKFLOW_TASK_CAPACITY_DEMAND_WINDOW_MS,
+    600_000,
+    "WORKFLOW_TASK_CAPACITY_DEMAND_WINDOW_MS",
+  );
+  const deferDelayMs = parseDurationMs(
+    env.WORKFLOW_TASK_CAPACITY_DEFER_DELAY_MS,
+    60_000,
+    "WORKFLOW_TASK_CAPACITY_DEFER_DELAY_MS",
+  );
+  if (deferDelayMs < 30_000) {
+    throw new Error("WORKFLOW_TASK_CAPACITY_DEFER_DELAY_MS must be at least 30000");
+  }
+  const quotaTtlMs = parseDurationMs(
+    env.WORKFLOW_TASK_CAPACITY_QUOTA_TTL_MS,
+    900_000,
+    "WORKFLOW_TASK_CAPACITY_QUOTA_TTL_MS",
+  );
+  if (quotaTtlMs < demandWindowMs + controllerIntervalMs) {
+    throw new Error(
+      "WORKFLOW_TASK_CAPACITY_QUOTA_TTL_MS must be at least demand window plus controller interval",
+    );
+  }
+  return {
+    controllerIntervalMs,
+    controllerLockTtlMs: parseDurationMs(
+      env.WORKFLOW_TASK_CAPACITY_CONTROLLER_LOCK_TTL_MS,
+      30_000,
+      "WORKFLOW_TASK_CAPACITY_CONTROLLER_LOCK_TTL_MS",
+    ),
+    deferDelayMs,
+    deferJitterMs: parseDurationMs(
+      env.WORKFLOW_TASK_CAPACITY_DEFER_JITTER_MS,
+      30_000,
+      "WORKFLOW_TASK_CAPACITY_DEFER_JITTER_MS",
+    ),
+    demandWindowMs,
+    globalConcurrency,
+    leaseTtlMs,
+    quotaTtlMs,
+    scanLimit: parseInteger(
+      env.WORKFLOW_TASK_CAPACITY_SCAN_LIMIT,
+      10_000,
+      "WORKFLOW_TASK_CAPACITY_SCAN_LIMIT",
+      10_000,
+    ),
+    stableCycles: parseInteger(
+      env.WORKFLOW_TASK_CAPACITY_STABLE_CYCLES,
+      2,
+      "WORKFLOW_TASK_CAPACITY_STABLE_CYCLES",
+      100,
+    ),
+    tenantMaxSharePercent: parseInteger(
+      env.WORKFLOW_TASK_TENANT_MAX_SHARE_PERCENT,
+      90,
+      "WORKFLOW_TASK_TENANT_MAX_SHARE_PERCENT",
+      100,
+    ),
   };
 }
 

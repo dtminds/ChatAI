@@ -117,6 +117,10 @@ import type {
   WorkflowRuntimeRepository,
   WorkflowTaskRecord,
 } from "./types.js";
+import type {
+  WorkflowTaskCapacityLease,
+  WorkflowTaskCapacityPort,
+} from "./task-capacity.js";
 
 type WorkflowExecuteTaskInput = {
   messageId?: string;
@@ -145,6 +149,7 @@ export class WorkflowRuntimeService {
   private readonly taskLeaseDurationMs: number;
   private readonly deferredTaskDelayMs: number;
   private readonly inferenceTotalTimeoutMs: number;
+  private readonly taskCapacityPort?: WorkflowTaskCapacityPort;
   private readonly entitlementPort: WorkflowEntitlementPort;
   private readonly contactIdentityPort?: WorkflowContactIdentityPort;
   private readonly contactCustomFieldPort?: WorkflowContactCustomFieldPort;
@@ -182,6 +187,7 @@ export class WorkflowRuntimeService {
       aiCollectConversationPort?: WorkflowAiCollectConversationPort;
       conversationDirectivePort?: WorkflowConversationDirectivePort;
       taskLeaseDurationMs?: number;
+      taskCapacityPort?: WorkflowTaskCapacityPort;
     } = {},
   ) {
     this.capabilityMaxRetryDelayMs = options.capabilityMaxRetryDelayMs ?? 300_000;
@@ -193,6 +199,7 @@ export class WorkflowRuntimeService {
     this.taskLeaseDurationMs = options.taskLeaseDurationMs ?? 60_000;
     this.deferredTaskDelayMs = options.deferredTaskDelayMs ?? 60_000;
     this.inferenceTotalTimeoutMs = options.inferenceTotalTimeoutMs ?? 600_000;
+    this.taskCapacityPort = options.taskCapacityPort;
     this.entitlementPort = options.entitlementPort
       ?? new UnavailableWorkflowEntitlementPort();
     this.contactIdentityPort = options.contactIdentityPort;
@@ -614,13 +621,38 @@ export class WorkflowRuntimeService {
     const taskLeaseDurationMs = capabilityBinding?.executionTimeoutMs === undefined
       ? this.taskLeaseDurationMs
       : Math.max(this.taskLeaseDurationMs, capabilityTimeoutMs * 2);
-    const claimed = await this.runtimeRepository.claimTask({
-      expectedTaskVersion: input.taskVersion,
-      leaseExpiresAt: new Date(input.now.getTime() + taskLeaseDurationMs),
-      leaseOwner: input.workerId,
-      taskId: task.id,
-      uid: input.uid,
-    });
+    let capacityLease: WorkflowTaskCapacityLease | null = null;
+    if (this.taskCapacityPort) {
+      const admission = await this.taskCapacityPort.acquire({
+        now: input.now,
+        taskId: task.id,
+        taskVersion: input.taskVersion,
+        uid: input.uid,
+      });
+      if (admission.kind === "deferred") {
+        const deferredTask = await this.deferTaskUntilOrThrowStale(
+          task,
+          admission.retryAt,
+          admission.reasonCode,
+        );
+        return {
+          kind: "deferred" as const,
+          reasonCode: admission.reasonCode,
+          retryAt: admission.retryAt,
+          task: deferredTask,
+        };
+      }
+      capacityLease = admission.lease;
+    }
+
+    try {
+      const claimed = await this.runtimeRepository.claimTask({
+        expectedTaskVersion: input.taskVersion,
+        leaseExpiresAt: new Date(input.now.getTime() + taskLeaseDurationMs),
+        leaseOwner: input.workerId,
+        taskId: task.id,
+        uid: input.uid,
+      });
     if (claimed.kind === "workflow-unavailable") {
       throw claimed.action === "defer"
         ? runtimeStatusError("paused")
@@ -934,7 +966,15 @@ export class WorkflowRuntimeService {
     const committed = await this.runtimeRepository.commitNodeResult(commitInput);
     if (committed.kind === "already-processed") throw alreadyProcessedError();
     if (committed.kind !== "success") throw staleTaskError();
-    return committed;
+      return committed;
+    } finally {
+      if (capacityLease && this.taskCapacityPort) {
+        await this.taskCapacityPort.release({
+          lease: capacityLease,
+          uid: input.uid,
+        });
+      }
+    }
   }
 
   private async executeMarketingMessageTask(input: {
@@ -1895,7 +1935,7 @@ export class WorkflowRuntimeService {
     task: { id: string; taskVersion: number; uid: number },
     now: Date,
     reasonCode: WorkflowTaskDeferReasonCode,
-  ) {
+  ): Promise<void> {
     await this.deferTaskUntilOrThrowStale(
       task,
       new Date(now.getTime() + this.deferredTaskDelayMs),
@@ -1907,7 +1947,7 @@ export class WorkflowRuntimeService {
     task: { id: string; taskVersion: number; uid: number },
     dueAt: Date,
     reasonCode: WorkflowTaskDeferReasonCode,
-  ) {
+  ): Promise<WorkflowTaskRecord> {
     const deferred = await this.runtimeRepository.deferTask({
       dueAt,
       expectedTaskVersion: task.taskVersion,
@@ -1916,6 +1956,7 @@ export class WorkflowRuntimeService {
       uid: task.uid,
     });
     if (deferred.kind !== "success") throw staleTaskError();
+    return deferred.task;
   }
 }
 

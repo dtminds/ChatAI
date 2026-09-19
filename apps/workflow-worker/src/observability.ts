@@ -138,6 +138,8 @@ export type WorkflowTaskConsumeObservation = {
     | "deferred"
     | "invalid_task_message"
     | "node_failed"
+    | "tenant_capacity_limited"
+    | "capacity_unavailable"
     | "rate_limited"
     | "retry_scheduled"
     | "temporary_failure";
@@ -400,6 +402,8 @@ function createTaskCounters() {
     invalid: 0,
     nacked: 0,
     nodeFailed: 0,
+    tenantCapacityLimited: 0,
+    capacityUnavailable: 0,
     rateLimited: 0,
     received: 0,
     retryScheduled: 0,
@@ -414,6 +418,8 @@ function getTaskCounterBucket(code: WorkflowTaskConsumeObservation["code"]):
   if (code === "deferred") return "deferred";
   if (code === "invalid_task_message") return "invalid";
   if (code === "node_failed") return "nodeFailed";
+  if (code === "tenant_capacity_limited") return "tenantCapacityLimited";
+  if (code === "capacity_unavailable") return "capacityUnavailable";
   if (code === "rate_limited") return "rateLimited";
   if (code === "retry_scheduled") return "retryScheduled";
   return "nacked";

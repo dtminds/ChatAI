@@ -75,6 +75,8 @@ import type {
   WorkflowRuntimeSnapshotReadResult,
   WorkflowRuntimeSnapshotRecord,
   WorkflowTaskRecord,
+  WorkflowTaskCapacityRepository,
+  WorkflowTaskDispatchCandidate,
   WorkflowTriggerBindingReader,
   WorkflowTriggerBindingRecord,
 } from "./types.js";
@@ -422,13 +424,12 @@ export class MysqlWorkflowRuntimeRepository implements
           runId,
           sequence: 1,
           shardId: input.shardId,
-          status: "dispatched",
+          status: "pending",
           taskType: "execute",
           uid: input.uid,
           workflowId: input.workflowId,
           revision: input.revision,
         });
-        await insertTaskOutbox(trx, task, admittedAt);
         await trx.updateTable(ENTRY_GUARD_TABLE).set({
           latest_run_id: runId,
           total_entries: guard.total_entries + 1,
@@ -1207,29 +1208,58 @@ export class MysqlWorkflowRuntimeRepository implements
     });
   }
 
-  async dispatchDueTasks(input: Parameters<WorkflowRuntimeRepository["dispatchDueTasks"]>[0]) {
+  async listDueTaskCandidates(
+    input: Parameters<WorkflowRuntimeRepository["listDueTaskCandidates"]>[0],
+  ) {
     const limit = boundBatchLimit(input.limit);
-    if (limit <= 0) {
-      return { cancelled: 0, dispatched: 0, suspended: 0 };
+    if (limit <= 0) return [];
+    const rows = await this.db.selectFrom(`${TASK_TABLE} as task`)
+      .modifyFront(sql`/*+ INDEX(task idx_workflow_task_schedule) */`)
+      .select(["task.id", "task.task_version", "task.uid"])
+      .where("task.status", "=", "pending")
+      .where("task.bucket_time", "<=", floorToMinute(input.now))
+      .where("task.due_at", "<=", input.now)
+      .orderBy("task.bucket_time", "asc")
+      .orderBy("task.due_at", "asc")
+      .orderBy("task.id", "asc")
+      .limit(limit)
+      .execute();
+    return rows.map(row => ({
+      taskId: normalizeId(row.id),
+      taskVersion: row.task_version,
+      uid: normalizeTenantId(row.uid),
+    }));
+  }
+
+  async dispatchReservedTasks(
+    input: Parameters<WorkflowRuntimeRepository["dispatchReservedTasks"]>[0],
+  ) {
+    const candidates = input.candidates.slice(0, WORKFLOW_RUNTIME_BATCH_LIMIT);
+    if (candidates.length === 0) {
+      return { cancelled: 0, dispatched: [], suspended: 0 };
     }
     return this.db.transaction().execute(async (trx) => {
-      // MySQL otherwise prefers the shorter reconcile index and filesorts the due queue.
+      const candidateById = new Map(candidates.map(candidate => [candidate.taskId, candidate]));
       const rows = await trx.selectFrom(`${TASK_TABLE} as task`)
-        .modifyFront(sql`/*+ INDEX(task idx_workflow_task_schedule) */`)
         .selectAll("task")
+        .where("task.id", "in", candidates.map(candidate => candidate.taskId))
         .where("task.status", "=", "pending")
-        .where("task.bucket_time", "<=", floorToMinute(input.now))
-        .where("task.due_at", "<=", input.now)
-        .orderBy("task.bucket_time", "asc")
-        .orderBy("task.due_at", "asc")
         .orderBy("task.id", "asc")
-        .limit(limit)
         .forUpdate("task")
-        .skipLocked()
         .execute();
-      const result = { cancelled: 0, dispatched: 0, suspended: 0 };
+      const result = {
+        cancelled: 0,
+        dispatched: [] as typeof candidates,
+        suspended: 0,
+      };
       if (rows.length === 0) return result;
-      const tasks = rows.map(mapTask);
+      const tasks = rows.map(mapTask).filter(task => {
+        const candidate = candidateById.get(task.id);
+        return candidate !== undefined
+          && candidate.uid === task.uid
+          && candidate.taskVersion === task.taskVersion;
+      });
+      if (tasks.length === 0) return result;
       const definitionByKey = await loadDefinitionsForShare(trx, tasks.map(task => ({
         uid: task.uid,
         workflowId: task.workflowId,
@@ -1287,10 +1317,136 @@ export class MysqlWorkflowRuntimeRepository implements
           status: "dispatched" as const,
           taskVersion: task.taskVersion + 1,
         })), input.now);
-        result.dispatched = dispatched.length;
+        result.dispatched = dispatched.map(task => candidateById.get(task.id)!);
       }
       return result;
     });
+  }
+
+  async dispatchDueTasks(input: Parameters<WorkflowRuntimeRepository["dispatchDueTasks"]>[0]) {
+    const candidates = await this.listDueTaskCandidates(input);
+    const result = await this.dispatchReservedTasks({ candidates, now: input.now });
+    return {
+      cancelled: result.cancelled,
+      dispatched: result.dispatched.length,
+      suspended: result.suspended,
+    };
+  }
+
+  async listStalledDispatchedTasks(
+    input: Parameters<WorkflowRuntimeRepository["listStalledDispatchedTasks"]>[0],
+  ) {
+    const limit = boundBatchLimit(input.limit);
+    if (limit <= 0) return [];
+    const rows = await this.db.selectFrom(`${TASK_TABLE} as task`)
+      .innerJoin(`${OUTBOX_TABLE} as outbox`, join => join
+        .onRef("outbox.aggregate_id", "=", "task.id")
+        .onRef("outbox.task_version", "=", "task.task_version"))
+      .select(({ fn }) => [
+        "task.id",
+        "task.task_version",
+        "task.uid",
+        fn.min("outbox.sent_at").as("oldest_sent_at"),
+      ])
+      .groupBy([
+        "task.id",
+        "task.task_version",
+        "task.uid",
+      ])
+      .where("task.status", "=", "dispatched")
+      .where("outbox.aggregate_type", "=", "workflow_task")
+      .where("outbox.status", "=", "sent")
+      .where("outbox.sent_at", "<=", input.dispatchedBefore)
+      .orderBy("oldest_sent_at", "asc")
+      .orderBy("task.id", "asc")
+      .limit(limit)
+      .execute();
+    return rows.map(row => ({
+      taskId: normalizeId(row.id),
+      taskVersion: row.task_version,
+      uid: normalizeTenantId(row.uid),
+    }));
+  }
+
+  async republishReservedTasks(
+    input: Parameters<WorkflowRuntimeRepository["republishReservedTasks"]>[0],
+  ) {
+    const candidates = input.candidates.slice(0, WORKFLOW_RUNTIME_BATCH_LIMIT);
+    if (candidates.length === 0) return [];
+    return this.db.transaction().execute(async (trx) => {
+      const candidateById = new Map(candidates.map(candidate => [candidate.taskId, candidate]));
+      const rows = await trx.selectFrom(`${TASK_TABLE} as task`)
+        .innerJoin(`${OUTBOX_TABLE} as outbox`, join => join
+          .onRef("outbox.aggregate_id", "=", "task.id")
+          .onRef("outbox.task_version", "=", "task.task_version"))
+        .selectAll("task")
+        .select("outbox.id as outbox_id")
+        .where("task.id", "in", candidates.map(candidate => candidate.taskId))
+        .where("task.status", "=", "dispatched")
+        .where("outbox.aggregate_type", "=", "workflow_task")
+        .where("outbox.status", "=", "sent")
+        .forUpdate()
+        .execute();
+      const eligibleRows = rows.filter(row => {
+        const candidate = candidateById.get(normalizeId(row.id));
+        return candidate !== undefined && candidate.taskVersion === row.task_version;
+      });
+      if (eligibleRows.length === 0) return [];
+      await trx.updateTable(OUTBOX_TABLE).set({ status: "republished" })
+        .where("id", "in", eligibleRows.map(row => row.outbox_id))
+        .where("status", "=", "sent")
+        .executeTakeFirstOrThrow();
+      await insertTaskOutboxBatch(trx, eligibleRows.map(mapTask), input.now);
+      return eligibleRows
+        .map(row => candidateById.get(normalizeId(row.id)))
+        .filter((candidate): candidate is WorkflowTaskDispatchCandidate => candidate !== undefined);
+    });
+  }
+
+  async listDueTaskUids(input: Parameters<WorkflowTaskCapacityRepository["listDueTaskUids"]>[0]) {
+    // Capacity control works on UID candidates first so one hot tenant cannot fill
+    // the bounded result window and hide other active tenants.
+    const limit = Number.isFinite(input.limit) && input.limit > 0
+      ? Math.min(Math.trunc(input.limit), 500)
+      : 0;
+    if (limit <= 0) return { scanComplete: true, scannedUidCount: 0, uids: [] };
+
+    const candidateRows = await this.db.selectFrom(CAPACITY_GUARD_TABLE)
+      .select("uid")
+      .where("active_run_count", ">", 0)
+      .orderBy("uid", "asc")
+      .limit(limit + 1)
+      .execute();
+    const candidateScanComplete = candidateRows.length <= limit;
+    const candidateUids = candidateRows.slice(0, limit).map(row => normalizeTenantId(row.uid));
+    if (candidateUids.length === 0) {
+      return {
+        scanComplete: candidateScanComplete,
+        scannedUidCount: 0,
+        uids: [],
+      };
+    }
+
+    // The UID-leading index bounds the candidate set and IN-list, but it does
+    // not bound rows examined for a UID with only future Tasks because due_at
+    // and bucket_time are not part of the index. There is no Task FIFO
+    // requirement here, so distinct UID output—not Task row order—defines the
+    // scan boundary.
+    const dueUidRows = await this.db.selectFrom(`${TASK_TABLE} as task`)
+      .modifyFront(sql`/*+ INDEX(task idx_workflow_task_workflow_status) */`)
+      .select("task.uid")
+      .distinct()
+      .where("task.uid", "in", candidateUids)
+      .where("task.status", "in", ["pending", "dispatched"])
+      .where("task.bucket_time", "<=", floorToMinute(input.now))
+      .where("task.due_at", "<=", input.now)
+      .limit(candidateUids.length)
+      .execute();
+    return {
+      scanComplete: candidateScanComplete,
+      scannedUidCount: dueUidRows.length,
+      uids: [...new Set(dueUidRows.map(row => normalizeTenantId(row.uid)))],
+    };
   }
 
   async processTaskStatusTransitionBatch(
@@ -2282,19 +2438,12 @@ export class MysqlWorkflowRuntimeRepository implements
           await trx.updateTable(TASK_TABLE).set({
             bucket_time: floorToMinute(input.now),
             due_at: input.now,
-            status: "dispatched",
+            status: "pending",
             task_type: "execute",
             task_version: sql<number>`task_version + 1`,
           }).where("id", "in", executeTasks.map(item => item.task.id))
             .where("status", "=", "waiting_external")
             .executeTakeFirstOrThrow();
-          await insertTaskOutboxBatch(trx, executeTasks.map(item => ({
-            ...item.task,
-            dueAt: input.now,
-            status: "dispatched" as const,
-            taskType: "execute",
-            taskVersion: item.task.taskVersion + 1,
-          })), input.now);
         }
         if (suspendedTasks.length > 0) {
           await trx.updateTable(TASK_TABLE).set({
@@ -2440,7 +2589,7 @@ export class MysqlWorkflowRuntimeRepository implements
       await trx.updateTable(TASK_TABLE).set({
         bucket_time: floorToMinute(input.completedAt),
         due_at: input.completedAt,
-        status: decision === "execute" ? "dispatched" : decision === "defer" ? "suspended" : "cancelled",
+        status: decision === "execute" ? "pending" : decision === "defer" ? "suspended" : "cancelled",
         task_type: "execute",
         task_version: nextTaskVersion,
       }).where("id", "=", task.id).where("task_version", "=", task.taskVersion)
@@ -2461,15 +2610,6 @@ export class MysqlWorkflowRuntimeRepository implements
           uid: normalizeTenantId(run.uid),
           workflowId: run.workflowId,
         }]);
-      }
-      if (decision === "execute") {
-        await insertTaskOutbox(trx, {
-          ...task,
-          dueAt: input.completedAt,
-          status: "dispatched",
-          taskType: "execute",
-          taskVersion: nextTaskVersion,
-        }, input.completedAt);
       }
       return true;
     });
@@ -2951,7 +3091,6 @@ export class MysqlWorkflowRuntimeRepository implements
       const nextSequence = run.sequence + 1;
       let nextTask: WorkflowTaskRecord | null = null;
       if (forwardRoute?.kind === "success" && latestRevision !== null) {
-        const dispatchImmediately = boundaryDecision === "execute";
         nextTask = await insertTask(trx, {
           createdAt: now,
           dueAt: now,
@@ -2961,12 +3100,11 @@ export class MysqlWorkflowRuntimeRepository implements
           runId: run.id,
           sequence: nextSequence,
           shardId: run.shardId,
-          status: dispatchImmediately ? "dispatched" : "suspended",
+          status: boundaryDecision === "defer" ? "suspended" : "pending",
           taskType: "execute",
           uid: input.uid,
           workflowId: run.workflowId,
         });
-        if (dispatchImmediately) await insertTaskOutbox(trx, nextTask, now);
       }
 
       const nextRun: WorkflowRunRecord = {

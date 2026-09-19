@@ -193,6 +193,7 @@ describe("workflow worker observability", () => {
       ackedBoundary: 0,
       capabilityFailed: 0,
       completed: 1,
+      capacityUnavailable: 0,
       deferred: 1,
       event: "workflow.task.consume.summary",
       invalid: 1,
@@ -201,8 +202,37 @@ describe("workflow worker observability", () => {
       rateLimited: 0,
       received: 5,
       retryScheduled: 0,
+      tenantCapacityLimited: 0,
       role: "task-consumer",
     }, "workflow task consume summary");
+  });
+
+  it("keeps tenant capacity deferrals separate from message rate limits", () => {
+    const logger = createLogger();
+    const observer = createWorkflowTaskConsumeObserver({
+      logger,
+      options: { intervalMs: 3_600_000 },
+    });
+    const command = { runId: "5", taskId: "7", taskVersion: 3, uid: "9" };
+
+    observer.record({ id: "message-1", redeliveryCount: 0, topic: "task-topic" }, {
+      code: "tenant_capacity_limited",
+      command,
+      disposition: "ack",
+    });
+    observer.record({ id: "message-2", redeliveryCount: 0, topic: "task-topic" }, {
+      code: "capacity_unavailable",
+      command,
+      disposition: "ack",
+    });
+    observer.flush();
+    observer.close();
+
+    expect(logger.info).toHaveBeenCalledWith(expect.objectContaining({
+      capacityUnavailable: 1,
+      rateLimited: 0,
+      tenantCapacityLimited: 1,
+    }), "workflow task consume summary");
   });
 
   it("keeps idle polling at debug level", () => {

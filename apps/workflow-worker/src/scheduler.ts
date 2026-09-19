@@ -1,5 +1,6 @@
 import {
   WORKFLOW_RUNTIME_BATCH_LIMIT,
+  type WorkflowTaskCapacityPort,
   type WorkflowSchedulerRepository,
 } from "@chatai/workflow-runtime";
 
@@ -11,6 +12,7 @@ export async function scheduleWorkflowTasks(input: {
   now: Date;
   repository: WorkflowSchedulerRepository;
   retryDelayMs: number;
+  taskCapacityPort?: WorkflowTaskCapacityPort;
 }) {
   let transitionError: unknown;
   let transition = { claimed: false, dead: 0, failed: 0, hasMore: false, transitioned: 0 };
@@ -29,10 +31,66 @@ export async function scheduleWorkflowTasks(input: {
 
   let dispatched;
   try {
-    dispatched = await input.repository.dispatchDueTasks({
-      limit: input.limit,
-      now: input.now,
-    });
+    if (!input.taskCapacityPort) {
+      dispatched = await input.repository.dispatchDueTasks({
+        limit: input.limit,
+        now: input.now,
+      });
+    } else {
+      const availability = await input.taskCapacityPort.availability();
+      if (availability.kind === "unavailable" || availability.available <= 0) {
+        dispatched = { cancelled: 0, dispatched: 0, suspended: 0 };
+      } else {
+        const candidates = await input.repository.listDueTaskCandidates({
+          limit: Math.min(input.limit, availability.available),
+          now: input.now,
+        });
+        const reservations = new Map<string, {
+          lease: Extract<Awaited<ReturnType<WorkflowTaskCapacityPort["reserve"]>>, { kind: "reserved" }>['lease'];
+          uid: number;
+        }>();
+        for (const candidate of candidates) {
+          const reservation = await input.taskCapacityPort.reserve({
+            leaseDurationMs: input.leaseDurationMs,
+            taskId: candidate.taskId,
+            taskVersion: candidate.taskVersion + 1,
+            uid: candidate.uid,
+          });
+          if (reservation.kind === "reserved") {
+            reservations.set(candidate.taskId, { lease: reservation.lease, uid: candidate.uid });
+            continue;
+          }
+          if (reservation.kind === "deferred"
+            && reservation.reasonCode === "WORKFLOW_TASK_CAPACITY_UNAVAILABLE") break;
+        }
+        const reservedCandidates = candidates.filter(candidate => reservations.has(candidate.taskId));
+        try {
+          const result = await input.repository.dispatchReservedTasks({
+            candidates: reservedCandidates,
+            now: input.now,
+          });
+          const dispatchedIds = new Set(result.dispatched.map(candidate => candidate.taskId));
+          await Promise.all([...reservations]
+            .filter(([taskId]) => !dispatchedIds.has(taskId))
+            .map(([, reservation]) => input.taskCapacityPort!.releaseReservation({
+              lease: reservation.lease,
+              uid: reservation.uid,
+            })));
+          dispatched = {
+            cancelled: result.cancelled,
+            dispatched: result.dispatched.length,
+            suspended: result.suspended,
+          };
+        } catch (error) {
+          await Promise.all([...reservations.values()].map(reservation =>
+            input.taskCapacityPort!.releaseReservation({
+              lease: reservation.lease,
+              uid: reservation.uid,
+            })));
+          throw error;
+        }
+      }
+    }
   } catch (dispatchError) {
     if (transitionError) {
       throw new AggregateError(

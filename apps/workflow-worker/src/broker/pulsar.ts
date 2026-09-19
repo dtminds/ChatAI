@@ -43,6 +43,7 @@ export class PulsarWorkflowBroker implements WorkflowBroker {
   async subscribe(input: WorkflowBrokerSubscribeInput): Promise<WorkflowBrokerSubscription> {
     this.assertOpen();
     const consumer = await this.client.subscribe({
+      ackTimeoutMs: input.ackTimeoutMs ?? 0,
       deadLetterPolicy: input.deadLetterTopic ? {
         deadLetterTopic: input.deadLetterTopic,
         maxRedeliverCount: input.maxRedeliverCount,
@@ -61,6 +62,7 @@ export class PulsarWorkflowBroker implements WorkflowBroker {
       },
       isClosing: () => state.closing,
       maxInFlight: input.maxInFlight,
+      beforeReceive: input.beforeReceive,
       receive: () => consumer.receive(),
     })];
     this.consumers.set(consumer, state);
@@ -137,6 +139,7 @@ export async function handlePulsarReceivedMessage(
 }
 
 export function startBoundedReceiveLoop<T>(input: {
+  beforeReceive?: () => Promise<boolean>;
   handle(value: T): Promise<void>;
   isClosing(): boolean;
   maxInFlight: number;
@@ -149,6 +152,7 @@ export function startBoundedReceiveLoop<T>(input: {
 }
 
 async function runBoundedReceiveLoop<T>(input: {
+  beforeReceive?: () => Promise<boolean>;
   handle(value: T): Promise<void>;
   isClosing(): boolean;
   maxInFlight: number;
@@ -158,6 +162,10 @@ async function runBoundedReceiveLoop<T>(input: {
   while (!input.isClosing()) {
     if (inFlight.size >= input.maxInFlight) {
       await Promise.race(inFlight);
+      continue;
+    }
+    if (input.beforeReceive && !(await input.beforeReceive())) {
+      await new Promise(resolve => setTimeout(resolve, 250));
       continue;
     }
     let value: T;

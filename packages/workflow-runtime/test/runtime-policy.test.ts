@@ -22,6 +22,7 @@ import {
   WorkflowRuntimeService,
   type WorkflowCapabilityExecutionBinding,
   type WorkflowRuntimeDefinitionRecord,
+  type WorkflowTaskCapacityPort,
 } from "../src/index.js";
 
 const now = new Date("2026-08-10T00:00:00.000Z");
@@ -195,6 +196,78 @@ describe("Workflow runtime policy", () => {
     });
   });
 
+  it("fails before claim when tenant task capacity is unavailable", async () => {
+    const taskCapacityPort: WorkflowTaskCapacityPort = {
+      availability: vi.fn(async () => ({ available: 0, kind: "available" as const })),
+      acquire: vi.fn(async () => ({
+        kind: "deferred" as const,
+        reasonCode: "WORKFLOW_TASK_TENANT_CAPACITY_LIMITED" as const,
+        retryAt: new Date(now.getTime() + 60_000),
+      })),
+      releaseReservation: vi.fn(async () => {}),
+      reserve: vi.fn(async () => ({
+        kind: "deferred" as const,
+        reasonCode: "WORKFLOW_TASK_TENANT_CAPACITY_LIMITED" as const,
+        retryAt: new Date(now.getTime() + 60_000),
+      })),
+      renew: vi.fn(async () => {}),
+      release: vi.fn(async () => {}),
+    };
+    const harness = createHarness({
+      entitlement: async () => ({ activeRunLimit: 10_000, entitled: true }),
+      taskCapacityPort,
+    });
+    const started = await harness.service.startRun(entryInput());
+
+    await expect(harness.service.executeTask({
+      now,
+      taskId: started.task.id,
+      taskVersion: started.task.taskVersion,
+      uid: 9,
+      workerId: "worker-1",
+    })).rejects.toMatchObject({
+      code: "WORKFLOW_TASK_TENANT_CAPACITY_LIMITED",
+    });
+    expect(taskCapacityPort.acquire).toHaveBeenCalledWith(expect.objectContaining({
+      leaseDurationMs: expect.any(Number),
+      taskId: started.task.id,
+      taskVersion: 1,
+      uid: 9,
+    }));
+    expect(taskCapacityPort.release).not.toHaveBeenCalled();
+    await expect(harness.runtime.findTask(9, started.task.id)).resolves.toMatchObject({
+      attempt: 0,
+      status: "pending",
+      taskVersion: 1,
+    });
+  });
+
+  it("releases tenant task capacity after a successful execution", async () => {
+    const lease = { leaseId: "9|task|1", token: "lease-token" };
+    const taskCapacityPort: WorkflowTaskCapacityPort = {
+      availability: vi.fn(async () => ({ available: 1, kind: "available" as const })),
+      acquire: vi.fn(async () => ({ kind: "allowed" as const, lease })),
+      releaseReservation: vi.fn(async () => {}),
+      reserve: vi.fn(async () => ({ kind: "reserved" as const, lease })),
+      renew: vi.fn(async () => {}),
+      release: vi.fn(async () => {}),
+    };
+    const harness = createHarness({
+      entitlement: async () => ({ activeRunLimit: 10_000, entitled: true }),
+      taskCapacityPort,
+    });
+    const started = await harness.service.startRun(entryInput());
+
+    await expect(harness.service.executeTask({
+      now,
+      taskId: started.task.id,
+      taskVersion: started.task.taskVersion,
+      uid: 9,
+      workerId: "worker-1",
+    })).resolves.toMatchObject({ kind: "success" });
+    expect(taskCapacityPort.release).toHaveBeenCalledWith({ lease, uid: 9 });
+  });
+
   it("commits a terminal Prepare failure for a core node that needs global context", async () => {
     const harness = createHarness({
       entitlement: async () => ({ activeRunLimit: 10_000, entitled: true }),
@@ -296,7 +369,7 @@ describe("Workflow runtime policy", () => {
     });
     expect(harness.onEntitlementDeactivated).toHaveBeenCalledTimes(1);
     await expect(harness.runtime.findTask(9, started.task.id)).resolves.toMatchObject({
-      status: "dispatched",
+      status: "pending",
       taskVersion: 1,
     });
   });
@@ -355,7 +428,7 @@ describe("Workflow runtime policy", () => {
     expect(entitlement).not.toHaveBeenCalledWith(expect.objectContaining({ forceRefresh: true }));
     expect(harness.deactivateWorkflowForEntitlementLoss).not.toHaveBeenCalled();
     await expect(harness.runtime.findTask(9, started.task.id)).resolves.toMatchObject({
-      status: "dispatched",
+      status: "pending",
       taskVersion: 1,
     });
   });
@@ -656,6 +729,7 @@ function createHarness(options: {
   executionSpec?: WorkflowExecutionSpec;
   marketingMessagePort?: boolean;
   messageQueryPort?: boolean;
+  taskCapacityPort?: WorkflowTaskCapacityPort;
 }) {
   const runtime = new InMemoryWorkflowRuntimeRepository(undefined, () => now);
   const deactivateWorkflowForEntitlementLoss = vi.fn(async () => ({
@@ -747,6 +821,7 @@ function createHarness(options: {
           }
         : {}),
       onEntitlementDeactivated,
+      ...(options.taskCapacityPort ? { taskCapacityPort: options.taskCapacityPort } : {}),
       ...(options.messageQueryPort
         ? { messageQueryPort: { execute: async () => ({}) } }
         : {}),

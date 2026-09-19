@@ -54,6 +54,7 @@ import {
 } from "./message-query-port.js";
 import { MysqlWorkflowMessageCapabilityPort } from "./message-capability-port.js";
 import { createWorkflowMessageRateLimiter } from "./message-rate-limiter.js";
+import { createWorkflowTaskCapacity } from "./task-capacity.js";
 import { HttpWorkflowTagCapabilityPort } from "./tag-capability-port.js";
 import { HttpWorkflowTagQueryCapabilityPort } from "./tag-query-capability-port.js";
 import { MysqlWorkflowHandoffCapabilityPort } from "./handoff-capability-port.js";
@@ -106,6 +107,12 @@ export async function startWorkflowWorkerProcess(env: NodeJS.ProcessEnv = proces
   const messageRateLimiter = createWorkflowMessageRateLimiter({
     client: entitlementCache.client,
     config: config.messageRateLimit,
+    keyPrefix: config.redis.keyPrefix,
+    logger,
+  });
+  const taskCapacity = createWorkflowTaskCapacity({
+    client: entitlementCache.client,
+    config: config.taskCapacity,
     keyPrefix: config.redis.keyPrefix,
     logger,
   });
@@ -226,6 +233,7 @@ export async function startWorkflowWorkerProcess(env: NodeJS.ProcessEnv = proces
         logWorkflowEntitlementDeactivated(logger, observation),
       inferenceTotalTimeoutMs: config.runtime.inferenceTotalTimeoutMs,
       taskLeaseDurationMs: config.runtime.leaseDurationMs,
+      taskCapacityPort: taskCapacity.port,
     },
   );
   const reconcilerService = new WorkflowRuntimeReconciler(repository, { entitlementPort });
@@ -282,6 +290,9 @@ export async function startWorkflowWorkerProcess(env: NodeJS.ProcessEnv = proces
       runtimeState,
       scheduler: scheduleWorkflowTasks,
       schedulerRepository: repository,
+      taskCapacityController: taskCapacity.controller,
+      taskCapacityRepository: repository,
+      taskCapacityPort: taskCapacity.port,
       taskConsumer: startTaskConsumer,
       triggerBindingReader: repository,
       workerId,
@@ -336,6 +347,7 @@ export * from "./logger.js";
 export * from "./llm-test-adapter.js";
 export * from "./message-capability-port.js";
 export * from "./message-rate-limiter.js";
+export * from "./task-capacity.js";
 export * from "./marketing-message-port.js";
 export * from "./order-query-capability-port.js";
 export * from "./outbox-publisher.js";

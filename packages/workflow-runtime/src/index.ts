@@ -36,4 +36,5 @@ export * from "./tag.js";
 export * from "./tag-query.js";
 export * from "./ticket-create.js";
 export * from "./test-attempt-repository.js";
+export * from "./task-capacity.js";
 export * from "./types.js";

@@ -93,7 +93,7 @@ describe("Workflow Entry runtime composition", () => {
 
     expect(repository.snapshot()).toMatchObject({
       inbox: [{ consumer: "workflow-entry", messageId: "9:event-1", uid: 9 }],
-      outbox: [expect.any(Object), expect.any(Object)],
+      outbox: [],
       runs: [
         { subjectId: "chatai_external_456", subjectType: "chatai_contact", workflowId: "31" },
         { subjectId: "3267", subjectType: "wecom_contact", workflowId: "32" },

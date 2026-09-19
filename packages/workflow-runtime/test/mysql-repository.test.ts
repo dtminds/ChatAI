@@ -20,6 +20,91 @@ describe("MysqlWorkflowRuntimeRepository", () => {
     expect(db.snapshotReadCount).toBe(2);
   });
 
+  it("probes due Task UIDs from active capacity tenants instead of a global Task window", async () => {
+    const db = createDueTaskUidsDbMock({
+      candidateRows: [{ uid: 101 }, { uid: 202 }],
+      dueUidRows: [{ uid: 101 }, { uid: 202 }],
+    });
+    const repository = new MysqlWorkflowRuntimeRepository(db as never);
+
+    await expect(repository.listDueTaskUids({
+      limit: 10,
+      now: new Date("2026-09-19T00:00:00.000Z"),
+    })).resolves.toEqual({
+      scanComplete: true,
+      scannedUidCount: 2,
+      uids: [101, 202],
+    });
+
+    expect(db.selects.map(select => select.table)).toEqual([
+      "xy_wap_embed_workflow_capacity_guard",
+      "xy_wap_embed_workflow_task as task",
+    ]);
+    const taskSelect = db.selects[1]!;
+    expect(taskSelect.distinct).toBe(true);
+    expect(taskSelect.orderBy).toEqual([]);
+    expect(taskSelect.limitValue).toBe(2);
+    expect(taskSelect.where).toContainEqual(["task.uid", "in", [101, 202]]);
+  });
+
+  it("excludes active capacity tenants without due Tasks from the result", async () => {
+    const db = createDueTaskUidsDbMock({
+      candidateRows: [{ uid: 101 }, { uid: 202 }],
+      dueUidRows: [{ uid: 202 }],
+    });
+    const repository = new MysqlWorkflowRuntimeRepository(db as never);
+
+    await expect(repository.listDueTaskUids({
+      limit: 10,
+      now: new Date("2026-09-19T00:00:00.000Z"),
+    })).resolves.toEqual({
+      scanComplete: true,
+      scannedUidCount: 1,
+      uids: [202],
+    });
+  });
+
+  it("keeps the due UID scan incomplete when active capacity tenants exceed the bound", async () => {
+    const db = createDueTaskUidsDbMock({
+      candidateRows: [{ uid: 101 }, { uid: 202 }, { uid: 303 }],
+      dueUidRows: [{ uid: 101 }, { uid: 202 }],
+    });
+    const repository = new MysqlWorkflowRuntimeRepository(db as never);
+
+    await expect(repository.listDueTaskUids({
+      limit: 2,
+      now: new Date("2026-09-19T00:00:00.000Z"),
+    })).resolves.toEqual({
+      scanComplete: false,
+      scannedUidCount: 2,
+      uids: [101, 202],
+    });
+  });
+
+  it("groups stalled Tasks and orders them by their oldest sent Outbox row", async () => {
+    const db = createStalledDispatchedTasksDbMock();
+    const repository = new MysqlWorkflowRuntimeRepository(db as never);
+
+    await expect(repository.listStalledDispatchedTasks({
+      dispatchedBefore: new Date("2026-09-19T00:00:00.000Z"),
+      limit: 10,
+    })).resolves.toEqual([
+      { taskId: "7", taskVersion: 3, uid: 9 },
+      { taskId: "8", taskVersion: 4, uid: 10 },
+    ]);
+
+    expect(db.select.distinct).toBe(false);
+    expect(db.select.groupBy).toEqual([
+      "task.id",
+      "task.task_version",
+      "task.uid",
+    ]);
+    expect(db.select.orderBy).toEqual([
+      ["oldest_sent_at", "asc"],
+      ["task.id", "asc"],
+    ]);
+  });
+
   it("maps valid runtime snapshots while reporting invalid and missing tuple keys independently", async () => {
     const db = createRuntimeSnapshotDbMock([
       runtimeSnapshotRow({ workflowId: "31" }),
@@ -1286,6 +1371,98 @@ function createRuntimeSnapshotDbMock(rows: Record<string, unknown>[] = []) {
           return builder;
         },
         async execute() { db.snapshotReadCount += 1; return rows; },
+      };
+      return builder;
+    },
+  };
+  return db;
+}
+
+function createDueTaskUidsDbMock(input: {
+  candidateRows: Array<{ uid: number }>;
+  dueUidRows: Array<{ uid: number }>;
+}) {
+  const selects: Array<{
+    distinct: boolean;
+    limitValue: number | null;
+    orderBy: unknown[][];
+    table: string;
+    where: unknown[][];
+  }> = [];
+  const db = {
+    selects,
+    selectFrom(table: string) {
+      const state = {
+        distinct: false,
+        limitValue: null as number | null,
+        orderBy: [] as unknown[][],
+        table,
+        where: [] as unknown[][],
+      };
+      selects.push(state);
+      const builder = {
+        distinct() {
+          state.distinct = true;
+          return builder;
+        },
+        limit(value: number) {
+          state.limitValue = value;
+          return builder;
+        },
+        modifyFront() { return builder; },
+        orderBy(...args: unknown[]) {
+          state.orderBy.push(args);
+          return builder;
+        },
+        select() { return builder; },
+        where(...args: unknown[]) {
+          state.where.push(args);
+          return builder;
+        },
+        async execute() {
+          return table === "xy_wap_embed_workflow_capacity_guard"
+            ? input.candidateRows
+            : input.dueUidRows;
+        },
+      };
+      return builder;
+    },
+  };
+  return db;
+}
+
+function createStalledDispatchedTasksDbMock() {
+  const select = {
+    distinct: false,
+    groupBy: [] as unknown[],
+    orderBy: [] as unknown[][],
+  };
+  const db = {
+    select,
+    selectFrom() {
+      const builder = {
+        distinct() {
+          select.distinct = true;
+          return builder;
+        },
+        groupBy(columns: unknown) {
+          select.groupBy = Array.isArray(columns) ? columns : [columns];
+          return builder;
+        },
+        innerJoin() { return builder; },
+        limit() { return builder; },
+        orderBy(...args: unknown[]) {
+          select.orderBy.push(args);
+          return builder;
+        },
+        select() { return builder; },
+        where() { return builder; },
+        async execute() {
+          return [
+            { id: "7", task_version: 3, uid: 9 },
+            { id: "8", task_version: 4, uid: 10 },
+          ];
+        },
       };
       return builder;
     },
@@ -2930,7 +3107,13 @@ function createDispatchDueTasksDbMock(taskCount = 2) {
         where() { return builder; },
         async execute() {
           if (table.startsWith("xy_wap_embed_workflow_task")) {
-            return locked ? claimedTasks : [];
+            return locked
+              ? claimedTasks
+              : claimedTasks.map(task => ({
+                  id: task.id,
+                  task_version: task.task_version,
+                  uid: task.uid,
+                }));
           }
           if (table === "xy_wap_embed_workflow_definition") {
             return [{ biz_status: 1, id: "42", runtime_status: "active", uid: 8 }];

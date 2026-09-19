@@ -332,17 +332,15 @@ class RedisWorkflowTaskCapacity implements WorkflowTaskCapacityPort, WorkflowTas
         await this.writeQuotaBatch(writes);
         quotaChangedCount += writes.length;
       }
-      if (scan.scanComplete) {
+      if (scan.scanComplete && contenderCount < 2) {
         const currentUids = new Set(contenders);
         for (const rawUid of restrictedUids) {
           const uid = Number(rawUid);
           if (!Number.isSafeInteger(uid) || uid <= 0 || currentUids.has(uid)) continue;
           if (await this.restoreQuotaIfStable(uid)) quotaChangedCount += 1;
         }
-        if (contenderCount < 2) {
-          const [uid] = contenders;
-          if (uid !== undefined && await this.restoreQuotaIfStable(uid)) quotaChangedCount += 1;
-        }
+        const [uid] = contenders;
+        if (uid !== undefined && await this.restoreQuotaIfStable(uid)) quotaChangedCount += 1;
       }
       const summary = this.summary({
         controllerLockSkipped: false,

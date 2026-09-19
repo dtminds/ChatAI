@@ -223,4 +223,48 @@ describe("Workflow Task capacity", () => {
       expect.objectContaining({ quota: "1" }),
     );
   });
+
+  it("does not restore a departed UID while multiple contenders remain", async () => {
+    const competingConfig = { ...config, globalConcurrency: 10, tenantMaxSharePercent: 90 };
+    const client = {
+      eval: vi.fn(async () => "OK"),
+      hget: vi.fn(async () => "5"),
+      hgetall: vi.fn(async () => ({ quota: "1", stable_cycles: "1" })),
+      smembers: vi.fn(async () => ["303"]),
+      srem: vi.fn(async () => 1),
+      set: vi.fn(async () => "OK"),
+      time: vi.fn(async () => ["0", "0"]),
+      pipeline: vi.fn(() => ({
+        exec: vi.fn(async () => []),
+        hset: vi.fn(),
+        pexpire: vi.fn(),
+        sadd: vi.fn(),
+        srem: vi.fn(),
+      })),
+      zrange: vi.fn(async () => []),
+      zrangebyscore: vi.fn(async () => []),
+      zremrangebyscore: vi.fn(async () => 0),
+    } as unknown as Redis;
+    const { controller } = createWorkflowTaskCapacity({
+      config: competingConfig,
+      keyPrefix: "test:",
+      logger,
+      client,
+    });
+
+    const result = await controller.run({
+      now: new Date("2026-09-19T00:00:00.000Z"),
+      repository: {
+        listDueTaskUids: vi.fn(async () => ({
+          scanComplete: true,
+          scannedTaskCount: 2,
+          uids: [101, 202],
+        })),
+      },
+    });
+
+    expect(result).toMatchObject({ knownContenderCount: 2, quotaChangedCount: 2 });
+    expect(client.hgetall).not.toHaveBeenCalled();
+    expect(client.srem).not.toHaveBeenCalled();
+  });
 });

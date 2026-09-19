@@ -869,7 +869,6 @@ export class WorkflowRuntimeService {
             claimed.task.createdAt,
             preparedContext,
           ));
-      throwIfWorkflowTaskCapacityLeaseLost(capacitySignal);
       if (executionResult.type === "event-wait") {
         throw new Error(`Unexpected Wait Event result for ${node.kind}`);
       }
@@ -880,7 +879,6 @@ export class WorkflowRuntimeService {
         WORKFLOW_NODE_OUTPUT_MAX_BYTES,
       );
       if (executionResult.type === "wait") {
-        throwIfWorkflowTaskCapacityLeaseLost(capacitySignal);
         const waiting = await this.runtimeRepository.beginFixedWait({
           dueAt: new Date(executionResult.dueAt),
           expectedRunLockVersion: run.lockVersion,
@@ -905,7 +903,6 @@ export class WorkflowRuntimeService {
         exitedAt: completedAt,
       });
       assertWorkflowRuntimeValue(nextContext, "run-context", WORKFLOW_RUN_CONTEXT_MAX_BYTES);
-      throwIfWorkflowTaskCapacityLeaseLost(capacitySignal);
     } catch (error) {
       if (error instanceof WorkflowCapabilityDeferredError
         && isWorkflowTaskDeferReasonCode(error.code)) {
@@ -1016,7 +1013,6 @@ export class WorkflowRuntimeService {
       taskId: task.id,
       uid: input.uid,
     };
-    throwIfWorkflowTaskCapacityLeaseLost(capacitySignal);
     const committed = await this.runtimeRepository.commitNodeResult(commitInput);
     if (committed.kind === "already-processed") throw alreadyProcessedError();
     if (committed.kind !== "success") throw staleTaskError();
@@ -1445,7 +1441,6 @@ export class WorkflowRuntimeService {
             state,
             capacitySignal: input.capacitySignal,
           });
-          throwIfWorkflowTaskCapacityLeaseLost(input.capacitySignal);
           if (started.kind === "waiting") {
             return { kind: "inference-waiting", type: "inference-wait" };
           }
@@ -1509,7 +1504,6 @@ export class WorkflowRuntimeService {
             uid: input.input.uid,
             workflowId: state.workflowId,
           }), input.capacitySignal);
-        throwIfWorkflowTaskCapacityLeaseLost(input.capacitySignal);
         state = await this.transitionAiCollectStateOrThrow({
           now: this.clock(),
           taskId: state.taskId,
@@ -1567,7 +1561,6 @@ export class WorkflowRuntimeService {
             state,
             capacitySignal: input.capacitySignal,
           });
-          throwIfWorkflowTaskCapacityLeaseLost(input.capacitySignal);
           if (started.kind === "waiting") {
             return { kind: "inference-waiting", type: "inference-wait" };
           }
@@ -1684,7 +1677,6 @@ export class WorkflowRuntimeService {
       if (waiting.kind === "workflow-unavailable") throw workflowUnavailable();
       if (waiting.kind !== "success") throw staleTaskError();
     }
-    throwIfWorkflowTaskCapacityLeaseLost(input.capacitySignal);
     const state = await this.transitionAiCollectStateOrThrow({
       now: this.clock(),
       taskId: input.state.taskId,
@@ -1697,7 +1689,6 @@ export class WorkflowRuntimeService {
       },
       uid: input.state.uid,
     });
-    throwIfWorkflowTaskCapacityLeaseLost(input.capacitySignal);
     return existing && (existing.status === "succeeded" || existing.status === "failed")
       ? { kind: "adopted", state }
       : { kind: "waiting" };
@@ -1845,11 +1836,9 @@ export class WorkflowRuntimeService {
         input.node,
         createExecutionContext(input.run, input.input.now, input.claimedTask.dueAt),
       );
-      throwIfWorkflowTaskCapacityLeaseLost(input.capacitySignal);
       if (executionResult.type !== "event-wait") {
         throw new Error(`Wait Event executor returned ${executionResult.type}`);
       }
-      throwIfWorkflowTaskCapacityLeaseLost(input.capacitySignal);
       const waiting = await this.runtimeRepository.beginEventWait({
         effectiveFrom: input.input.now,
         eventType: executionResult.eventType,
@@ -1875,7 +1864,6 @@ export class WorkflowRuntimeService {
           : workflowUnavailable();
       }
       if (waiting.kind !== "success") throw staleTaskError();
-      throwIfWorkflowTaskCapacityLeaseLost(input.capacitySignal);
       return {
         kind: "waiting" as const,
         run: waiting.run,
@@ -1918,7 +1906,6 @@ export class WorkflowRuntimeService {
         exitedAt: completedAt,
       });
       assertWorkflowRuntimeValue(nextContext, "run-context", WORKFLOW_RUN_CONTEXT_MAX_BYTES);
-      throwIfWorkflowTaskCapacityLeaseLost(input.capacitySignal);
     } catch (error) {
       if (!(error instanceof WorkflowRuntimeValueError)) throw error;
       return this.commitCoreNodeFailure({
@@ -1931,7 +1918,6 @@ export class WorkflowRuntimeService {
       });
     }
 
-    throwIfWorkflowTaskCapacityLeaseLost(input.capacitySignal);
     const committed = await this.runtimeRepository.commitNodeResult({
       context: nextContext,
       expectedRunLockVersion: input.run.lockVersion,

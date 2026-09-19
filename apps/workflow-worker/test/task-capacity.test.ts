@@ -216,6 +216,51 @@ describe("Workflow Task capacity", () => {
     );
   });
 
+  it("uses the calculated quota when an incomplete scan has no stored UID quota", async () => {
+    const incompleteScanConfig = { ...config, globalConcurrency: 10, tenantMaxSharePercent: 90 };
+    const pipeline = {
+      exec: vi.fn(async () => []),
+      hset: vi.fn(),
+      pexpire: vi.fn(),
+    };
+    const client = {
+      eval: vi.fn(async () => "OK"),
+      hget: vi.fn(async () => null),
+      pipeline: vi.fn(() => pipeline),
+      set: vi.fn(async () => "OK"),
+      time: vi.fn(async () => ["0", "0"]),
+      zrange: vi.fn(async () => []),
+      zrangebyscore: vi.fn(async () => []),
+      zremrangebyscore: vi.fn(async () => 0),
+    } as unknown as Redis;
+    const { controller } = createWorkflowTaskCapacity({
+      config: incompleteScanConfig,
+      keyPrefix: "test:",
+      logger,
+      client,
+    });
+
+    await controller.run({
+      now: new Date("2026-09-19T00:00:00.000Z"),
+      repository: {
+        listDueTaskUids: vi.fn(async () => ({
+          scanComplete: false,
+          scannedUidCount: 2,
+          uids: [101, 202],
+        })),
+      },
+    });
+
+    expect(pipeline.hset).toHaveBeenCalledWith(
+      "test:workflow:task-capacity:quota:101",
+      expect.objectContaining({ quota: "5" }),
+    );
+    expect(pipeline.hset).toHaveBeenCalledWith(
+      "test:workflow:task-capacity:quota:202",
+      expect.objectContaining({ quota: "5" }),
+    );
+  });
+
   it("uses one saturated quota after demand exceeds the managed UID threshold", async () => {
     const saturatedConfig = { ...config, globalConcurrency: 1_000, tenantMaxSharePercent: 90 };
     const demandUids = Array.from({ length: 101 }, (_, index) => String(index + 1));

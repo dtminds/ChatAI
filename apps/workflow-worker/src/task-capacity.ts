@@ -370,8 +370,10 @@ class RedisWorkflowTaskCapacity implements WorkflowTaskCapacityPort, WorkflowTas
         for (const uid of contenders) {
           const current = await this.client.hget(this.quotaKey(uid), "quota");
           assertControllerLockHeld();
-          const currentQuota = Number(current);
-          const effectiveQuota = scan.scanComplete || !Number.isFinite(currentQuota)
+          const currentQuota = current === null ? undefined : Number(current);
+          const effectiveQuota = scan.scanComplete
+            || currentQuota === undefined
+            || !Number.isFinite(currentQuota)
             ? quota
             : Math.min(quota, currentQuota);
           writes.push({ stableCycles: 0, uid, quota: effectiveQuota });

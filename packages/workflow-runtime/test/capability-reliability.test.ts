@@ -111,6 +111,63 @@ describe("workflow capability reliability", () => {
     }
   });
 
+  it("commits a completed node result after capacity lease renewal is lost", async () => {
+    vi.useFakeTimers();
+    try {
+      const runtime = new InMemoryWorkflowRuntimeRepository(undefined, () => now);
+      const lease = { leaseId: "9|task|1", token: "lease-token" };
+      const taskCapacityPort: WorkflowTaskCapacityPort = {
+        acquire: vi.fn(async () => ({ kind: "allowed" as const, lease })),
+        renew: vi.fn(async () => {
+          throw new Error("Redis unavailable");
+        }),
+        release: vi.fn(async () => {}),
+      };
+      const executors = new WorkflowNodeExecutorRegistry().register("start", {
+        execute: async () => {
+          await vi.advanceTimersByTimeAsync(1_000);
+          return { output: { completed: true }, sourceOutletId: "default", type: "advance" as const };
+        },
+      });
+      const service = createService(runtime, async () => ({}), {
+        capabilityTimeoutMs: 1_000,
+        executors,
+        spec: coreOutputSpec(),
+        taskCapacityPort,
+        taskLeaseDurationMs: 2_000,
+      });
+      const started = await service.startRun({
+        entryEventId: "capacity-lost-after-result",
+        expectedRevision: 1,
+        subjectId: "customer-1",
+        subjectType: "chatai_contact",
+        trigger: {},
+        uid: 9,
+        workflowId: "31",
+      });
+
+      await expect(service.executeTask({
+        now,
+        taskId: started.task.id,
+        taskVersion: started.task.taskVersion,
+        uid: 9,
+        workerId: "worker-1",
+      })).resolves.toMatchObject({
+        kind: "success",
+        nextTask: { nodeId: "end" },
+        run: { context: { outputs: { start: { completed: true } } } },
+      });
+      expect(taskCapacityPort.renew).toHaveBeenCalledOnce();
+      expect(taskCapacityPort.release).toHaveBeenCalledWith({ lease, uid: 9 });
+      expect(runtime.tasks.find(task => task.id === started.task.id)).toMatchObject({
+        attempt: 1,
+        status: "completed",
+      });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("does not resend a smartsheet action after a crash or a lost completion commit", async () => {
     for (const crashAt of ["adapter", "commit"] as const) {
       const runtime = new InMemoryWorkflowRuntimeRepository(undefined, () => now);

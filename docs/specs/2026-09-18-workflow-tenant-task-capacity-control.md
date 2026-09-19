@@ -38,7 +38,7 @@ Pulsar / Task Consumer
 - 保护对象是同一 `uid` 的 Task **同时执行数**，不是消息发送速率，也不是租户活跃 Run 数。
 - 全局逻辑容量为 `N`，由部署显式配置；所有 Task 执行必须先取得一个短期 Redis 执行许可。
 - 单租户无竞争时最多使用 `H = max(1, floor(N * 90%))`，保留一部分容量给新租户或其他租户；当 `N` 很小时仍至少允许一个 Task。
-- 检测到多个租户同时积压后，控制器按活跃竞争 UID 数量下调动态配额，目标值为整数 `max(1, floor(N / C))`。
+- 检测到多个租户同时积压后，控制器按活跃竞争 UID 数量下调动态配额；最多精细管理 100 个竞争 UID，超过后统一进入饱和模式，配额按 `max(1, floor(N / 100))` 计算。
 - 已经取得许可并开始执行的 Task 不抢占；配额下调只影响后续 Task。
 - 控制器周期为 5 分钟，允许在一个控制周期内存在过度占用；不承诺实时公平或严格 Round Robin。
 - 不改写现有 `dispatchDueTasks` 的全局 FIFO 逻辑，不新增 Task 调度索引，不引入 UID 级 Scheduler 轮转队列。
@@ -159,9 +159,10 @@ tenantMaxShare = 90% by default
 |---|---:|
 | 没有活跃竞争 UID | 默认值 `H` |
 | 只有一个 UID 有需求 | `H` |
-| `C >= 2` | `max(1, floor(N / C))` |
+| `2 <= C <= 100` | `max(1, floor(N / C))` |
+| `C > 100` | 全局饱和配额 `max(1, floor(N / 100))` |
 
-当 `C > N` 时，`Q(uid)=1`。这表示每个 UID 的配额仍是一个整数上限，并不表示每个 UID 获得 `N/C` 个小数槽位；实际同时运行的 UID 数仍由全局 `N` 限制。
+饱和模式不是只管理前 100 个 UID。Consumer 对所有 UID 都取 UID 动态配额、默认 `H` 和全局饱和配额中的最小值，因此未进入本轮候选集合的 UID 也不能绕过限制。实际同时运行的 UID 数仍由全局 `N` 限制。
 
 当 `Q(uid)` 从较大值降低时，不回收已有许可。只要某 UID 的有效许可数已经达到新配额，它就不能再取得新许可；已有 Task 完成或许可过期后，容量自然释放。
 
@@ -380,7 +381,7 @@ AND due_at <= now
 - `scanComplete=false` 时保留上一周期的收紧配额；没有历史配额的 UID 使用保守默认值 `H`，并明确记录“本轮竞争集合不完整”，不宣称本轮已经完成公平判断。
 - 数据库查询失败时保留上一周期配额，不把失败解释为空积压。
 
-由于 1.0 允许近似判断，扫描结果只影响后续配额，不影响 Task 状态正确性。活跃 UID 候选未被本轮完整扫描时，Consumer 的需求信号仍可以将已到达 Consumer 的 UID 加入竞争集合；在竞争 UID 尚未被扫描或消费端观测到之前，不能承诺其已经获得 `N / C` 的精确配额。
+由于 1.0 允许近似判断，扫描结果只影响后续配额，不影响 Task 状态正确性。活跃 UID 候选未被本轮完整扫描时，Consumer 的需求信号仍可以将已到达 Consumer 的 UID 加入竞争集合；在竞争 UID 尚未被扫描或消费端观测到之前，不能承诺其已经获得当前竞争规模对应的精细配额。
 
 ### 7.4 合并需求信号
 
@@ -400,17 +401,21 @@ score = lastDemandAtMs
 
 每轮控制器先删除过期 score。没有到期 Task 且需求信号已过期的 UID 不参与 `C`。
 
+控制器不完整读取需求 ZSET。删除过期 score 后最多读取 101 个 UID：前 100 个用于精细配额计算，第 101 个只用于判定已经进入饱和模式。由于 demand member 按 UID 去重，只要读到第 101 个就足以证明 `C > 100`，无需继续加载其余 UID。
+
 ### 7.5 计算动态配额
 
-设合并后的竞争集合为 `D`，`C = size(D)`：
+设控制器已知的竞争集合为 `D`，`C = size(D)`，精细管理阈值 `M = 100`：
 
 ```text
 H = max(1, floor(N * 90%))
 
 if C <= 1:
   known uid quota = H
-else:
+else if C <= M:
   quota(uid) = max(1, floor(N / C)) for uid in D
+else:
+  saturatedQuota = max(1, floor(N / M)) for every uid
 ```
 
 没有出现在 `D` 中且没有历史收紧配额的 UID 使用默认配额 `H`，但仍受全局 `N` 限制。已有收紧配额的 UID 在恢复条件满足前继续使用旧配额，不能因为一次扫描暂时只看到一个 UID 就立即恢复到 `H`。
@@ -423,17 +428,20 @@ else:
 | 100 | 2 | 50 |
 | 100 | 10 | 10 |
 | 100 | 100 | 1 |
-| 100 | 1000 | 1 |
+| 100 | 1000 | 1，进入饱和模式 |
+| 1000 | 100 | 10 |
+| 1000 | 500 | 10，进入饱和模式 |
 
-当 `C=1000` 时，Redis 中可以有 1000 个 UID 的需求 member，但不会为每个 UID 预留 `0.1` 个槽位。实际能同时执行的仍最多是 100 个 UID，剩余 UID 通过延期和后续需求信号继续竞争。
+当 `C > 100` 时，控制器不再为所有竞争 UID 逐个写配额，只刷新一个全局饱和配额 Key。该模式限制的是每个 UID 的最大占用，不保证超过 100 个 UID 严格轮转；剩余 UID 仍通过延期和后续需求信号继续竞争。
 
 ### 7.6 配额收紧与恢复
 
 - 配额收紧立即写入 Redis，但不撤销现有许可。
 - 新配额小于当前 UID 已占用许可数时，当前 UID 暂停取得新许可，直到自然下降到配额以下。
 - 发现 `C >= 2` 时立即收紧相关 UID 的配额。
-- 发现竞争消失或只剩一个竞争 UID 后，不立即恢复历史收紧配额；需要连续
-  `WORKFLOW_TASK_CAPACITY_STABLE_CYCLES` 个完整周期满足稳定条件，默认 2 个周期，之后才提升到 `H`。
+- 发现竞争消失或只剩一个已知竞争 UID 后，不立即放宽当前 UID；当前仍可见 UID 需要连续 `WORKFLOW_TASK_CAPACITY_STABLE_CYCLES` 个完整周期满足稳定条件，默认 2 个周期，之后才提升到 `H`。
+- 不维护历史受限 UID 集合。已经退出竞争集合的 UID 不再刷新其 quota Key，由 `WORKFLOW_TASK_CAPACITY_QUOTA_TTL_MS` 到期后惰性恢复到 `H`。
+- 全局饱和配额同样使用 quota TTL；持续检测到 `C > 100` 时刷新，竞争规模下降后保守保留至 TTL 到期，不因一次扫描立即放宽。
 - 控制器不能因为一次不完整扫描就恢复配额。
 - 配额记录包含控制版本和更新时间，Consumer 只读取当前有效值。
 
@@ -450,6 +458,9 @@ workflow:task-capacity:config
 workflow:task-capacity:quota:{uid}
   quota、version、stableCycles、updatedAt、expiresAt
 
+workflow:task-capacity:saturated-quota
+  C > 100 时对所有 UID 生效的全局配额，带 TTL
+
 workflow:task-capacity:leases
   ZSET: leaseId -> expiresAtMs
 
@@ -463,14 +474,14 @@ workflow:task-capacity:controller-lock
   short-lived controller ownership
 ```
 
-配额 TTL 默认不短于 `demandWindow + controllerInterval`，建议为 15 分钟。控制器每次成功运行都刷新已知 UID 的 TTL；TTL 只用于故障恢复，不能替代稳定周期判断。
+配额 TTL 默认不短于 `demandWindow + controllerInterval`，建议为 15 分钟。控制器只刷新当前已知竞争 UID 的 quota Key，离场 UID 和退出中的全局饱和配额依靠 TTL 惰性恢复；仍可见的单个 UID 继续使用稳定周期判断，避免立即放宽。
 
 ### 8.1 原子申请
 
 申请许可必须由一个 Redis Lua 脚本原子完成：
 
 1. 清理全局和当前 UID 已过期的 lease member。
-2. 读取全局 `N` 和当前 UID `Q(uid)`；没有有效配额时使用 `H`。
+2. 读取当前 UID `Q(uid)`；没有有效配额时使用 `H`。如果全局饱和配额存在，则使用二者中的较小值。
 3. 检查全局有效 lease 数是否小于 `N`。
 4. 检查当前 UID 有效 lease 数是否小于 `Q(uid)`。
 5. 两项都满足时同时写入全局 ZSET 和 UID ZSET。
@@ -547,7 +558,7 @@ Redis 许可申请失败时不得直接执行 Task。生产环境 Task Consumer 
 | `WORKFLOW_TASK_TENANT_MAX_SHARE_PERCENT` | `90` | 单 UID 无竞争最大占比 |
 | `WORKFLOW_TASK_CAPACITY_CONTROLLER_INTERVAL_MS` | `300000` | 控制周期，5 分钟 |
 | `WORKFLOW_TASK_CAPACITY_DEMAND_WINDOW_MS` | `600000` | 竞争需求保留窗口，10 分钟 |
-| `WORKFLOW_TASK_CAPACITY_STABLE_CYCLES` | `2` | 恢复借用额度需要的稳定周期数 |
+| `WORKFLOW_TASK_CAPACITY_STABLE_CYCLES` | `2` | 当前仍可见的单 UID 恢复借用额度需要的稳定周期数 |
 | `WORKFLOW_TASK_CAPACITY_SCAN_LIMIT` | `500` | 单周期最多探测的活跃候选 UID 数 |
 | `WORKFLOW_TASK_CAPACITY_DEFER_DELAY_MS` | `60000` | 容量不足的基础延期时间 |
 | `WORKFLOW_TASK_CAPACITY_DEFER_JITTER_MS` | `30000` | 容量延期随机抖动上限 |
@@ -608,7 +619,7 @@ workflow.task.capacity.controller.summary
 - `knownContenderCount`；
 - `scannedUidCount`；
 - `scanComplete`；
-- `demandUidCount`；
+- `demandUidCount`，最多记录到 101，`101` 表示需求已超过精细管理阈值；
 - `quotaChangedCount`；
 - `controllerLockSkipped`；
 - `durationMs`；
@@ -739,7 +750,7 @@ workflow.task.capacity.controller.summary
 ### 15.2 负载与故障验收
 
 - 多 Worker 副本并发申请时，全局有效 lease 不超过 `N`。
-- 1000 个 UID 竞争时，Redis demand 只按 UID 保存 member，不按 Task 展开；控制器不执行每 UID 一次 SQL。
+- 1000 个 UID 竞争时，Redis demand 只按 UID 保存 member、不按 Task 展开，控制器每轮最多读取 101 个 demand UID，并使用一个全局饱和配额 Key，不逐 UID 写入 1000 份配额。
 - 控制器扫描达到上限时不错误放大配额。
 - 控制器数据库查询失败时保留旧配额并产生告警。
 - Redis 暂时不可用时没有 Task 外部动作绕过准入。

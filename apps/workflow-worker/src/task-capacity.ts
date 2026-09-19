@@ -44,6 +44,8 @@ if existing_token then redis.call("DEL", lease_key) end
 redis.call("ZREMRANGEBYSCORE", KEYS[1], "-inf", now_ms)
 redis.call("ZREMRANGEBYSCORE", KEYS[2], "-inf", now_ms)
 local quota = tonumber(redis.call("HGET", KEYS[3], "quota") or ARGV[5])
+local saturated_quota = tonumber(redis.call("GET", KEYS[6]) or "0")
+if saturated_quota > 0 and saturated_quota < quota then quota = saturated_quota end
 if redis.call("ZCARD", KEYS[1]) >= tonumber(ARGV[4]) then
   redis.call("ZADD", KEYS[5], now_ms, ARGV[1])
   redis.call("PEXPIRE", KEYS[5], ARGV[6])
@@ -111,6 +113,7 @@ return 0
 
 const CAPACITY_UNAVAILABLE_LOG_INTERVAL_MS = 60_000;
 const CAPACITY_RELEASE_ERROR_LOG_INTERVAL_MS = 60_000;
+const MAX_MANAGED_CONTENDERS = 100;
 
 export type WorkflowTaskCapacityController = {
   run(input: {
@@ -163,12 +166,13 @@ class RedisWorkflowTaskCapacity implements WorkflowTaskCapacityPort, WorkflowTas
     try {
       const result = await this.client.eval(
         ACQUIRE_SCRIPT,
-        5,
+        6,
         this.globalLeasesKey(),
         this.uidLeasesKey(input.uid),
         this.quotaKey(input.uid),
         this.leaseKey(leaseId),
         this.demandKey(),
+        this.saturatedQuotaKey(),
         input.uid,
         leaseId,
         token,
@@ -289,59 +293,103 @@ class RedisWorkflowTaskCapacity implements WorkflowTaskCapacityPort, WorkflowTas
     try {
       const nowMs = await this.redisNowMs();
       let lockRenewalInFlight: Promise<unknown> | undefined;
+      let controllerLockLost = false;
+      let controllerLockLossError: unknown;
+      const markControllerLockLost = (error?: unknown) => {
+        if (controllerLockLost) return;
+        controllerLockLost = true;
+        controllerLockLossError = error;
+        this.logger.warn({
+          error: error instanceof Error ? error.message : "lock renewal was rejected",
+          event: "workflow.task-capacity.controller.lock-lost",
+        }, "Workflow Task capacity controller lock was lost");
+      };
+      const assertControllerLockHeld = () => {
+        if (!controllerLockLost) return;
+        const error = new Error("Workflow Task capacity controller lock was lost");
+        if (controllerLockLossError !== undefined) error.cause = controllerLockLossError;
+        throw error;
+      };
       lockRenewalTimer = setInterval(() => {
-        if (lockRenewalInFlight) return;
-        lockRenewalInFlight = this.client.eval(
-          RENEW_LOCK_SCRIPT,
-          1,
-          this.controllerLockKey(),
-          owner,
-          this.config.controllerLockTtlMs,
-        ).finally(() => {
-          lockRenewalInFlight = undefined;
-        });
+        if (lockRenewalInFlight || controllerLockLost) return;
+        lockRenewalInFlight = Promise.resolve()
+          .then(() => this.client.eval(
+            RENEW_LOCK_SCRIPT,
+            1,
+            this.controllerLockKey(),
+            owner,
+            this.config.controllerLockTtlMs,
+          ))
+          .then(result => {
+            if (Number(result) !== 1) markControllerLockLost();
+          })
+          .catch(error => {
+            markControllerLockLost(error);
+          })
+          .finally(() => {
+            lockRenewalInFlight = undefined;
+          });
         lockRenewalTimer?.unref?.();
       }, Math.max(1_000, Math.floor(this.config.controllerLockTtlMs / 2)));
       lockRenewalTimer.unref?.();
+      assertControllerLockHeld();
       await this.client.zremrangebyscore(this.globalLeasesKey(), "-inf", nowMs);
+      assertControllerLockHeld();
       await this.client.zremrangebyscore(this.demandKey(), "-inf", nowMs - this.config.demandWindowMs);
+      assertControllerLockHeld();
       const scan = await input.repository.listDueTaskUids({ limit: this.config.scanLimit, now: input.now });
+      assertControllerLockHeld();
       const demandUids = await this.client.zrangebyscore(
         this.demandKey(),
         nowMs - this.config.demandWindowMs,
         "+inf",
+        "LIMIT",
+        0,
+        MAX_MANAGED_CONTENDERS + 1,
       );
+      assertControllerLockHeld();
       const activeLeases = await this.client.zrange(this.globalLeasesKey(), 0, -1);
-      const restrictedUids = await this.client.smembers(this.restrictedUidsKey());
+      assertControllerLockHeld();
       const contenders = new Set<number>(scan.uids);
       for (const uid of demandUids) addUid(contenders, uid);
       for (const leaseId of activeLeases) addUid(contenders, leaseId);
       const contenderCount = contenders.size;
       let quotaChangedCount = 0;
-      if (contenderCount >= 2) {
-        const quota = Math.max(1, Math.floor(this.config.globalConcurrency / contenderCount));
+      if (contenderCount > MAX_MANAGED_CONTENDERS) {
+        await this.client.set(
+          this.saturatedQuotaKey(),
+          String(calculateContenderQuota(this.config.globalConcurrency, MAX_MANAGED_CONTENDERS)),
+          "PX",
+          this.config.quotaTtlMs,
+        );
+        assertControllerLockHeld();
+        quotaChangedCount += 1;
+      } else if (contenderCount >= 2) {
+        const quota = calculateContenderQuota(this.config.globalConcurrency, contenderCount);
         const writes = [];
         for (const uid of contenders) {
           const current = await this.client.hget(this.quotaKey(uid), "quota");
+          assertControllerLockHeld();
           const currentQuota = Number(current);
           const effectiveQuota = scan.scanComplete || !Number.isFinite(currentQuota)
             ? quota
             : Math.min(quota, currentQuota);
           writes.push({ stableCycles: 0, uid, quota: effectiveQuota });
         }
+        assertControllerLockHeld();
         await this.writeQuotaBatch(writes);
+        assertControllerLockHeld();
         quotaChangedCount += writes.length;
       }
       if (scan.scanComplete && contenderCount < 2) {
-        const currentUids = new Set(contenders);
-        for (const rawUid of restrictedUids) {
-          const uid = Number(rawUid);
-          if (!Number.isSafeInteger(uid) || uid <= 0 || currentUids.has(uid)) continue;
-          if (await this.restoreQuotaIfStable(uid)) quotaChangedCount += 1;
-        }
         const [uid] = contenders;
-        if (uid !== undefined && await this.restoreQuotaIfStable(uid)) quotaChangedCount += 1;
+        if (uid !== undefined) {
+          assertControllerLockHeld();
+          if (await this.restoreQuotaIfStable(uid)) quotaChangedCount += 1;
+          assertControllerLockHeld();
+        }
       }
+      assertControllerLockHeld();
       const summary = this.summary({
         controllerLockSkipped: false,
         demandUidCount: demandUids.length,
@@ -366,7 +414,6 @@ class RedisWorkflowTaskCapacity implements WorkflowTaskCapacityPort, WorkflowTas
     const maxQuota = calculateTenantQuota(this.config.globalConcurrency, this.config.tenantMaxSharePercent);
     if (!Number.isFinite(quota) || quota >= maxQuota) {
       await this.writeQuota(uid, maxQuota, 0);
-      await this.client.srem(this.restrictedUidsKey(), uid);
       return false;
     }
     const nextStableCycles = stableCycles + 1;
@@ -375,7 +422,6 @@ class RedisWorkflowTaskCapacity implements WorkflowTaskCapacityPort, WorkflowTas
       return true;
     }
     await this.writeQuota(uid, maxQuota, 0);
-    await this.client.srem(this.restrictedUidsKey(), uid);
     return true;
   }
 
@@ -387,15 +433,11 @@ class RedisWorkflowTaskCapacity implements WorkflowTaskCapacityPort, WorkflowTas
       updated_at_ms: String(Date.now()),
     });
     await this.client.pexpire(key, this.config.quotaTtlMs);
-    if (quota < calculateTenantQuota(this.config.globalConcurrency, this.config.tenantMaxSharePercent)) {
-      await this.client.sadd(this.restrictedUidsKey(), uid);
-    }
   }
 
   private async writeQuotaBatch(entries: Array<{ uid: number; quota: number; stableCycles: number }>) {
     if (entries.length === 0) return;
     const pipeline = this.client.pipeline();
-    const maxQuota = calculateTenantQuota(this.config.globalConcurrency, this.config.tenantMaxSharePercent);
     for (const entry of entries) {
       const key = this.quotaKey(entry.uid);
       pipeline.hset(key, {
@@ -404,8 +446,6 @@ class RedisWorkflowTaskCapacity implements WorkflowTaskCapacityPort, WorkflowTas
         updated_at_ms: String(Date.now()),
       });
       pipeline.pexpire(key, this.config.quotaTtlMs);
-      if (entry.quota < maxQuota) pipeline.sadd(this.restrictedUidsKey(), entry.uid);
-      else pipeline.srem(this.restrictedUidsKey(), entry.uid);
     }
     await pipeline.exec();
   }
@@ -461,8 +501,8 @@ class RedisWorkflowTaskCapacity implements WorkflowTaskCapacityPort, WorkflowTas
     return `${this.keyPrefix}workflow:task-capacity:controller-lock`;
   }
 
-  private restrictedUidsKey() {
-    return `${this.keyPrefix}workflow:task-capacity:restricted-uids`;
+  private saturatedQuotaKey() {
+    return `${this.keyPrefix}workflow:task-capacity:saturated-quota`;
   }
 }
 
@@ -563,6 +603,10 @@ class InMemoryWorkflowTaskCapacity implements WorkflowTaskCapacityPort {
 
 function calculateTenantQuota(globalConcurrency: number, tenantMaxSharePercent: number) {
   return Math.max(1, Math.floor(globalConcurrency * tenantMaxSharePercent / 100));
+}
+
+function calculateContenderQuota(globalConcurrency: number, contenderCount: number) {
+  return Math.max(1, Math.floor(globalConcurrency / contenderCount));
 }
 
 function createRetryAt(now: Date, config: TaskCapacityConfig) {

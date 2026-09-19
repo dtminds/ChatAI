@@ -11,6 +11,7 @@ import {
   type WorkflowCapabilityExecutionBinding,
   type WorkflowContactCustomFieldPort,
   type WorkflowContactIdentityPort,
+  type WorkflowTaskCapacityPort,
   InMemoryWorkflowRuntimeRepository,
   type WorkflowMessageQueryRequest,
   WORKFLOW_HANDOFF_CAPABILITY_BINDING,
@@ -56,6 +57,58 @@ describe("workflow capability reliability", () => {
       expect(signal?.aborted).toBe(true);
       expect(runtime.tasks.find(item => item.id === task.id)).toMatchObject({ attempt: 1, status: "completed" });
     } finally { vi.useRealTimers(); }
+  });
+
+  it("defers a claimed task when capacity lease renewal is lost", async () => {
+    vi.useFakeTimers();
+    try {
+      const runtime = new InMemoryWorkflowRuntimeRepository(undefined, () => now);
+      const lease = { leaseId: "9|task|1", token: "lease-token" };
+      let executionStarted: () => void = () => {};
+      const executionStartedPromise = new Promise<void>(resolve => {
+        executionStarted = resolve;
+      });
+      let executionSignal: AbortSignal | undefined;
+      const taskCapacityPort: WorkflowTaskCapacityPort = {
+        acquire: vi.fn(async () => ({ kind: "allowed" as const, lease })),
+        renew: vi.fn(async () => {
+          throw new Error("Redis unavailable");
+        }),
+        release: vi.fn(async () => {}),
+      };
+      const service = createService(runtime, async (request: unknown) => {
+        executionSignal = (request as { signal: AbortSignal }).signal;
+        executionStarted();
+        return new Promise<Record<string, unknown>>(() => {});
+      }, {
+        capabilityBindings: [{ ...WORKFLOW_SMARTSHEET_WRITE_CAPABILITY_BINDING, executionTimeoutMs: 10_000 }],
+        capabilityTimeoutMs: 10_000,
+        spec: smartsheetSpec(),
+        taskCapacityPort,
+        taskLeaseDurationMs: 20_000,
+      });
+      const task = await startCapability(runtime, service);
+      const execution = service.executeTask({
+        now,
+        taskId: task.id,
+        taskVersion: task.taskVersion,
+        uid: 9,
+        workerId: "worker-1",
+      });
+
+      await executionStartedPromise;
+      await vi.advanceTimersByTimeAsync(10_000);
+
+      await expect(execution).resolves.toMatchObject({
+        kind: "deferred",
+        reasonCode: "WORKFLOW_TASK_CAPACITY_UNAVAILABLE",
+        task: { attempt: 0, status: "pending" },
+      });
+      expect(executionSignal?.aborted).toBe(true);
+      expect(taskCapacityPort.release).toHaveBeenCalledWith({ lease, uid: 9 });
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("does not resend a smartsheet action after a crash or a lost completion commit", async () => {
@@ -1590,6 +1643,7 @@ function createService(
     messageQueryExecute?: (input: WorkflowMessageQueryRequest) => Promise<unknown>;
     spec?: WorkflowExecutionSpec;
     strictNodeMaturity?: boolean;
+    taskCapacityPort?: WorkflowTaskCapacityPort;
     taskLeaseDurationMs?: number;
   } = {},
 ) {
@@ -1617,6 +1671,7 @@ function createService(
       ? { execute: options.messageQueryExecute }
       : undefined,
     taskLeaseDurationMs: options.taskLeaseDurationMs ?? 60_000,
+    ...(options.taskCapacityPort ? { taskCapacityPort: options.taskCapacityPort } : {}),
   });
 }
 

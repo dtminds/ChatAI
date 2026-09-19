@@ -649,15 +649,26 @@ export class WorkflowRuntimeService {
     let capacityRenewalTimer: ReturnType<typeof setTimeout> | undefined;
     let capacityRenewalInFlight: Promise<void> | undefined;
     let capacityRenewalStopped = false;
+    let capacityLeaseAbortController: AbortController | undefined;
     if (capacityLease && this.taskCapacityPort) {
+      capacityLeaseAbortController = new AbortController();
       const renewalIntervalMs = Math.max(1_000, Math.floor(taskLeaseDurationMs / 2));
+      const markCapacityLeaseLost = (error: unknown) => {
+        if (capacityRenewalStopped) return;
+        capacityRenewalStopped = true;
+        capacityLeaseAbortController!.abort(createTaskCapacityUnavailableError(
+          this.clock(),
+          this.deferredTaskDelayMs,
+          error,
+        ));
+      };
       const renew = () => {
         if (capacityRenewalStopped) return;
         capacityRenewalInFlight = this.taskCapacityPort!.renew({
           lease: capacityLease!,
           leaseDurationMs: taskLeaseDurationMs,
           uid: input.uid,
-        }).catch(() => {}).finally(() => {
+        }).catch(markCapacityLeaseLost).finally(() => {
           capacityRenewalInFlight = undefined;
           if (!capacityRenewalStopped) {
             capacityRenewalTimer = setTimeout(renew, renewalIntervalMs);
@@ -669,7 +680,10 @@ export class WorkflowRuntimeService {
       capacityRenewalTimer.unref?.();
     }
 
+    const capacitySignal = capacityLeaseAbortController?.signal;
+    let claimedTask: WorkflowTaskRecord | undefined;
     try {
+      throwIfWorkflowTaskCapacityLeaseLost(capacitySignal);
       const claimed = await this.runtimeRepository.claimTask({
         expectedTaskVersion: input.taskVersion,
         leaseExpiresAt: new Date(input.now.getTime() + taskLeaseDurationMs),
@@ -683,9 +697,12 @@ export class WorkflowRuntimeService {
         : workflowUnavailable();
     }
     if (claimed.kind !== "success") throw staleTaskError();
+    claimedTask = claimed.task;
+    throwIfWorkflowTaskCapacityLeaseLost(capacitySignal);
 
     if (node.kind === "wait-event") {
       return await this.executeWaitEventTask({
+        capacitySignal,
         nodeExecutionKey,
         claimedTask: claimed.task,
         existingSubscription: existingEventSubscription,
@@ -740,6 +757,7 @@ export class WorkflowRuntimeService {
         }
       : this.capabilityPort;
     try {
+      throwIfWorkflowTaskCapacityLeaseLost(capacitySignal);
       assertWorkflowRuntimeValue(run.context, "run-context", WORKFLOW_RUN_CONTEXT_MAX_BYTES);
       let preparedContext: WorkflowPreparedExecutionContext = { customFields: {}, identities: {} };
       const customFieldSnapshot = readWorkflowCustomFieldSnapshot(
@@ -754,11 +772,13 @@ export class WorkflowRuntimeService {
           contactIdentityPort: this.contactIdentityPort,
           customFieldSnapshot: customFieldSnapshot ?? undefined,
           node,
+          signal: capacitySignal,
           subjectId: run.subjectId,
           subjectType: run.subjectType,
           trigger: isRecord(run.context.trigger) ? run.context.trigger : {},
           uid: run.uid,
         });
+        throwIfWorkflowTaskCapacityLeaseLost(capacitySignal);
         if (contextRequirements.customFieldIds.length > 0 && customFieldSnapshot === null) {
           nodeExecutionInput = {
             ...structuredClone(nodeExecutionInput),
@@ -776,6 +796,7 @@ export class WorkflowRuntimeService {
           if (updated.kind !== "success") throw staleTaskError();
         }
       }
+      throwIfWorkflowTaskCapacityLeaseLost(capacitySignal);
       executionResult = recoveredSmartsheetAttempt
         ? { output: { success: false, errorCode: "UNKNOWN_OUTCOME_RECOVERED" }, sourceOutletId: "default", type: "advance" as const }
         : node.kind === "wait" && claimed.task.taskType === "wait"
@@ -787,6 +808,7 @@ export class WorkflowRuntimeService {
         : compositeNode
           ? node.kind === "marketing-message"
             ? await this.executeMarketingMessageTask({
+                capacitySignal,
                 claimedTask: claimed.task,
                 input,
                 node,
@@ -796,6 +818,7 @@ export class WorkflowRuntimeService {
                 run,
               })
             : await this.executeAiCollectTask({
+                capacitySignal,
                 claimedTask: claimed.task,
                 input,
                 node,
@@ -805,6 +828,7 @@ export class WorkflowRuntimeService {
               })
         : inferenceNode
         ? await this.executeInferenceTask({
+            capacitySignal,
             claimedTask: claimed.task,
             input,
             node,
@@ -814,6 +838,7 @@ export class WorkflowRuntimeService {
           })
         : node.kind === "message-query"
           ? await executeMessageQueryWithTimeout({
+              capacitySignal,
               capabilityTimeoutMs: this.capabilityTimeoutMs,
               enteredAt: claimed.task.createdAt,
               node,
@@ -824,6 +849,7 @@ export class WorkflowRuntimeService {
             })
         : capabilityNode
           ? await executeWithCapabilityTimeout({
+            capacitySignal,
             nodeExecutionKey,
             capabilityTimeoutMs,
             binding: capabilityBinding,
@@ -843,6 +869,7 @@ export class WorkflowRuntimeService {
             claimed.task.createdAt,
             preparedContext,
           ));
+      throwIfWorkflowTaskCapacityLeaseLost(capacitySignal);
       if (executionResult.type === "event-wait") {
         throw new Error(`Unexpected Wait Event result for ${node.kind}`);
       }
@@ -853,6 +880,7 @@ export class WorkflowRuntimeService {
         WORKFLOW_NODE_OUTPUT_MAX_BYTES,
       );
       if (executionResult.type === "wait") {
+        throwIfWorkflowTaskCapacityLeaseLost(capacitySignal);
         const waiting = await this.runtimeRepository.beginFixedWait({
           dueAt: new Date(executionResult.dueAt),
           expectedRunLockVersion: run.lockVersion,
@@ -877,6 +905,7 @@ export class WorkflowRuntimeService {
         exitedAt: completedAt,
       });
       assertWorkflowRuntimeValue(nextContext, "run-context", WORKFLOW_RUN_CONTEXT_MAX_BYTES);
+      throwIfWorkflowTaskCapacityLeaseLost(capacitySignal);
     } catch (error) {
       if (error instanceof WorkflowCapabilityDeferredError
         && isWorkflowTaskDeferReasonCode(error.code)) {
@@ -987,10 +1016,48 @@ export class WorkflowRuntimeService {
       taskId: task.id,
       uid: input.uid,
     };
+    throwIfWorkflowTaskCapacityLeaseLost(capacitySignal);
     const committed = await this.runtimeRepository.commitNodeResult(commitInput);
     if (committed.kind === "already-processed") throw alreadyProcessedError();
     if (committed.kind !== "success") throw staleTaskError();
       return committed;
+    } catch (error) {
+      if (error instanceof WorkflowCapabilityDeferredError
+        && error.code === "WORKFLOW_TASK_CAPACITY_UNAVAILABLE") {
+        if (!isWorkflowTaskDeferReasonCode(error.code)) throw error;
+        if (!claimedTask) {
+          const deferredTask = await this.deferTaskUntilOrThrowStale(
+            task,
+            error.retryAt,
+            error.code,
+          );
+          return {
+            diagnosticMessage: error.diagnosticMessage.slice(0, 1_024),
+            kind: "deferred" as const,
+            reasonCode: error.code,
+            retryAt: error.retryAt,
+            task: deferredTask,
+          };
+        }
+        const deferred = await this.runtimeRepository.deferClaimedTask({
+          dueAt: error.retryAt,
+          expectedRunLockVersion: run.lockVersion,
+          expectedTaskVersion: claimedTask.taskVersion,
+          reasonCode: error.code,
+          runId: run.id,
+          taskId: claimedTask.id,
+          uid: run.uid,
+        });
+        if (deferred.kind !== "success") throw staleTaskError();
+        return {
+          diagnosticMessage: error.diagnosticMessage.slice(0, 1_024),
+          kind: "deferred" as const,
+          reasonCode: error.code,
+          retryAt: error.retryAt,
+          task: deferred.task,
+        };
+      }
+      throw error;
     } finally {
       capacityRenewalStopped = true;
       if (capacityRenewalTimer) clearTimeout(capacityRenewalTimer);
@@ -1005,6 +1072,7 @@ export class WorkflowRuntimeService {
   }
 
   private async executeMarketingMessageTask(input: {
+    capacitySignal?: AbortSignal;
     claimedTask: WorkflowTaskRecord;
     input: WorkflowExecuteTaskInput;
     node: WorkflowExecutionNode;
@@ -1076,7 +1144,7 @@ export class WorkflowRuntimeService {
         signal,
         uid: input.run.uid,
         workUserId,
-      }));
+      }), input.capacitySignal);
       const pushedAt = this.clock();
       state = config.wait.mode === "fixed"
         ? {
@@ -1138,6 +1206,7 @@ export class WorkflowRuntimeService {
         signal,
         uid: input.run.uid,
       }),
+      input.capacitySignal,
     );
     if (!result || typeof result.pushSuccess !== "boolean") {
       throw new WorkflowCapabilityExecutionError(
@@ -1154,6 +1223,7 @@ export class WorkflowRuntimeService {
   }
 
   private async executeAiCollectTask(input: {
+    capacitySignal?: AbortSignal;
     claimedTask: WorkflowTaskRecord;
     input: WorkflowExecuteTaskInput;
     node: WorkflowExecutionNode;
@@ -1191,6 +1261,7 @@ export class WorkflowRuntimeService {
         "执行所需数据不可用，流程已停止",
       );
     }
+    throwIfWorkflowTaskCapacityLeaseLost(input.capacitySignal);
     let state = await this.runtimeRepository.initializeAiCollectState({
       bizId: createWorkflowAiCollectBizId(input.claimedTask.id),
       expiresAt: getWorkflowAiCollectTimeoutAt(input.node, input.claimedTask.createdAt),
@@ -1206,6 +1277,7 @@ export class WorkflowRuntimeService {
       uid: input.input.uid,
       workflowId: input.run.workflowId,
     });
+    throwIfWorkflowTaskCapacityLeaseLost(input.capacitySignal);
     const addOrUpdateDirective = async (
       directiveState: WorkflowAiCollectStateRecord,
       payload: string,
@@ -1225,12 +1297,13 @@ export class WorkflowRuntimeService {
         signal,
         type: WORKFLOW_AI_COLLECT_DIRECTIVE_TYPE,
         uid: directiveState.uid,
-      }));
+      }), input.capacitySignal);
     };
 
     while (true) {
+      throwIfWorkflowTaskCapacityLeaseLost(input.capacitySignal);
       if (state.terminalOutlet !== null) {
-        return this.finishAiCollectTask(state, directivePort);
+        return this.finishAiCollectTask(state, directivePort, input.capacitySignal);
       }
 
       if (state.activeInferenceKey !== null) {
@@ -1370,7 +1443,9 @@ export class WorkflowRuntimeService {
             payloadInput: initialInput,
             run: input.run,
             state,
+            capacitySignal: input.capacitySignal,
           });
+          throwIfWorkflowTaskCapacityLeaseLost(input.capacitySignal);
           if (started.kind === "waiting") {
             return { kind: "inference-waiting", type: "inference-wait" };
           }
@@ -1397,7 +1472,9 @@ export class WorkflowRuntimeService {
                 thirdExternalUserId,
                 uid: state.uid,
               }),
+              input.capacitySignal,
             );
+            throwIfWorkflowTaskCapacityLeaseLost(input.capacitySignal);
             state = await this.transitionAiCollectStateOrThrow({
               now: this.clock(),
               taskId: state.taskId,
@@ -1431,7 +1508,8 @@ export class WorkflowRuntimeService {
             thirdExternalUserId,
             uid: input.input.uid,
             workflowId: state.workflowId,
-          }));
+          }), input.capacitySignal);
+        throwIfWorkflowTaskCapacityLeaseLost(input.capacitySignal);
         state = await this.transitionAiCollectStateOrThrow({
           now: this.clock(),
           taskId: state.taskId,
@@ -1471,7 +1549,9 @@ export class WorkflowRuntimeService {
             uid: state.uid,
             until: queryCutoff,
           }),
+          input.capacitySignal,
         );
+        throwIfWorkflowTaskCapacityLeaseLost(input.capacitySignal);
         if (batch.messages.length > 0) {
           if (!batch.cursor) throw new Error("AI Collect message batch has no cursor");
           const started = await this.startAiCollectInference({
@@ -1485,7 +1565,9 @@ export class WorkflowRuntimeService {
             payloadInput: batch.messages,
             run: input.run,
             state,
+            capacitySignal: input.capacitySignal,
           });
+          throwIfWorkflowTaskCapacityLeaseLost(input.capacitySignal);
           if (started.kind === "waiting") {
             return { kind: "inference-waiting", type: "inference-wait" };
           }
@@ -1562,10 +1644,12 @@ export class WorkflowRuntimeService {
     payloadInput: unknown;
     run: WorkflowRunRecord;
     state: WorkflowAiCollectStateRecord;
+    capacitySignal?: AbortSignal;
   }): Promise<
     | { kind: "adopted"; state: WorkflowAiCollectStateRecord }
     | { kind: "waiting" }
   > {
+    throwIfWorkflowTaskCapacityLeaseLost(input.capacitySignal);
     const executionKey = `${input.nodeExecutionKey}:collect:${input.state.nextBatchSequence}`;
     const payload = createWorkflowAiCollectInferenceRequest(
       input.node,
@@ -1577,6 +1661,7 @@ export class WorkflowRuntimeService {
       executionKey,
     );
     if (!existing) {
+      throwIfWorkflowTaskCapacityLeaseLost(input.capacitySignal);
       const waiting = await this.runtimeRepository.beginInference({
         contractVersion: 1,
         deadlineAt: new Date(input.input.now.getTime() + this.inferenceTotalTimeoutMs),
@@ -1599,6 +1684,7 @@ export class WorkflowRuntimeService {
       if (waiting.kind === "workflow-unavailable") throw workflowUnavailable();
       if (waiting.kind !== "success") throw staleTaskError();
     }
+    throwIfWorkflowTaskCapacityLeaseLost(input.capacitySignal);
     const state = await this.transitionAiCollectStateOrThrow({
       now: this.clock(),
       taskId: input.state.taskId,
@@ -1611,6 +1697,7 @@ export class WorkflowRuntimeService {
       },
       uid: input.state.uid,
     });
+    throwIfWorkflowTaskCapacityLeaseLost(input.capacitySignal);
     return existing && (existing.status === "succeeded" || existing.status === "failed")
       ? { kind: "adopted", state }
       : { kind: "waiting" };
@@ -1619,6 +1706,7 @@ export class WorkflowRuntimeService {
   private async finishAiCollectTask(
     state: WorkflowAiCollectStateRecord,
     directivePort: WorkflowConversationDirectivePort,
+    capacitySignal?: AbortSignal,
   ): Promise<{ output: Record<string, unknown>; sourceOutletId: string; type: "advance" }> {
     if (state.directiveStatus === "active") {
       await executeAiCollectOperation(this.capabilityTimeoutMs, signal => directivePort.disable({
@@ -1627,7 +1715,7 @@ export class WorkflowRuntimeService {
         signal,
         type: WORKFLOW_AI_COLLECT_DIRECTIVE_TYPE,
         uid: state.uid,
-      }));
+      }), capacitySignal);
       state = await this.transitionAiCollectStateOrThrow({
         now: this.clock(),
         taskId: state.taskId,
@@ -1657,6 +1745,7 @@ export class WorkflowRuntimeService {
   }
 
   private async executeInferenceTask(input: {
+    capacitySignal?: AbortSignal;
     claimedTask: WorkflowTaskRecord;
     input: WorkflowExecuteTaskInput;
     node: WorkflowExecutionNode;
@@ -1667,6 +1756,7 @@ export class WorkflowRuntimeService {
     | { kind: "inference-waiting"; type: "inference-wait" }
     | { output: Record<string, unknown>; sourceOutletId: string; type: "advance" }
   > {
+    throwIfWorkflowTaskCapacityLeaseLost(input.capacitySignal);
     const existing = await this.runtimeRepository.findInferenceByExecutionKey(
       input.input.uid,
       input.nodeExecutionKey,
@@ -1695,6 +1785,7 @@ export class WorkflowRuntimeService {
     }
     if (existing?.status === "cancelled") throw staleTaskError();
     if (!existing) {
+      throwIfWorkflowTaskCapacityLeaseLost(input.capacitySignal);
       const immediate = resolveWorkflowInferenceWithoutProvider(
         input.node,
         input.run,
@@ -1709,6 +1800,7 @@ export class WorkflowRuntimeService {
       { enteredAt: input.claimedTask.createdAt.toISOString() },
       input.preparedContext.customFields,
     );
+    throwIfWorkflowTaskCapacityLeaseLost(input.capacitySignal);
     const waiting = await this.runtimeRepository.beginInference({
       contractVersion: 1,
       deadlineAt: existing?.deadlineAt
@@ -1739,6 +1831,7 @@ export class WorkflowRuntimeService {
   }
 
   private async executeWaitEventTask(input: {
+    capacitySignal?: AbortSignal;
     nodeExecutionKey: string;
     claimedTask: WorkflowTaskRecord;
     existingSubscription: WorkflowEventSubscriptionRecord | null;
@@ -1747,13 +1840,16 @@ export class WorkflowRuntimeService {
     run: WorkflowRunRecord;
   }) {
     if (!input.existingSubscription) {
+      throwIfWorkflowTaskCapacityLeaseLost(input.capacitySignal);
       const executionResult = await this.executors.execute(
         input.node,
         createExecutionContext(input.run, input.input.now, input.claimedTask.dueAt),
       );
+      throwIfWorkflowTaskCapacityLeaseLost(input.capacitySignal);
       if (executionResult.type !== "event-wait") {
         throw new Error(`Wait Event executor returned ${executionResult.type}`);
       }
+      throwIfWorkflowTaskCapacityLeaseLost(input.capacitySignal);
       const waiting = await this.runtimeRepository.beginEventWait({
         effectiveFrom: input.input.now,
         eventType: executionResult.eventType,
@@ -1779,6 +1875,7 @@ export class WorkflowRuntimeService {
           : workflowUnavailable();
       }
       if (waiting.kind !== "success") throw staleTaskError();
+      throwIfWorkflowTaskCapacityLeaseLost(input.capacitySignal);
       return {
         kind: "waiting" as const,
         run: waiting.run,
@@ -1789,6 +1886,7 @@ export class WorkflowRuntimeService {
 
     let sourceOutletId: "timeout" | "triggered";
     if (input.existingSubscription.status === "waiting") {
+      throwIfWorkflowTaskCapacityLeaseLost(input.capacitySignal);
       const timedOut = await this.runtimeRepository.timeoutEventSubscription({
         subscriptionId: input.existingSubscription.id,
         timedOutAt: input.input.now,
@@ -1809,6 +1907,7 @@ export class WorkflowRuntimeService {
     let output: Record<string, unknown>;
     let nextContext: Record<string, unknown>;
     try {
+      throwIfWorkflowTaskCapacityLeaseLost(input.capacitySignal);
       output = sourceOutletId === "triggered"
         ? createTriggeredWaitEventOutput(input.existingSubscription)
         : {};
@@ -1819,6 +1918,7 @@ export class WorkflowRuntimeService {
         exitedAt: completedAt,
       });
       assertWorkflowRuntimeValue(nextContext, "run-context", WORKFLOW_RUN_CONTEXT_MAX_BYTES);
+      throwIfWorkflowTaskCapacityLeaseLost(input.capacitySignal);
     } catch (error) {
       if (!(error instanceof WorkflowRuntimeValueError)) throw error;
       return this.commitCoreNodeFailure({
@@ -1831,6 +1931,7 @@ export class WorkflowRuntimeService {
       });
     }
 
+    throwIfWorkflowTaskCapacityLeaseLost(input.capacitySignal);
     const committed = await this.runtimeRepository.commitNodeResult({
       context: nextContext,
       expectedRunLockVersion: input.run.lockVersion,
@@ -2026,6 +2127,7 @@ function createExecutionContext(
 }
 
 async function executeWithCapabilityTimeout(input: {
+  capacitySignal?: AbortSignal;
   nodeExecutionKey: string;
   capabilityTimeoutMs: number;
   binding: WorkflowCapabilityExecutionBinding | undefined;
@@ -2103,11 +2205,13 @@ async function executeWithCapabilityTimeout(input: {
       sourceOutletId: step.sourceOutletId,
       type: "advance" as const,
     })),
+    abortSignal: input.capacitySignal,
     timeoutMs: input.capabilityTimeoutMs,
   });
 }
 
 async function executeMessageQueryWithTimeout(input: {
+  capacitySignal?: AbortSignal;
   capabilityTimeoutMs: number;
   enteredAt: Date;
   node: WorkflowExecutionNode;
@@ -2155,17 +2259,38 @@ async function executeMessageQueryWithTimeout(input: {
       subjectType: input.run.subjectType,
       uid: input.run.uid,
     }).then(output => ({ output, sourceOutletId: "default", type: "advance" as const })),
+    abortSignal: input.capacitySignal,
     timeoutMs: input.capabilityTimeoutMs,
   });
 }
 
 async function raceWithWorkflowTimeout<T>(input: {
+  abortSignal?: AbortSignal;
   createError(): WorkflowCapabilityExecutionError;
   execute(signal: AbortSignal): Promise<T>;
   timeoutMs: number;
 }) {
   const controller = new AbortController();
   let timer: ReturnType<typeof setTimeout> | undefined;
+  let removeAbortListener: (() => void) | undefined;
+  let rejectAbort: ((reason: unknown) => void) | undefined;
+  const aborted = input.abortSignal
+    ? new Promise<never>((_, reject) => {
+        rejectAbort = reject;
+      })
+    : undefined;
+  if (input.abortSignal?.aborted) {
+    controller.abort(input.abortSignal.reason);
+    throw input.abortSignal.reason;
+  }
+  if (input.abortSignal) {
+    const onAbort = () => {
+      controller.abort(input.abortSignal!.reason);
+      rejectAbort?.(input.abortSignal!.reason);
+    };
+    input.abortSignal.addEventListener("abort", onAbort, { once: true });
+    removeAbortListener = () => input.abortSignal?.removeEventListener("abort", onAbort);
+  }
   const timeout = new Promise<never>((_, reject) => {
     timer = setTimeout(() => {
       const error = input.createError();
@@ -2174,15 +2299,19 @@ async function raceWithWorkflowTimeout<T>(input: {
     }, input.timeoutMs);
   });
   try {
-    return await Promise.race([input.execute(controller.signal), timeout]);
+    const promises: Array<Promise<T> | Promise<never>> = [input.execute(controller.signal), timeout];
+    if (aborted) promises.push(aborted);
+    return await Promise.race(promises);
   } finally {
     if (timer) clearTimeout(timer);
+    removeAbortListener?.();
   }
 }
 
 async function executeAiCollectOperation<T>(
   timeoutMs: number,
   execute: (signal: AbortSignal) => Promise<T>,
+  abortSignal?: AbortSignal,
 ) {
   return raceWithWorkflowTimeout({
     createError: () => new WorkflowCapabilityExecutionError(
@@ -2191,6 +2320,7 @@ async function executeAiCollectOperation<T>(
       "资料收集操作超时",
       { diagnosticMessage: `AI Collect operation exceeded its ${timeoutMs}ms deadline` },
     ),
+    abortSignal,
     execute,
     timeoutMs,
   });
@@ -2199,6 +2329,7 @@ async function executeAiCollectOperation<T>(
 async function executeMarketingMessageOperation<T>(
   timeoutMs: number,
   execute: (signal: AbortSignal) => Promise<T>,
+  abortSignal?: AbortSignal,
 ) {
   return raceWithWorkflowTimeout({
     createError: () => new WorkflowCapabilityExecutionError(
@@ -2207,6 +2338,7 @@ async function executeMarketingMessageOperation<T>(
       "群发触达操作超时，流程已停止",
       { diagnosticMessage: `Marketing Message operation exceeded its ${timeoutMs}ms deadline` },
     ),
+    abortSignal,
     execute,
     timeoutMs,
   });
@@ -2249,6 +2381,38 @@ function toCapabilityExecutionError(error: unknown) {
     {
       diagnosticMessage: formatRuntimeValueDiagnostic(error),
     },
+  );
+}
+
+function createTaskCapacityUnavailableError(
+  now: Date,
+  retryDelayMs: number,
+  cause: unknown,
+) {
+  return new WorkflowCapabilityDeferredError(
+    "WORKFLOW_TASK_CAPACITY_UNAVAILABLE",
+    "任务容量暂时不可用，稍后重试",
+    new Date(now.getTime() + retryDelayMs),
+    {
+      diagnosticMessage: cause instanceof Error
+        ? `Workflow Task capacity lease renewal failed: ${cause.message}`
+        : "Workflow Task capacity lease renewal failed",
+    },
+  );
+}
+
+function throwIfWorkflowTaskCapacityLeaseLost(signal: AbortSignal | undefined): void {
+  if (!signal?.aborted) return;
+  const reason = signal.reason;
+  if (reason instanceof WorkflowCapabilityDeferredError
+    && reason.code === "WORKFLOW_TASK_CAPACITY_UNAVAILABLE") {
+    throw reason;
+  }
+  throw new WorkflowCapabilityDeferredError(
+    "WORKFLOW_TASK_CAPACITY_UNAVAILABLE",
+    "任务容量暂时不可用，稍后重试",
+    new Date(),
+    { diagnosticMessage: "Workflow Task capacity lease was lost" },
   );
 }
 

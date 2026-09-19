@@ -95,7 +95,8 @@ describe("Workflow Task capacity", () => {
       reasonCode: "WORKFLOW_TASK_TENANT_CAPACITY_LIMITED",
     });
     const [script, keyCount] = client.eval.mock.calls[0]!;
-    expect(keyCount).toBe(5);
+    expect(keyCount).toBe(6);
+    expect(client.eval.mock.calls[0]?.[7]).toBe("test:workflow:task-capacity:saturated-quota");
     expect(String(script)).toContain("ZREMRANGEBYSCORE");
     expect(String(script)).toContain("ZCARD");
     expect(String(script)).toContain("ZADD");
@@ -134,17 +135,12 @@ describe("Workflow Task capacity", () => {
       hgetall: vi.fn(async () => ({})),
       hset: vi.fn(async () => 1),
       pexpire: vi.fn(async () => 1),
-      sadd: vi.fn(async () => 1),
-      srem: vi.fn(async () => 1),
-      smembers: vi.fn(async () => []),
       set: vi.fn(async () => "OK"),
       time: vi.fn(async () => ["0", "0"]),
       pipeline: vi.fn(() => ({
         exec: vi.fn(async () => []),
         hset: vi.fn(),
         pexpire: vi.fn(),
-        sadd: vi.fn(),
-        srem: vi.fn(),
       })),
       zrange: vi.fn(async () => []),
       zrangebyscore: vi.fn(async () => []),
@@ -180,16 +176,12 @@ describe("Workflow Task capacity", () => {
       eval: vi.fn(async () => "OK"),
       hget: vi.fn(async () => "1"),
       hgetall: vi.fn(async () => ({ quota: "1", stable_cycles: "0" })),
-      sadd: vi.fn(async () => 1),
-      smembers: vi.fn(async () => []),
       set: vi.fn(async () => "OK"),
       time: vi.fn(async () => ["0", "0"]),
       pipeline: vi.fn(() => ({
         exec: vi.fn(async () => []),
         hset: vi.fn(),
         pexpire: vi.fn(),
-        sadd: vi.fn(),
-        srem: vi.fn(),
       })),
       zrange: vi.fn(async () => []),
       zrangebyscore: vi.fn(async () => []),
@@ -224,22 +216,199 @@ describe("Workflow Task capacity", () => {
     );
   });
 
-  it("does not restore a departed UID while multiple contenders remain", async () => {
+  it("uses one saturated quota after demand exceeds the managed UID threshold", async () => {
+    const saturatedConfig = { ...config, globalConcurrency: 1_000, tenantMaxSharePercent: 90 };
+    const demandUids = Array.from({ length: 101 }, (_, index) => String(index + 1));
+    const client = {
+      eval: vi.fn(async () => 1),
+      hget: vi.fn(async () => undefined),
+      pipeline: vi.fn(() => ({
+        exec: vi.fn(async () => []),
+        hset: vi.fn(),
+        pexpire: vi.fn(),
+      })),
+      set: vi.fn(async () => "OK"),
+      time: vi.fn(async () => ["0", "0"]),
+      zrange: vi.fn(async () => []),
+      zrangebyscore: vi.fn(async () => demandUids),
+      zremrangebyscore: vi.fn(async () => 0),
+    } as unknown as Redis;
+    const { controller } = createWorkflowTaskCapacity({
+      config: saturatedConfig,
+      keyPrefix: "test:",
+      logger,
+      client,
+    });
+
+    const result = await controller.run({
+      now: new Date("2026-09-19T00:00:00.000Z"),
+      repository: {
+        listDueTaskUids: vi.fn(async () => ({
+          scanComplete: true,
+          scannedUidCount: 0,
+          uids: [],
+        })),
+      },
+    });
+
+    expect(client.zrangebyscore).toHaveBeenCalledWith(
+      "test:workflow:task-capacity:demand",
+      -600_000,
+      "+inf",
+      "LIMIT",
+      0,
+      101,
+    );
+    expect(client.set).toHaveBeenCalledWith(
+      "test:workflow:task-capacity:saturated-quota",
+      "10",
+      "PX",
+      900_000,
+    );
+    expect(client.hget).not.toHaveBeenCalled();
+    expect(client.pipeline).not.toHaveBeenCalled();
+    expect(result).toMatchObject({
+      demandUidCount: 101,
+      knownContenderCount: 101,
+      quotaChangedCount: 1,
+    });
+  });
+
+  it("keeps per-UID quotas at the managed UID threshold", async () => {
+    const thresholdConfig = { ...config, globalConcurrency: 1_000, tenantMaxSharePercent: 90 };
+    const uids = Array.from({ length: 100 }, (_, index) => index + 1);
+    const pipeline = {
+      exec: vi.fn(async () => []),
+      hset: vi.fn(),
+      pexpire: vi.fn(),
+    };
+    const client = {
+      eval: vi.fn(async () => 1),
+      hget: vi.fn(async () => undefined),
+      pipeline: vi.fn(() => pipeline),
+      set: vi.fn(async () => "OK"),
+      time: vi.fn(async () => ["0", "0"]),
+      zrange: vi.fn(async () => []),
+      zrangebyscore: vi.fn(async () => []),
+      zremrangebyscore: vi.fn(async () => 0),
+    } as unknown as Redis;
+    const { controller } = createWorkflowTaskCapacity({
+      config: thresholdConfig,
+      keyPrefix: "test:",
+      logger,
+      client,
+    });
+
+    const result = await controller.run({
+      now: new Date("2026-09-19T00:00:00.000Z"),
+      repository: {
+        listDueTaskUids: vi.fn(async () => ({
+          scanComplete: true,
+          scannedUidCount: 100,
+          uids,
+        })),
+      },
+    });
+
+    expect(pipeline.hset).toHaveBeenCalledTimes(100);
+    expect(pipeline.hset).toHaveBeenCalledWith(
+      "test:workflow:task-capacity:quota:100",
+      expect.objectContaining({ quota: "10" }),
+    );
+    expect(client.set).not.toHaveBeenCalledWith(
+      "test:workflow:task-capacity:saturated-quota",
+      expect.anything(),
+      "PX",
+      expect.anything(),
+    );
+    expect(result).toMatchObject({ knownContenderCount: 100, quotaChangedCount: 100 });
+  });
+
+  it.each([
+    {
+      label: "returns a lost lock",
+      renew: async () => 0,
+    },
+    {
+      label: "rejects",
+      renew: async () => {
+        throw new Error("Redis unavailable");
+      },
+    },
+  ])("stops the controller when lock renewal $label", async ({ renew }) => {
+    vi.useFakeTimers();
+    try {
+      let resolveScanStarted: () => void = () => {};
+      const scanStarted = new Promise<void>(resolve => {
+        resolveScanStarted = resolve;
+      });
+      let resolveScan: (value: { scanComplete: boolean; scannedUidCount: number; uids: number[] }) => void = () => {};
+      const scan = new Promise<{ scanComplete: boolean; scannedUidCount: number; uids: number[] }>(resolve => {
+        resolveScan = resolve;
+      });
+      const evalMock = vi.fn(async (script: unknown) => {
+        if (String(script).includes("PEXPIRE")) return renew();
+        return 1;
+      });
+      const client = {
+        eval: evalMock,
+        hget: vi.fn(async () => undefined),
+        pipeline: vi.fn(() => ({
+          exec: vi.fn(async () => []),
+          hset: vi.fn(),
+          pexpire: vi.fn(),
+        })),
+        set: vi.fn(async () => "OK"),
+        time: vi.fn(async () => ["0", "0"]),
+        zrange: vi.fn(async () => []),
+        zrangebyscore: vi.fn(async () => []),
+        zremrangebyscore: vi.fn(async () => 0),
+      } as unknown as Redis;
+      const controllerConfig = { ...config, controllerLockTtlMs: 2_000 };
+      const { controller } = createWorkflowTaskCapacity({
+        client,
+        config: controllerConfig,
+        keyPrefix: "test:",
+        logger,
+      });
+      const execution = controller.run({
+        now: new Date("2026-09-19T00:00:00.000Z"),
+        repository: {
+          listDueTaskUids: vi.fn(async () => {
+            resolveScanStarted();
+            return scan;
+          }),
+        },
+      });
+
+      await scanStarted;
+      await vi.advanceTimersByTimeAsync(1_000);
+      resolveScan({ scanComplete: true, scannedUidCount: 0, uids: [] });
+
+      await expect(execution).rejects.toThrow("controller lock was lost");
+      expect(evalMock).toHaveBeenCalled();
+      expect(logger.warn).toHaveBeenCalledWith(
+        expect.objectContaining({ event: "workflow.task-capacity.controller.lock-lost" }),
+        expect.any(String),
+      );
+      expect(client.pipeline).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("leaves departed UID quotas to expire while multiple contenders remain", async () => {
     const competingConfig = { ...config, globalConcurrency: 10, tenantMaxSharePercent: 90 };
     const client = {
       eval: vi.fn(async () => "OK"),
       hget: vi.fn(async () => "5"),
       hgetall: vi.fn(async () => ({ quota: "1", stable_cycles: "1" })),
-      smembers: vi.fn(async () => ["303"]),
-      srem: vi.fn(async () => 1),
       set: vi.fn(async () => "OK"),
       time: vi.fn(async () => ["0", "0"]),
       pipeline: vi.fn(() => ({
         exec: vi.fn(async () => []),
         hset: vi.fn(),
         pexpire: vi.fn(),
-        sadd: vi.fn(),
-        srem: vi.fn(),
       })),
       zrange: vi.fn(async () => []),
       zrangebyscore: vi.fn(async () => []),
@@ -265,6 +434,5 @@ describe("Workflow Task capacity", () => {
 
     expect(result).toMatchObject({ knownContenderCount: 2, quotaChangedCount: 2 });
     expect(client.hgetall).not.toHaveBeenCalled();
-    expect(client.srem).not.toHaveBeenCalled();
   });
 });

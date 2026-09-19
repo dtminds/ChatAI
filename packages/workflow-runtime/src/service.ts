@@ -123,6 +123,8 @@ import type {
 } from "./task-capacity.js";
 
 type WorkflowExecuteTaskInput = {
+  capacityLease?: WorkflowTaskCapacityLease;
+  capacityLeaseDurationMs?: number;
   messageId?: string;
   now: Date;
   taskId: string;
@@ -621,8 +623,9 @@ export class WorkflowRuntimeService {
     const taskLeaseDurationMs = capabilityBinding?.executionTimeoutMs === undefined
       ? this.taskLeaseDurationMs
       : Math.max(this.taskLeaseDurationMs, capabilityTimeoutMs * 2);
-    let capacityLease: WorkflowTaskCapacityLease | null = null;
-    if (this.taskCapacityPort) {
+    const ownsCapacityLease = input.capacityLease === undefined;
+    let capacityLease: WorkflowTaskCapacityLease | null = input.capacityLease ?? null;
+    if (!capacityLease && this.taskCapacityPort) {
       const admission = await this.taskCapacityPort.acquire({
         leaseDurationMs: taskLeaseDurationMs,
         now: input.now,
@@ -631,17 +634,12 @@ export class WorkflowRuntimeService {
         uid: input.uid,
       });
       if (admission.kind === "deferred") {
-        const deferredTask = await this.deferTaskUntilOrThrowStale(
-          task,
-          admission.retryAt,
+        throw new WorkflowCapabilityDeferredError(
           admission.reasonCode,
+          "任务容量暂时不可用，等待调度",
+          admission.retryAt,
+          { diagnosticMessage: "Workflow Task capacity was not available before claim" },
         );
-        return {
-          kind: "deferred" as const,
-          reasonCode: admission.reasonCode,
-          retryAt: admission.retryAt,
-          task: deferredTask,
-        };
       }
       capacityLease = admission.lease;
     }
@@ -652,7 +650,13 @@ export class WorkflowRuntimeService {
     let capacityLeaseAbortController: AbortController | undefined;
     if (capacityLease && this.taskCapacityPort) {
       capacityLeaseAbortController = new AbortController();
-      const renewalIntervalMs = Math.max(1_000, Math.floor(taskLeaseDurationMs / 2));
+      const renewalIntervalMs = Math.max(
+        1_000,
+        Math.floor(Math.min(
+          taskLeaseDurationMs,
+          input.capacityLeaseDurationMs ?? taskLeaseDurationMs,
+        ) / 2),
+      );
       const markCapacityLeaseLost = (error: unknown) => {
         if (capacityRenewalStopped) return;
         capacityRenewalStopped = true;
@@ -905,7 +909,9 @@ export class WorkflowRuntimeService {
       assertWorkflowRuntimeValue(nextContext, "run-context", WORKFLOW_RUN_CONTEXT_MAX_BYTES);
     } catch (error) {
       if (error instanceof WorkflowCapabilityDeferredError
-        && isWorkflowTaskDeferReasonCode(error.code)) {
+        && isWorkflowTaskDeferReasonCode(error.code)
+        && error.code !== "WORKFLOW_TASK_TENANT_CAPACITY_LIMITED"
+        && error.code !== "WORKFLOW_TASK_CAPACITY_UNAVAILABLE") {
         const deferred = await this.runtimeRepository.deferClaimedTask({
           dueAt: error.retryAt,
           expectedRunLockVersion: run.lockVersion,
@@ -1017,48 +1023,11 @@ export class WorkflowRuntimeService {
     if (committed.kind === "already-processed") throw alreadyProcessedError();
     if (committed.kind !== "success") throw staleTaskError();
       return committed;
-    } catch (error) {
-      if (error instanceof WorkflowCapabilityDeferredError
-        && error.code === "WORKFLOW_TASK_CAPACITY_UNAVAILABLE") {
-        if (!isWorkflowTaskDeferReasonCode(error.code)) throw error;
-        if (!claimedTask) {
-          const deferredTask = await this.deferTaskUntilOrThrowStale(
-            task,
-            error.retryAt,
-            error.code,
-          );
-          return {
-            diagnosticMessage: error.diagnosticMessage.slice(0, 1_024),
-            kind: "deferred" as const,
-            reasonCode: error.code,
-            retryAt: error.retryAt,
-            task: deferredTask,
-          };
-        }
-        const deferred = await this.runtimeRepository.deferClaimedTask({
-          dueAt: error.retryAt,
-          expectedRunLockVersion: run.lockVersion,
-          expectedTaskVersion: claimedTask.taskVersion,
-          reasonCode: error.code,
-          runId: run.id,
-          taskId: claimedTask.id,
-          uid: run.uid,
-        });
-        if (deferred.kind !== "success") throw staleTaskError();
-        return {
-          diagnosticMessage: error.diagnosticMessage.slice(0, 1_024),
-          kind: "deferred" as const,
-          reasonCode: error.code,
-          retryAt: error.retryAt,
-          task: deferred.task,
-        };
-      }
-      throw error;
     } finally {
       capacityRenewalStopped = true;
       if (capacityRenewalTimer) clearTimeout(capacityRenewalTimer);
       if (capacityRenewalInFlight) await capacityRenewalInFlight;
-      if (capacityLease && this.taskCapacityPort) {
+      if (capacityLease && this.taskCapacityPort && ownsCapacityLease) {
         await this.taskCapacityPort.release({
           lease: capacityLease,
           uid: input.uid,

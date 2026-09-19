@@ -31,7 +31,14 @@ local existing_token = redis.call("HGET", lease_key, "token")
 local existing_expires_at = tonumber(redis.call("HGET", lease_key, "expires_at_ms") or "0")
 if existing_token and existing_expires_at > now_ms then
   local expires_at = now_ms + tonumber(ARGV[7])
-  redis.call("HINCRBY", lease_key, "references", 1)
+  local phase = redis.call("HGET", lease_key, "phase") or "active"
+  if phase == "reserved" then
+    redis.call("ZREM", KEYS[7], ARGV[2])
+    redis.call("HSET", lease_key, "phase", "active", "token", ARGV[3], "references", 1)
+    existing_token = ARGV[3]
+  else
+    redis.call("HINCRBY", lease_key, "references", 1)
+  end
   redis.call("HSET", lease_key, "expires_at_ms", expires_at)
   redis.call("PEXPIRE", lease_key, ARGV[7])
   redis.call("ZADD", KEYS[1], expires_at, ARGV[2])
@@ -43,6 +50,7 @@ if existing_token then redis.call("DEL", lease_key) end
 
 redis.call("ZREMRANGEBYSCORE", KEYS[1], "-inf", now_ms)
 redis.call("ZREMRANGEBYSCORE", KEYS[2], "-inf", now_ms)
+redis.call("ZREMRANGEBYSCORE", KEYS[7], "-inf", now_ms)
 local quota = tonumber(redis.call("HGET", KEYS[3], "quota") or ARGV[5])
 local saturated_quota = tonumber(redis.call("GET", KEYS[6]) or "0")
 if saturated_quota > 0 and saturated_quota < quota then quota = saturated_quota end
@@ -58,7 +66,7 @@ if redis.call("ZCARD", KEYS[2]) >= quota then
 end
 
 local expires_at = now_ms + tonumber(ARGV[7])
-redis.call("HSET", lease_key, "uid", ARGV[1], "token", ARGV[3], "expires_at_ms", expires_at, "references", 1)
+redis.call("HSET", lease_key, "uid", ARGV[1], "token", ARGV[3], "phase", "active", "expires_at_ms", expires_at, "references", 1)
 redis.call("PEXPIRE", lease_key, ARGV[7])
 redis.call("ZADD", KEYS[1], expires_at, ARGV[2])
 redis.call("ZADD", KEYS[2], expires_at, ARGV[2])
@@ -66,10 +74,62 @@ redis.call("PEXPIRE", KEYS[2], tonumber(ARGV[7]) * 2)
 return {1, 0, ARGV[3], now_ms}
 `;
 
+const AVAILABILITY_SCRIPT = `
+local now = redis.call("TIME")
+local now_ms = now[1] * 1000 + math.floor(now[2] / 1000)
+redis.call("ZREMRANGEBYSCORE", KEYS[1], "-inf", now_ms)
+redis.call("ZREMRANGEBYSCORE", KEYS[2], "-inf", now_ms)
+local available = tonumber(ARGV[1]) - redis.call("ZCARD", KEYS[1])
+if available < 0 then available = 0 end
+return {available, redis.call("ZCARD", KEYS[2])}
+`;
+
+const RESERVE_SCRIPT = `
+local now = redis.call("TIME")
+local now_ms = now[1] * 1000 + math.floor(now[2] / 1000)
+local lease_key = KEYS[4]
+local existing_token = redis.call("HGET", lease_key, "token")
+local existing_expires_at = tonumber(redis.call("HGET", lease_key, "expires_at_ms") or "0")
+if existing_token and existing_expires_at > now_ms then
+  local phase = redis.call("HGET", lease_key, "phase") or "active"
+  if phase == "active" then return {2, 1, "", now_ms} end
+  return {2, 2, "", now_ms}
+end
+if existing_token then redis.call("DEL", lease_key) end
+
+redis.call("ZREMRANGEBYSCORE", KEYS[1], "-inf", now_ms)
+redis.call("ZREMRANGEBYSCORE", KEYS[2], "-inf", now_ms)
+redis.call("ZREMRANGEBYSCORE", KEYS[7], "-inf", now_ms)
+local quota = tonumber(redis.call("HGET", KEYS[3], "quota") or ARGV[5])
+local saturated_quota = tonumber(redis.call("GET", KEYS[6]) or "0")
+if saturated_quota > 0 and saturated_quota < quota then quota = saturated_quota end
+if redis.call("ZCARD", KEYS[1]) >= tonumber(ARGV[4]) then
+  redis.call("ZADD", KEYS[5], now_ms, ARGV[1])
+  redis.call("PEXPIRE", KEYS[5], ARGV[6])
+  return {0, 1, "", now_ms}
+end
+if redis.call("ZCARD", KEYS[2]) >= quota then
+  redis.call("ZADD", KEYS[5], now_ms, ARGV[1])
+  redis.call("PEXPIRE", KEYS[5], ARGV[6])
+  return {0, 2, "", now_ms}
+end
+
+local expires_at = now_ms + tonumber(ARGV[7])
+redis.call("HSET", lease_key, "uid", ARGV[1], "token", ARGV[3], "phase", "reserved", "expires_at_ms", expires_at, "references", 0)
+redis.call("PEXPIRE", lease_key, ARGV[7])
+redis.call("ZADD", KEYS[1], expires_at, ARGV[2])
+redis.call("ZADD", KEYS[2], expires_at, ARGV[2])
+redis.call("ZADD", KEYS[7], expires_at, ARGV[2])
+redis.call("PEXPIRE", KEYS[7], tonumber(ARGV[7]) * 2)
+redis.call("PEXPIRE", KEYS[2], tonumber(ARGV[7]) * 2)
+return {1, 0, ARGV[3], now_ms}
+`;
+
 const RENEW_SCRIPT = `
 local stored_uid = redis.call("HGET", KEYS[3], "uid")
 local stored_token = redis.call("HGET", KEYS[3], "token")
-if stored_uid ~= ARGV[1] or stored_token ~= ARGV[2] then return 0 end
+local phase = redis.call("HGET", KEYS[3], "phase")
+if stored_uid ~= ARGV[1] or stored_token ~= ARGV[2] or phase ~= "active" then return 0 end
 local now = redis.call("TIME")
 local now_ms = now[1] * 1000 + math.floor(now[2] / 1000)
 local expires_at = now_ms + tonumber(ARGV[4])
@@ -84,7 +144,8 @@ return 1
 const RELEASE_SCRIPT = `
 local stored_uid = redis.call("HGET", KEYS[3], "uid")
 local stored_token = redis.call("HGET", KEYS[3], "token")
-if stored_uid ~= ARGV[1] or stored_token ~= ARGV[2] then return 0 end
+local phase = redis.call("HGET", KEYS[3], "phase")
+if stored_uid ~= ARGV[1] or stored_token ~= ARGV[2] or phase ~= "active" then return 0 end
 local references = tonumber(redis.call("HGET", KEYS[3], "references") or "1")
 if references > 1 then
   redis.call("HINCRBY", KEYS[3], "references", -1)
@@ -92,6 +153,18 @@ if references > 1 then
 end
 redis.call("ZREM", KEYS[1], ARGV[3])
 redis.call("ZREM", KEYS[2], ARGV[3])
+redis.call("DEL", KEYS[3])
+return 1
+`;
+
+const RELEASE_RESERVATION_SCRIPT = `
+local stored_uid = redis.call("HGET", KEYS[3], "uid")
+local stored_token = redis.call("HGET", KEYS[3], "token")
+local phase = redis.call("HGET", KEYS[3], "phase")
+if stored_uid ~= ARGV[1] or stored_token ~= ARGV[2] or phase ~= "reserved" then return 0 end
+redis.call("ZREM", KEYS[1], ARGV[3])
+redis.call("ZREM", KEYS[2], ARGV[3])
+redis.call("ZREM", KEYS[4], ARGV[3])
 redis.call("DEL", KEYS[3])
 return 1
 `;
@@ -154,6 +227,31 @@ class RedisWorkflowTaskCapacity implements WorkflowTaskCapacityPort, WorkflowTas
     private readonly logger: WorkflowWorkerLogger,
   ) {}
 
+  async availability() {
+    try {
+      const result = await this.client.eval(
+        AVAILABILITY_SCRIPT,
+        2,
+        this.globalLeasesKey(),
+        this.globalReservedLeasesKey(),
+        this.config.globalConcurrency,
+      );
+      if (!Array.isArray(result) || result.length < 2) {
+        throw new Error("Workflow Task capacity returned invalid availability");
+      }
+      const available = Number(result[0]);
+      const reserved = Number(result[1]);
+      if (!Number.isSafeInteger(available) || available < 0
+        || !Number.isSafeInteger(reserved) || reserved < 0) {
+        throw new Error("Workflow Task capacity returned invalid availability");
+      }
+      return { available, kind: "available" as const, reserved };
+    } catch (error) {
+      this.logUnavailable(error, 0);
+      return { kind: "unavailable" as const };
+    }
+  }
+
   async acquire(input: {
     now: Date;
     leaseDurationMs: number;
@@ -166,13 +264,14 @@ class RedisWorkflowTaskCapacity implements WorkflowTaskCapacityPort, WorkflowTas
     try {
       const result = await this.client.eval(
         ACQUIRE_SCRIPT,
-        6,
+        7,
         this.globalLeasesKey(),
         this.uidLeasesKey(input.uid),
         this.quotaKey(input.uid),
         this.leaseKey(leaseId),
         this.demandKey(),
         this.saturatedQuotaKey(),
+        this.globalReservedLeasesKey(),
         input.uid,
         leaseId,
         token,
@@ -205,6 +304,66 @@ class RedisWorkflowTaskCapacity implements WorkflowTaskCapacityPort, WorkflowTas
         kind: "deferred",
         reasonCode: "WORKFLOW_TASK_CAPACITY_UNAVAILABLE",
         retryAt: new Date(input.now.getTime() + Math.max(30_000, this.config.deferDelayMs)),
+      };
+    }
+  }
+
+  async reserve(input: {
+    leaseDurationMs: number;
+    taskId: string;
+    taskVersion: number;
+    uid: number;
+  }) {
+    const leaseId = createLeaseId(input.uid, input.taskId, input.taskVersion);
+    const token = randomUUID();
+    try {
+      const result = await this.client.eval(
+        RESERVE_SCRIPT,
+        7,
+        this.globalLeasesKey(),
+        this.uidLeasesKey(input.uid),
+        this.quotaKey(input.uid),
+        this.leaseKey(leaseId),
+        this.demandKey(),
+        this.saturatedQuotaKey(),
+        this.globalReservedLeasesKey(),
+        input.uid,
+        leaseId,
+        token,
+        this.config.globalConcurrency,
+        calculateTenantQuota(this.config.globalConcurrency, this.config.tenantMaxSharePercent),
+        this.config.demandWindowMs + this.config.controllerIntervalMs,
+        Math.max(1_000, input.leaseDurationMs),
+      );
+      if (!Array.isArray(result) || result.length < 3) {
+        throw new Error("Workflow Task capacity returned an invalid reservation result");
+      }
+      const status = Number(result[0]);
+      if (status === 1) {
+        const returnedToken = String(result[2] ?? "");
+        if (returnedToken.length === 0) {
+          throw new Error("Workflow Task capacity returned an empty reservation token");
+        }
+        return { kind: "reserved" as const, lease: { leaseId, token: returnedToken } };
+      }
+      if (status === 2) {
+        return { kind: "active" as const };
+      }
+      const reason = Number(result[1]);
+      if (status !== 0 || (reason !== 1 && reason !== 2)) {
+        throw new Error("Workflow Task capacity returned an invalid reservation rejection");
+      }
+      return {
+        kind: "deferred" as const,
+        reasonCode: "WORKFLOW_TASK_TENANT_CAPACITY_LIMITED" as const,
+        retryAt: createRetryAt(new Date(), this.config),
+      };
+    } catch (error) {
+      this.logUnavailable(error, input.uid);
+      return {
+        kind: "deferred" as const,
+        reasonCode: "WORKFLOW_TASK_CAPACITY_UNAVAILABLE" as const,
+        retryAt: new Date(Date.now() + Math.max(30_000, this.config.deferDelayMs)),
       };
     }
   }
@@ -262,6 +421,24 @@ class RedisWorkflowTaskCapacity implements WorkflowTaskCapacityPort, WorkflowTas
           uid: input.uid,
         }, "Workflow Task capacity release failed; lease TTL will recover it");
       }
+    }
+  }
+
+  async releaseReservation(input: { lease: WorkflowTaskCapacityLease; uid: number }): Promise<void> {
+    try {
+      await this.client.eval(
+        RELEASE_RESERVATION_SCRIPT,
+        4,
+        this.globalLeasesKey(),
+        this.uidLeasesKey(input.uid),
+        this.leaseKey(input.lease.leaseId),
+        this.globalReservedLeasesKey(),
+        input.uid,
+        input.lease.token,
+        input.lease.leaseId,
+      );
+    } catch (error) {
+      this.logUnavailable(error, input.uid);
     }
   }
 
@@ -483,6 +660,10 @@ class RedisWorkflowTaskCapacity implements WorkflowTaskCapacityPort, WorkflowTas
     return `${this.keyPrefix}workflow:task-capacity:leases`;
   }
 
+  private globalReservedLeasesKey() {
+    return `${this.keyPrefix}workflow:task-capacity:reserved-leases`;
+  }
+
   private uidLeasesKey(uid: number) {
     return `${this.keyPrefix}workflow:task-capacity:leases:${uid}`;
   }
@@ -509,11 +690,29 @@ class RedisWorkflowTaskCapacity implements WorkflowTaskCapacityPort, WorkflowTas
 }
 
 class InMemoryWorkflowTaskCapacity implements WorkflowTaskCapacityPort {
-  private readonly leases = new Map<string, { expiresAt: number; references: number; token: string; uid: number }>();
+  private readonly leases = new Map<string, {
+    expiresAt: number;
+    phase: "active" | "reserved";
+    references: number;
+    token: string;
+    uid: number;
+  }>();
   private readonly quotas = new Map<number, { quota: number; stableCycles: number; expiresAt: number }>();
   private readonly demand = new Map<number, number>();
 
   constructor(private readonly config: TaskCapacityConfig) {}
+
+  async availability() {
+    this.cleanup(Date.now());
+    const reserved = [...this.leases.values()]
+      .filter(lease => lease.phase === "reserved")
+      .length;
+    return {
+      available: Math.max(0, this.config.globalConcurrency - this.leases.size),
+      kind: "available" as const,
+      reserved,
+    };
+  }
 
   async acquire(input: {
     leaseDurationMs: number;
@@ -526,7 +725,12 @@ class InMemoryWorkflowTaskCapacity implements WorkflowTaskCapacityPort {
     const leaseId = createLeaseId(input.uid, input.taskId, input.taskVersion);
     const existing = this.leases.get(leaseId);
     if (existing) {
-      existing.references += 1;
+      if (existing.phase === "reserved") {
+        existing.phase = "active";
+        existing.references = 1;
+      } else {
+        existing.references += 1;
+      }
       existing.expiresAt = input.now.getTime() + Math.max(1_000, input.leaseDurationMs);
       return {
         kind: "allowed",
@@ -547,11 +751,46 @@ class InMemoryWorkflowTaskCapacity implements WorkflowTaskCapacityPort {
     const token = randomUUID();
     this.leases.set(leaseId, {
       expiresAt: input.now.getTime() + Math.max(1_000, input.leaseDurationMs),
+      phase: "active",
       references: 1,
       token,
       uid: input.uid,
     });
     return { kind: "allowed", lease: { leaseId, token } };
+  }
+
+  async reserve(input: {
+    leaseDurationMs: number;
+    taskId: string;
+    taskVersion: number;
+    uid: number;
+  }) {
+    this.cleanup(Date.now());
+    const leaseId = createLeaseId(input.uid, input.taskId, input.taskVersion);
+    const existing = this.leases.get(leaseId);
+    if (existing) {
+      return { kind: "active" as const };
+    }
+    const quota = this.quotas.get(input.uid)?.quota
+      ?? calculateTenantQuota(this.config.globalConcurrency, this.config.tenantMaxSharePercent);
+    const uidUsed = [...this.leases.values()].filter(lease => lease.uid === input.uid).length;
+    if (this.leases.size >= this.config.globalConcurrency || uidUsed >= quota) {
+      this.demand.set(input.uid, Date.now());
+      return {
+        kind: "deferred" as const,
+        reasonCode: "WORKFLOW_TASK_TENANT_CAPACITY_LIMITED" as const,
+        retryAt: createRetryAt(new Date(), this.config),
+      };
+    }
+    const token = randomUUID();
+    this.leases.set(leaseId, {
+      expiresAt: Date.now() + Math.max(1_000, input.leaseDurationMs),
+      phase: "reserved",
+      references: 0,
+      token,
+      uid: input.uid,
+    });
+    return { kind: "reserved" as const, lease: { leaseId, token } };
   }
 
   async renew(input: {
@@ -573,6 +812,13 @@ class InMemoryWorkflowTaskCapacity implements WorkflowTaskCapacityPort {
       existing.references -= 1;
       return;
     }
+    this.leases.delete(input.lease.leaseId);
+  }
+
+  async releaseReservation(input: { lease: WorkflowTaskCapacityLease; uid: number }): Promise<void> {
+    const existing = this.leases.get(input.lease.leaseId);
+    if (!existing || existing.phase !== "reserved"
+      || existing.uid !== input.uid || existing.token !== input.lease.token) return;
     this.leases.delete(input.lease.leaseId);
   }
 

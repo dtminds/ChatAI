@@ -18,6 +18,7 @@ import { FakeWorkflowBroker } from "./support/fake-workflow-broker.js";
 describe("Wait Event Entry runtime composition", () => {
   it("latches the first Entry message and resumes after its fixed delay", async () => {
     const harness = await createHarness();
+    await harness.dispatchTasks();
     await harness.publishOutbox();
     await expect(harness.repository.findEventSubscriptionByTask(
       9,
@@ -67,6 +68,8 @@ describe("Wait Event Entry runtime composition", () => {
     });
     await harness.publishOutbox();
     await harness.publishOutbox();
+    await harness.dispatchTasks();
+    await harness.publishOutbox();
 
     await expect(harness.repository.findRun(9, harness.created.run.id)).resolves.toMatchObject({
       context: {
@@ -97,6 +100,7 @@ describe("Wait Event Entry runtime composition", () => {
 
   it("reaches the timeout terminal path when no Entry message arrives", async () => {
     const harness = await createHarness();
+    await harness.dispatchTasks();
     await harness.publishOutbox();
 
     const expiresAt = new Date("2026-08-10T00:01:00.000Z");
@@ -111,6 +115,8 @@ describe("Wait Event Entry runtime composition", () => {
       retryDelayMs: 5_000,
     })).resolves.toMatchObject({ dispatched: 1 });
     await harness.publishOutbox();
+    await harness.publishOutbox();
+    await harness.dispatchTasks();
     await harness.publishOutbox();
 
     await expect(harness.repository.findRun(9, harness.created.run.id)).resolves.toMatchObject({
@@ -221,6 +227,15 @@ async function createHarness() {
   return {
     broker,
     created,
+    dispatchTasks: () => scheduleWorkflowTasks({
+      leaseDurationMs: 60_000,
+      leaseOwner: "scheduler-1",
+      limit: 10,
+      maxAttempts: 5,
+      now: now,
+      repository,
+      retryDelayMs: 5_000,
+    }),
     publishOutbox: () => publishOutbox(broker, repository, () => now),
     repository,
     setNow(value: Date) { now = value; },

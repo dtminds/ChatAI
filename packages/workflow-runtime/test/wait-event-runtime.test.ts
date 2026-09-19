@@ -62,7 +62,10 @@ describe("Wait Event runtime", () => {
     try {
       const lease = { leaseId: "9|wait-event|1", token: "lease-token" };
       const taskCapacityPort: WorkflowTaskCapacityPort = {
+        availability: vi.fn(async () => ({ available: 1, kind: "available" as const })),
         acquire: vi.fn(async () => ({ kind: "allowed" as const, lease })),
+        releaseReservation: vi.fn(async () => {}),
+        reserve: vi.fn(async () => ({ kind: "reserved" as const, lease })),
         renew: vi.fn(async () => {
           throw new Error("Redis unavailable");
         }),
@@ -126,7 +129,7 @@ describe("Wait Event runtime", () => {
 
     expect(completed).toMatchObject({
       kind: "success",
-      nextTask: { nodeId: "end", status: "dispatched" },
+      nextTask: { nodeId: "end", status: "pending" },
       run: {
         context: {
           outputs: {
@@ -172,7 +175,7 @@ describe("Wait Event runtime", () => {
 
     expect(completed).toMatchObject({
       kind: "success",
-      nextTask: { nodeId: "end", status: "dispatched" },
+      nextTask: { nodeId: "end", status: "pending" },
       run: { context: { outputs: { "wait-event": {} } } },
     });
   });

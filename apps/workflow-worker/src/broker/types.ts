@@ -22,6 +22,8 @@ export type WorkflowBrokerSubscription = {
 };
 
 export type WorkflowBrokerSubscribeInput = {
+  ackTimeoutMs?: number;
+  beforeReceive?: () => Promise<boolean>;
   deadLetterTopic?: string;
   handler(message: WorkflowBrokerMessage): Promise<void> | void;
   maxInFlight: number;

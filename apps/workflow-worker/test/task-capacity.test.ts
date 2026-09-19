@@ -95,12 +95,93 @@ describe("Workflow Task capacity", () => {
       reasonCode: "WORKFLOW_TASK_TENANT_CAPACITY_LIMITED",
     });
     const [script, keyCount] = client.eval.mock.calls[0]!;
-    expect(keyCount).toBe(6);
+    expect(keyCount).toBe(7);
     expect(client.eval.mock.calls[0]?.[7]).toBe("test:workflow:task-capacity:saturated-quota");
+    expect(client.eval.mock.calls[0]?.[8]).toBe("test:workflow:task-capacity:reserved-leases");
     expect(String(script)).toContain("ZREMRANGEBYSCORE");
     expect(String(script)).toContain("ZCARD");
     expect(String(script)).toContain("ZADD");
     expect(String(script)).toContain("PEXPIRE");
+  });
+
+  it("releases an active Redis lease with exactly three keys", async () => {
+    const client = {
+      eval: vi.fn(async () => 1),
+    } as unknown as Redis;
+    const { port } = createWorkflowTaskCapacity({ config, keyPrefix: "test:", logger, client });
+
+    await port.release({
+      uid: 9,
+      lease: { leaseId: "9|task-1|1", token: "lease-token" },
+    });
+
+    expect(client.eval.mock.calls[0]?.[1]).toBe(3);
+  });
+
+  it("reports reserved leases when all global capacity is reserved", async () => {
+    const { port } = createWorkflowTaskCapacity({ config, keyPrefix: "test:", logger });
+
+    await expect(port.reserve({
+      leaseDurationMs,
+      taskId: "task-1",
+      taskVersion: 1,
+      uid: 1,
+    })).resolves.toMatchObject({ kind: "reserved" });
+    await expect(port.reserve({
+      leaseDurationMs,
+      taskId: "task-2",
+      taskVersion: 1,
+      uid: 2,
+    })).resolves.toMatchObject({ kind: "reserved" });
+
+    await expect(port.availability()).resolves.toEqual({
+      available: 0,
+      kind: "available",
+      reserved: 2,
+    });
+  });
+
+  it("adopts a reserved lease before releasing it as active", async () => {
+    vi.useFakeTimers();
+    try {
+      const now = new Date("2026-09-19T00:00:00.000Z");
+      vi.setSystemTime(now);
+      const { port } = createWorkflowTaskCapacity({ config, keyPrefix: "test:", logger });
+
+      await expect(port.reserve({
+        leaseDurationMs,
+        taskId: "task-1",
+        taskVersion: 1,
+        uid: 1,
+      })).resolves.toMatchObject({ kind: "reserved" });
+      await expect(port.reserve({
+        leaseDurationMs,
+        taskId: "task-2",
+        taskVersion: 1,
+        uid: 2,
+      })).resolves.toMatchObject({ kind: "reserved" });
+
+      const admission = await port.acquire(acquireInput(1, "task-1", now));
+      expect(admission).toMatchObject({
+        kind: "allowed",
+        lease: { leaseId: "1|task-1|1" },
+      });
+      if (admission.kind !== "allowed") throw new Error("Expected a capacity lease");
+
+      await expect(port.availability()).resolves.toEqual({
+        available: 0,
+        kind: "available",
+        reserved: 1,
+      });
+      await port.release({ uid: 1, lease: admission.lease });
+      await expect(port.availability()).resolves.toEqual({
+        available: 1,
+        kind: "available",
+        reserved: 1,
+      });
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("uses the same Redis lease token for duplicate admissions", async () => {

@@ -81,6 +81,30 @@ describe("MysqlWorkflowRuntimeRepository", () => {
     });
   });
 
+  it("groups stalled Tasks and orders them by their oldest sent Outbox row", async () => {
+    const db = createStalledDispatchedTasksDbMock();
+    const repository = new MysqlWorkflowRuntimeRepository(db as never);
+
+    await expect(repository.listStalledDispatchedTasks({
+      dispatchedBefore: new Date("2026-09-19T00:00:00.000Z"),
+      limit: 10,
+    })).resolves.toEqual([
+      { taskId: "7", taskVersion: 3, uid: 9 },
+      { taskId: "8", taskVersion: 4, uid: 10 },
+    ]);
+
+    expect(db.select.distinct).toBe(false);
+    expect(db.select.groupBy).toEqual([
+      "task.id",
+      "task.task_version",
+      "task.uid",
+    ]);
+    expect(db.select.orderBy).toEqual([
+      ["oldest_sent_at", "asc"],
+      ["task.id", "asc"],
+    ]);
+  });
+
   it("maps valid runtime snapshots while reporting invalid and missing tuple keys independently", async () => {
     const db = createRuntimeSnapshotDbMock([
       runtimeSnapshotRow({ workflowId: "31" }),
@@ -1399,6 +1423,45 @@ function createDueTaskUidsDbMock(input: {
           return table === "xy_wap_embed_workflow_capacity_guard"
             ? input.candidateRows
             : input.dueUidRows;
+        },
+      };
+      return builder;
+    },
+  };
+  return db;
+}
+
+function createStalledDispatchedTasksDbMock() {
+  const select = {
+    distinct: false,
+    groupBy: [] as unknown[],
+    orderBy: [] as unknown[][],
+  };
+  const db = {
+    select,
+    selectFrom() {
+      const builder = {
+        distinct() {
+          select.distinct = true;
+          return builder;
+        },
+        groupBy(columns: unknown) {
+          select.groupBy = Array.isArray(columns) ? columns : [columns];
+          return builder;
+        },
+        innerJoin() { return builder; },
+        limit() { return builder; },
+        orderBy(...args: unknown[]) {
+          select.orderBy.push(args);
+          return builder;
+        },
+        select() { return builder; },
+        where() { return builder; },
+        async execute() {
+          return [
+            { id: "7", task_version: 3, uid: 9 },
+            { id: "8", task_version: 4, uid: 10 },
+          ];
         },
       };
       return builder;
@@ -3044,7 +3107,13 @@ function createDispatchDueTasksDbMock(taskCount = 2) {
         where() { return builder; },
         async execute() {
           if (table.startsWith("xy_wap_embed_workflow_task")) {
-            return locked ? claimedTasks : [];
+            return locked
+              ? claimedTasks
+              : claimedTasks.map(task => ({
+                  id: task.id,
+                  task_version: task.task_version,
+                  uid: task.uid,
+                }));
           }
           if (table === "xy_wap_embed_workflow_definition") {
             return [{ biz_status: 1, id: "42", runtime_status: "active", uid: 8 }];

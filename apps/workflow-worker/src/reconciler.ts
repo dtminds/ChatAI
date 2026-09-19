@@ -1,4 +1,7 @@
-import type { WorkflowHistoryCleanupResult } from "@chatai/workflow-runtime";
+import type {
+  WorkflowHistoryCleanupResult,
+  WorkflowTaskCapacityPort,
+} from "@chatai/workflow-runtime";
 
 type WorkflowReconciler = {
   aggregateNodeMetricEvents(input: { limit: number }): Promise<number>;
@@ -69,6 +72,14 @@ type WorkflowReconciler = {
     limit: number;
     now: Date;
   }): Promise<number>;
+  listStalledDispatchedTasks(input: {
+    dispatchedBefore: Date;
+    limit: number;
+  }): Promise<Array<{ taskId: string; taskVersion: number; uid: number }>>;
+  republishReservedTasks(input: {
+    candidates: Array<{ taskId: string; taskVersion: number; uid: number }>;
+    now: Date;
+  }): Promise<Array<{ taskId: string; taskVersion: number; uid: number }>>;
   recoverExpiredOutboxLeases(input: { limit: number; now: Date }): Promise<number>;
   processRevisionCleanups(input: {
     leaseDurationMs: number;
@@ -101,6 +112,7 @@ export async function reconcileWorkflowRuntime(input: {
   now: Date;
   reconciler: WorkflowReconciler;
   retryDelayMs: number;
+  taskCapacityPort?: WorkflowTaskCapacityPort;
 }) {
   const nodeMetricEventsAggregated = await input.reconciler.aggregateNodeMetricEvents({
     limit: input.limit,
@@ -141,11 +153,56 @@ export async function reconcileWorkflowRuntime(input: {
     maxAttempts: input.maxTaskAttempts,
     now: input.now,
   });
-  const stalledTasksRepublished = await input.reconciler.republishStalledDispatchedTasks({
-    dispatchedBefore: new Date(input.now.getTime() - input.dispatchTimeoutMs),
-    limit: input.limit,
-    now: input.now,
-  });
+  let stalledTasksRepublished = 0;
+  if (!input.taskCapacityPort) {
+    stalledTasksRepublished = await input.reconciler.republishStalledDispatchedTasks({
+      dispatchedBefore: new Date(input.now.getTime() - input.dispatchTimeoutMs),
+      limit: input.limit,
+      now: input.now,
+    });
+  } else {
+    const stalled = await input.reconciler.listStalledDispatchedTasks({
+      dispatchedBefore: new Date(input.now.getTime() - input.dispatchTimeoutMs),
+      limit: input.limit,
+    });
+    const reservations = new Map<string, {
+      lease: Extract<
+        Awaited<ReturnType<WorkflowTaskCapacityPort["reserve"]>>,
+        { kind: "reserved" }
+      >["lease"];
+      uid: number;
+    }>();
+    for (const candidate of stalled) {
+      const reservation = await input.taskCapacityPort.reserve({
+        leaseDurationMs: input.leaseDurationMs,
+        taskId: candidate.taskId,
+        taskVersion: candidate.taskVersion,
+        uid: candidate.uid,
+      });
+      if (reservation.kind === "reserved") {
+        reservations.set(candidate.taskId, { lease: reservation.lease, uid: candidate.uid });
+      } else if (reservation.kind === "deferred"
+        && reservation.reasonCode === "WORKFLOW_TASK_CAPACITY_UNAVAILABLE") {
+        break;
+      }
+    }
+    try {
+      const republishCandidates = stalled.filter(candidate => reservations.has(candidate.taskId));
+      const republished = await input.reconciler.republishReservedTasks({
+        candidates: republishCandidates,
+        now: input.now,
+      });
+      const republishedIds = new Set(republished.map(candidate => candidate.taskId));
+      await Promise.all([...reservations]
+        .filter(([taskId]) => !republishedIds.has(taskId))
+        .map(([, reservation]) => input.taskCapacityPort!.releaseReservation(reservation)));
+      stalledTasksRepublished = republished.length;
+    } catch (error) {
+      await Promise.all([...reservations.values()].map(reservation =>
+        input.taskCapacityPort!.releaseReservation(reservation)));
+      throw error;
+    }
+  }
   const outboxLeasesRecovered = await input.reconciler.recoverExpiredOutboxLeases({
     limit: input.limit,
     now: input.now,

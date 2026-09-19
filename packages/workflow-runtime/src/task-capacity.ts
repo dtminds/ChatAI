@@ -5,6 +5,10 @@ export type WorkflowTaskCapacityLease = {
   token: string;
 };
 
+export type WorkflowTaskCapacityAvailability =
+  | { available: number; kind: "available"; reserved?: number }
+  | { kind: "unavailable" };
+
 export type WorkflowTaskCapacityAdmission =
   | { kind: "allowed"; lease: WorkflowTaskCapacityLease }
   | {
@@ -17,6 +21,7 @@ export type WorkflowTaskCapacityAdmission =
     };
 
 export type WorkflowTaskCapacityPort = {
+  availability(): Promise<WorkflowTaskCapacityAvailability>;
   acquire(input: {
     leaseDurationMs: number;
     now: Date;
@@ -24,12 +29,26 @@ export type WorkflowTaskCapacityPort = {
     taskVersion: number;
     uid: number;
   }): Promise<WorkflowTaskCapacityAdmission>;
+  reserve(input: {
+    leaseDurationMs: number;
+    taskId: string;
+    taskVersion: number;
+    uid: number;
+  }): Promise<
+    | { kind: "reserved"; lease: WorkflowTaskCapacityLease }
+    | { kind: "active" }
+    | Extract<WorkflowTaskCapacityAdmission, { kind: "deferred" }>
+  >;
   renew(input: {
     lease: WorkflowTaskCapacityLease;
     leaseDurationMs: number;
     uid: number;
   }): Promise<void>;
   release(input: {
+    lease: WorkflowTaskCapacityLease;
+    uid: number;
+  }): Promise<void>;
+  releaseReservation(input: {
     lease: WorkflowTaskCapacityLease;
     uid: number;
   }): Promise<void>;

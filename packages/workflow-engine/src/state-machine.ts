@@ -23,7 +23,7 @@ const taskTransitions: Record<WorkflowTaskStatus, readonly WorkflowTaskStatus[]>
   pending: ["leased", "running", "suspended", "cancelled", "dead"],
   running: ["completed", "pending", "suspended", "waiting_external", "cancelled", "dead"],
   suspended: ["pending", "cancelled", "dead"],
-  waiting_external: ["dispatched", "suspended", "cancelled", "dead"],
+  waiting_external: ["pending", "dispatched", "suspended", "cancelled", "dead"],
 };
 
 export function transitionRun(from: WorkflowRunStatus, to: WorkflowRunStatus) {

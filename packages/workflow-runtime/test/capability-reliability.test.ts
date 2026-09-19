@@ -59,7 +59,7 @@ describe("workflow capability reliability", () => {
     } finally { vi.useRealTimers(); }
   });
 
-  it("defers a claimed task when capacity lease renewal is lost", async () => {
+  it("fails a claimed task when capacity lease renewal is lost", async () => {
     vi.useFakeTimers();
     try {
       const runtime = new InMemoryWorkflowRuntimeRepository(undefined, () => now);
@@ -70,7 +70,10 @@ describe("workflow capability reliability", () => {
       });
       let executionSignal: AbortSignal | undefined;
       const taskCapacityPort: WorkflowTaskCapacityPort = {
+        availability: vi.fn(async () => ({ available: 1, kind: "available" as const })),
         acquire: vi.fn(async () => ({ kind: "allowed" as const, lease })),
+        releaseReservation: vi.fn(async () => {}),
+        reserve: vi.fn(async () => ({ kind: "reserved" as const, lease })),
         renew: vi.fn(async () => {
           throw new Error("Redis unavailable");
         }),
@@ -95,17 +98,20 @@ describe("workflow capability reliability", () => {
         uid: 9,
         workerId: "worker-1",
       });
+      const executionRejection = expect(execution).rejects.toMatchObject({
+        code: "WORKFLOW_TASK_CAPACITY_UNAVAILABLE",
+      });
 
       await executionStartedPromise;
       await vi.advanceTimersByTimeAsync(10_000);
 
-      await expect(execution).resolves.toMatchObject({
-        kind: "deferred",
-        reasonCode: "WORKFLOW_TASK_CAPACITY_UNAVAILABLE",
-        task: { attempt: 0, status: "pending" },
-      });
+      await executionRejection;
       expect(executionSignal?.aborted).toBe(true);
       expect(taskCapacityPort.release).toHaveBeenCalledWith({ lease, uid: 9 });
+      expect(runtime.tasks.find(item => item.id === task.id)).toMatchObject({
+        attempt: 1,
+        status: "running",
+      });
     } finally {
       vi.useRealTimers();
     }
@@ -117,7 +123,10 @@ describe("workflow capability reliability", () => {
       const runtime = new InMemoryWorkflowRuntimeRepository(undefined, () => now);
       const lease = { leaseId: "9|task|1", token: "lease-token" };
       const taskCapacityPort: WorkflowTaskCapacityPort = {
+        availability: vi.fn(async () => ({ available: 1, kind: "available" as const })),
         acquire: vi.fn(async () => ({ kind: "allowed" as const, lease })),
+        releaseReservation: vi.fn(async () => {}),
+        reserve: vi.fn(async () => ({ kind: "reserved" as const, lease })),
         renew: vi.fn(async () => {
           throw new Error("Redis unavailable");
         }),

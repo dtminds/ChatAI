@@ -19,7 +19,7 @@ describe("workflow scheduler repository", () => {
       status: "dispatched",
       taskVersion: 4,
     });
-    expect(repository.snapshot().outbox).toHaveLength(2);
+    expect(repository.snapshot().outbox).toHaveLength(1);
     expect(repository.snapshot().outbox.at(-1)?.payload).toMatchObject({
       messageId: `workflow-task:${created.nextTask!.id}:v4`,
       runId: created.run.id,
@@ -99,7 +99,7 @@ describe("workflow scheduler repository", () => {
 describe("workflow outbox repository", () => {
   it("republishes a dispatched task with the same version after the delivery timeout", async () => {
     const repository = createRepository();
-    const created = await repository.createRunWithInitialTask(createRunInput());
+    const created = await createDispatchedInitialTask(repository);
     const [claimedOutbox] = await repository.claimOutboxBatch({
       leaseExpiresAt,
       leaseOwner: "publisher-1",
@@ -119,10 +119,10 @@ describe("workflow outbox repository", () => {
     })).resolves.toBe(1);
     expect(repository.snapshot().tasks[0]).toMatchObject({
       status: "dispatched",
-      taskVersion: 1,
+      taskVersion: 2,
     });
     expect(repository.snapshot().outbox).toHaveLength(2);
-    expect(repository.snapshot().outbox.at(-1)?.payload.taskVersion).toBe(1);
+    expect(repository.snapshot().outbox.at(-1)?.payload.taskVersion).toBe(2);
     await expect(repository.republishStalledDispatchedTasks({
       dispatchedBefore: new Date("2026-07-11T00:05:00.000Z"),
       limit: 10,
@@ -130,7 +130,7 @@ describe("workflow outbox repository", () => {
     })).resolves.toBe(0);
     expect(repository.snapshot().outbox).toHaveLength(2);
     await expect(repository.claimTask({
-      expectedTaskVersion: created.task.taskVersion,
+      expectedTaskVersion: created.task.taskVersion + 1,
       leaseExpiresAt,
       leaseOwner: "consumer",
       taskId: created.task.id,
@@ -140,7 +140,7 @@ describe("workflow outbox repository", () => {
 
   it("leases one outbox row to only one concurrent publisher", async () => {
     const repository = createRepository();
-    await repository.createRunWithInitialTask(createRunInput());
+    await createDispatchedInitialTask(repository);
 
     const [first, second] = await Promise.all([
       repository.claimOutboxBatch({
@@ -163,7 +163,7 @@ describe("workflow outbox repository", () => {
 
   it("recovers expired outbox leases for a later publisher", async () => {
     const repository = createRepository();
-    await repository.createRunWithInitialTask(createRunInput());
+    await createDispatchedInitialTask(repository);
     const [claimed] = await repository.claimOutboxBatch({
       leaseExpiresAt,
       leaseOwner: "publisher-1",
@@ -188,7 +188,7 @@ describe("workflow outbox repository", () => {
 
   it("requires the current lease owner to mark an outbox row sent", async () => {
     const repository = createRepository();
-    await repository.createRunWithInitialTask(createRunInput());
+    await createDispatchedInitialTask(repository);
     const [claimed] = await repository.claimOutboxBatch({
       leaseExpiresAt,
       leaseOwner: "publisher-1",
@@ -210,7 +210,7 @@ describe("workflow outbox repository", () => {
 
   it("requires the current lease owner to release a failed outbox row", async () => {
     const repository = createRepository();
-    await repository.createRunWithInitialTask(createRunInput());
+    await createDispatchedInitialTask(repository);
     const [claimed] = await repository.claimOutboxBatch({
       leaseExpiresAt,
       leaseOwner: "publisher-1",
@@ -232,7 +232,7 @@ describe("workflow outbox repository", () => {
 
   it("fails a still-dispatched task when its outbox delivery attempts are exhausted", async () => {
     const repository = createRepository();
-    await repository.createRunWithInitialTask(createRunInput());
+    await createDispatchedInitialTask(repository);
     const [claimed] = await repository.claimOutboxBatch({
       leaseExpiresAt,
       leaseOwner: "publisher-1",
@@ -248,14 +248,14 @@ describe("workflow outbox repository", () => {
     expect(repository.snapshot().outbox[0]).toMatchObject({ status: "dead" });
     expect(repository.snapshot().tasks[0]).toMatchObject({
       status: "dead",
-      taskVersion: 2,
+      taskVersion: 3,
     });
     expect(repository.snapshot().runs[0]).toMatchObject({ status: "failed" });
   });
 
   it("marks an exhausted outbox row dead after its task was already cancelled", async () => {
     const repository = createRepository();
-    const created = await repository.createRunWithInitialTask(createRunInput());
+    const created = await createDispatchedInitialTask(repository);
     const [claimed] = await repository.claimOutboxBatch({
       leaseExpiresAt,
       leaseOwner: "publisher-1",
@@ -332,6 +332,12 @@ const leaseExpiresAt = new Date("2026-07-11T00:01:00.000Z");
 
 function createRepository() {
   return new InMemoryWorkflowRuntimeRepository(undefined, () => now);
+}
+
+async function createDispatchedInitialTask(repository: InMemoryWorkflowRuntimeRepository) {
+  const created = await repository.createRunWithInitialTask(createRunInput());
+  await expect(repository.dispatchDueTasks({ limit: 10, now })).resolves.toMatchObject({ dispatched: 1 });
+  return created;
 }
 
 async function createWaitingTask(

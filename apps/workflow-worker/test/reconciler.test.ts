@@ -57,7 +57,23 @@ describe("workflow reconciler", () => {
         lastUid: 109,
       })),
       republishStalledDispatchedTasks: vi.fn(async () => 6),
+      listStalledDispatchedTasks: vi.fn(async () => [
+        { taskId: "7", taskVersion: 3, uid: 9 },
+        { taskId: "8", taskVersion: 4, uid: 10 },
+      ]),
+      republishReservedTasks: vi.fn(async ({ candidates }) => candidates.slice(0, 1)),
       recoverExpiredOutboxLeases: vi.fn(async () => 3),
+    };
+    const taskCapacityPort = {
+      availability: vi.fn(async () => ({ available: 1, kind: "available" as const })),
+      acquire: vi.fn(),
+      release: vi.fn(),
+      releaseReservation: vi.fn(async () => {}),
+      renew: vi.fn(),
+      reserve: vi.fn(async ({ taskId, taskVersion, uid }) => ({
+        kind: "reserved" as const,
+        lease: { leaseId: `${uid}|${taskId}|${taskVersion}`, token: taskId },
+      })),
     };
 
     await expect(reconcileWorkflowRuntime({
@@ -81,6 +97,7 @@ describe("workflow reconciler", () => {
       now: new Date("2026-07-11T00:00:00.000Z"),
       reconciler,
       retryDelayMs: 5_000,
+      taskCapacityPort,
     })).resolves.toEqual({
       cancelled: 4,
       capacityCountsChecked: 100,
@@ -97,7 +114,7 @@ describe("workflow reconciler", () => {
       nextCapacityCursor: 109,
       nodeMetricEventsAggregated: 7,
       nodeMetricEventsDeleted: 8,
-      stalledTasksRepublished: 6,
+      stalledTasksRepublished: 1,
       outboxLeasesRecovered: 3,
       outboxDeleted: 11,
       runsDeleted: 12,
@@ -115,10 +132,26 @@ describe("workflow reconciler", () => {
       tasksChecked: 11,
       terminalRunTasksCancelled: 3,
     });
-    expect(reconciler.republishStalledDispatchedTasks).toHaveBeenCalledWith({
+    expect(reconciler.listStalledDispatchedTasks).toHaveBeenCalledWith({
       dispatchedBefore: new Date("2026-07-10T23:55:00.000Z"),
       limit: 100,
+    });
+    expect(taskCapacityPort.reserve).toHaveBeenNthCalledWith(1, {
+      leaseDurationMs: 30_000,
+      taskId: "7",
+      taskVersion: 3,
+      uid: 9,
+    });
+    expect(reconciler.republishReservedTasks).toHaveBeenCalledWith({
+      candidates: [
+        { taskId: "7", taskVersion: 3, uid: 9 },
+        { taskId: "8", taskVersion: 4, uid: 10 },
+      ],
       now: new Date("2026-07-11T00:00:00.000Z"),
+    });
+    expect(taskCapacityPort.releaseReservation).toHaveBeenCalledWith({
+      lease: { leaseId: "10|8|4", token: "8" },
+      uid: 10,
     });
     expect(reconciler.reconcileRunTaskConsistency).toHaveBeenCalledWith({
       afterRunId: "80",

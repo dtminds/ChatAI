@@ -1,6 +1,6 @@
 # Workflow 租户级 Task 弹性并发控制 1.0
 
-- 日期：2026-09-18
+- 日期：2026-09-19
 - 版本：1.0
 - 状态：Draft
 - 适用范围：`apps/workflow-worker`、`packages/workflow-runtime` 的 Task 执行容量保护
@@ -9,27 +9,35 @@
 
 本文记录租户级 Task 执行容量保护的 1.0 方案。它是现有 Workflow 执行引擎设计的补充，不改变 Run、Task、Outbox 的业务事实来源，也不把 Redis 变成长期任务调度数据库。
 
-当前代码路径锚点：Scheduler 的 `dispatchDueTasks` 位于
+当前代码路径锚点：Scheduler 的 reservation 派发位于
+`apps/workflow-worker/src/scheduler.ts` 与
 `packages/workflow-runtime/src/mysql-repository.ts`，Task Consumer 位于
 `apps/workflow-worker/src/task-consumer.ts`，Runtime 的 `executeTask` 位于
-`packages/workflow-runtime/src/service.ts`。本 Spec 只在 Runtime 的 `claimTask` 前增加容量准入，不改变上述入口和 Task 状态机的基本职责。
+`packages/workflow-runtime/src/service.ts`。容量控制同时保护 Scheduler 派发口和 Consumer 执行口；MySQL 仍是 Task、Run、Outbox 的业务事实来源。
 
 ## 1. 决策摘要
 
-1.0 采用“周期性容量控制器 + Consumer 执行准入”的弹性并发方案：
+1.0 采用“Scheduler reservation + Consumer 执行准入 + 周期性容量控制器”的弹性并发方案：
 
 ```text
-Task 仍按现有 Scheduler 全局 FIFO 派发
+Task 创建或节点推进 -> pending
+        |
+        v
+Scheduler 读取 Redis 可用余量
+        |
+        +-- 无余量 / Redis 不可用：本轮不查询到期 Task
+        |
+        +-- 有余量：读取 pending 到期 Task -> Redis reservation
+                                      |
+                                      +-- 成功：pending -> dispatched + Outbox
+                                      +-- 失败：Task 保持 pending
         |
         v
 Pulsar / Task Consumer
         |
-        +-- Redis 原子申请全局执行许可和 UID 配额
-        |       |
-        |       +-- 允许：取得 Task 执行租约并执行
-        |       +-- 拒绝：Task 延期、ACK 当前消息、等待下次唤醒
-        |
-        v
+        +-- 已收到消息但容量不足：内存等待，不 ACK/NACK、不写 MySQL
+        +-- 取得许可：claimTask -> 执行 -> 提交结果 -> 释放许可 -> ACK
+
 容量控制器每 5 分钟扫描积压并更新 UID 动态配额
 ```
 
@@ -40,8 +48,9 @@ Pulsar / Task Consumer
 - 单租户无竞争时最多使用 `H = max(1, floor(N * 90%))`，保留一部分容量给新租户或其他租户；当 `N` 很小时仍至少允许一个 Task。
 - 检测到多个租户同时积压后，控制器按活跃竞争 UID 数量下调动态配额；最多精细管理 100 个竞争 UID，超过后统一进入饱和模式，配额按 `max(1, floor(N / 100))` 计算。
 - 已经取得许可并开始执行的 Task 不抢占；配额下调只影响后续 Task。
-- 控制器周期为 5 分钟，允许在一个控制周期内存在过度占用；不承诺实时公平或严格 Round Robin。
-- 不改写现有 `dispatchDueTasks` 的全局 FIFO 逻辑，不新增 Task 调度索引，不引入 UID 级 Scheduler 轮转队列。
+- 控制器周期为 5 分钟，允许在一个控制周期内存在过度占用；本版本不承诺实时公平或严格 Round Robin。
+- 保留现有全局 FIFO 候选顺序，只在派发前增加 Redis reservation；不新增 Task 调度索引，不引入 UID 级 Scheduler 轮转队列。
+- 容量不足不是业务延期：不修改 `due_at`、`task_version` 或 `attempt`，不通过 `deferTask` 产生 MySQL 写放大。
 - 不对 `Entry Consumer` 采用同一套延期逻辑。1.0 只保护 Task；Entry 的持久化延期和入口公平性另行设计。
 
 这是一种 **best-effort 的 work-conserving bulkhead**，不是严格的公平调度器。它的验收目标是阻止单个租户长期占满实际执行容量，并在不超过约 5 分钟的控制窗口内收敛，而不是证明每个 UID 在每个瞬间都获得相同槽位。
@@ -50,7 +59,7 @@ Pulsar / Task Consumer
 
 ### 2.1 当前派发路径
 
-当前 Scheduler 的 `dispatchDueTasks` 按全局 Task 队列读取到期任务，主要排序字段为：
+Scheduler 仍按全局 Task 队列读取到期 `pending` 任务，主要排序字段为：
 
 ```text
 status, bucket_time, due_at, id
@@ -62,14 +71,14 @@ status, bucket_time, due_at, id
 
 ### 2.2 1.0 有意保留的行为
 
-1.0 不改造为“先选 UID、再按 UID 派发”的严格公平 Scheduler。因此以下现象仍可能存在：
+1.0 不改造为“先选 UID、再按 UID 派发”的公平 Scheduler。因此以下现象仍可能存在：
 
 - 热点 UID 的 Task 可能先进入 Pulsar。
-- Consumer 仍会短暂读取部分暂时不能执行的 Task。
-- 被拒绝的 Task 会产生一次 Redis 准入检查和一次数据库延期写入。
+- 热点 UID 可能占用部分 Pulsar Consumer 的等待槽位。
+- reservation 与实际消费之间存在竞态，Consumer 仍可能收到暂时不能执行的消息并在内存中等待。
 - Shared Subscription 不提供租户级顺序或严格轮转保证。
 
-这些是 1.0 明确接受的代价。容量控制器和 Consumer 准入必须足够轻量，不能将延期重试变成高频重投或大规模数据库写放大。
+这些是 1.0 明确接受的代价。容量保护的硬要求是没有许可不得执行，容量等待不得改写 MySQL Task 状态。
 
 ### 2.3 1.0 要解决的问题
 
@@ -79,7 +88,7 @@ status, bucket_time, due_at, id
 - 新租户开始有任务时，热点租户仍无限制地继续取得新执行槽。
 - Worker 扩容后不同实例各自计数，导致租户和全局容量被重复放大。
 - Worker 崩溃后并发计数永久泄漏。
-- 通过拒绝执行来保护容量时，Task attempt 被错误消耗或消息进入 DLQ。
+- 通过容量等待保护容量时，Task attempt、Task Version 和 `due_at` 不被错误改写。
 
 ## 3. 目标与非目标
 
@@ -90,7 +99,7 @@ status, bucket_time, due_at, id
 - 允许单一租户在系统空闲时借用大部分容量。
 - 在其他租户积压出现后，动态降低热点租户后续准入额度。
 - 控制器最长约 5 分钟完成一次竞争状态判断和配额调整。
-- Task 被拒绝时使用现有 `due_at` 持久化延期路径，不增加业务 `attempt`。
+- 容量不足时不产生 Task 持久化延期；消息在 Consumer 内存中等待，Redis 故障时 fail-closed。
 - Worker 崩溃、网络断开或释放逻辑未执行时，许可可以自动过期回收。
 - 不新增数据库表，不新增 Task 索引，不改变 Task、Run、Outbox 的业务状态模型。
 - 保持 MySQL 为 Task、Run、Outbox 和最终业务状态的事实来源。
@@ -101,7 +110,7 @@ status, bucket_time, due_at, id
 - 不保证同一时刻每个活跃 UID 都有一个执行槽。
 - 不抢占已经运行的 Task。
 - 不改变 Scheduler 的全局 FIFO 派发排序。
-- 不消除热点 Task 已经进入 Pulsar 后产生的全部运输层开销。
+- 不消除热点 Task 已经进入 Pulsar 后产生的全部运输层开销或等待槽位占用。
 - 不保护 Entry Consumer 的租户级执行容量。
 - 不使用 Redis 保存长期 Task 状态、Run 状态或调度事实。
 - 不通过 Redis 计数替代 MySQL 的 Task Version、状态和租约校验。
@@ -188,19 +197,21 @@ valid Redis execution leases <= N
 valid Redis execution leases for uid <= Q(uid)
 ```
 
+由于 reservation 会在 MySQL `pending -> dispatched` 之前短暂存在，且消息可能已经进入 Pulsar，`dispatched + running <= N` 不是 1.0 的不变式；真正受 `N` 约束的是有效 Redis lease。
+
 ## 5. 总体架构
 
 ### 5.1 模块职责
 
 #### Task Consumer / Runtime
 
-- 在取得数据库 Task 执行租约前申请 Redis 执行许可。
-- 许可不足时将 Task 写回延后状态，并 ACK 当前 Pulsar 消息。
-- 许可成功后执行现有 `claimTask` 和节点推进路径。
+- Consumer 在收到消息前先检查 Redis 全局余量；已经收到的消息在取得 Redis 执行许可前留在内存中等待。
+- 容量不足或 Redis 不可用时不调用 Runtime、不 ACK/NACK、不修改 MySQL Task。
+- 许可成功后将 reservation 转为执行许可，再执行现有 `claimTask` 和节点推进路径。
 - 在 Task 状态已经持久化后释放许可。
 - 处理 Redis 许可过期、释放失败和旧 Task 消息等异常。
 
-容量准入作为 Runtime 的一个可替换端口接入，不由 `task-consumer.ts` 自己复制 Task 查询或状态更新逻辑。`executeTask` 在容量拒绝时返回现有 Consumer 可识别的结果：
+容量准入作为 Runtime 的一个可替换端口接入，不由 `task-consumer.ts` 自己复制 Task 查询或状态更新逻辑。容量原因码仍保留给 Runtime 直接调用和观测，但生产 Task Consumer 不把容量等待转换为持久化延期结果：
 
 ```ts
 {
@@ -211,7 +222,7 @@ valid Redis execution leases for uid <= Q(uid)
 }
 ```
 
-Consumer 按正常成功返回路径 ACK，并将其观测为租户容量延期或容量模块不可用；不得把容量拒绝抛成普通异常后依赖 Pulsar NACK 重投。
+容量等待不能依赖 Pulsar NACK 重投。Task Consumer 的 Task subscription 必须关闭 ACK timeout；Worker 关闭时中止等待，让未 ACK 消息由 Broker 连接恢复机制重新投递。
 
 #### Task Capacity Controller
 
@@ -223,9 +234,11 @@ Consumer 按正常成功返回路径 ACK，并将其观测为租户容量延期�
 
 #### Scheduler
 
-- 保持现有全局 FIFO 派发逻辑。
-- 不读取动态 UID 配额。
-- 不负责严格公平轮转。
+- 先通过 Redis Lua 读取全局可用余量；Redis 不可用或余量为 0 时，本轮不查询到期 Task。
+- 有余量时按现有全局 FIFO 读取有限的 `pending` 到期候选。
+- 对候选逐个申请 Redis reservation；只有 reservation 成功的候选才允许写入 `dispatched` 和 Outbox。
+- DB 状态冲突或事务失败时释放未使用 reservation；reservation 自身以 TTL 兜底。
+- 不负责 UID 公平轮转，也不新增调度索引。
 
 #### MySQL
 
@@ -241,42 +254,47 @@ Consumer 按正常成功返回路径 ACK，并将其观测为租户容量延期�
 ### 5.2 逻辑流程
 
 ```text
-1. Scheduler 按现有方式将到期 Task 写入 Outbox / Pulsar
-2. Task Consumer 解析 Task 消息并读取当前 Task / Run
-3. Runtime 完成权益、节点和发送窗口等无需执行许可的检查
-4. Capacity Admission 原子申请 uid + 全局许可
-5. 申请成功：claimTask -> 执行节点 -> 提交 Task 结果 -> 释放许可 -> ACK
-6. 申请失败：记录 UID 需求 -> deferTask -> ACK
-7. Controller 每 5 分钟扫描积压并调整 Q(uid)
+1. 新 Task 和节点推进 Task 先写入 pending，不直接写 Outbox
+2. Scheduler 检查 Redis availability；无余量或 Redis 不可用时结束本轮到期派发
+3. Scheduler 读取有限的 pending 到期候选，并为候选申请 Redis reservation
+4. reservation 成功后，在 MySQL 事务内执行 pending -> dispatched 并写 Outbox
+5. Outbox Publisher 发布 Task 消息
+6. Consumer 收到消息后取得或复用同一 lease；容量不足时在内存等待
+7. 取得 lease 后执行 claimTask -> 节点 -> 提交结果 -> 释放 lease -> ACK
+8. Controller 每 5 分钟扫描积压并调整 Q(uid)
 ```
 
 ## 6. Task Consumer 准入
 
 ### 6.1 准入位置
 
-容量准入必须位于：
+容量准入必须覆盖两个位置：
 
 
 ```text
-findTask / findRun / Revision 校验
-    -> 权益与 Workflow 边界校验
-    -> 消息发送窗口等可持久延期检查
-    -> Redis Capacity Admission
-    -> claimTask
-    -> 节点执行
+Scheduler:
+    Redis availability
+        -> 读取 pending 到期候选
+        -> Redis reservation
+        -> MySQL pending -> dispatched + Outbox
+
+Task Consumer:
+    收到消息
+        -> Redis Capacity Admission
+        -> claimTask
+        -> 节点执行
 ```
 
-不能在 `claimTask` 之后才申请。`claimTask` 会增加 Task `attempt` 并取得执行租约；容量不足不应消耗业务执行尝试。
+不能在 `claimTask` 之后才申请。`claimTask` 会增加 Task `attempt` 并取得执行租约；容量不足不应消耗业务执行尝试。Consumer 在取得许可前也不应调用 `findTask`、`findRun` 或 Runtime，避免把等待消息变成 MySQL 读放大。
 
-容量拒绝和 Redis 不可用都必须在 `claimTask` 前完成持久化延期。实现需要扩展共享的
-`WorkflowTaskDeferReasonCode`，至少加入：
+容量原因码仍使用：
 
 ```text
 WORKFLOW_TASK_TENANT_CAPACITY_LIMITED
 WORKFLOW_TASK_CAPACITY_UNAVAILABLE
 ```
 
-两者都属于 Task Deferred，不属于 Capability Retry；前者表示全局许可或 UID 配额不足，后者表示无法确认许可状态。
+前者表示全局许可或 UID 配额不足，后者表示无法确认许可状态。它们不能用于容量等待时的 `deferTask`。
 
 ### 6.2 申请成功
 
@@ -290,7 +308,7 @@ WORKFLOW_TASK_CAPACITY_UNAVAILABLE
 5. `executeTask` 返回后先确认数据库状态已提交，再释放许可。
 6. 释放完成后 ACK 当前 Pulsar 消息；ACK 失败仍由现有重复消息和 Task Version 处理。
 
-### 6.3 申请失败
+### 6.3 容量不足与 Redis 不可用
 
 申请失败包括：
 
@@ -298,26 +316,27 @@ WORKFLOW_TASK_CAPACITY_UNAVAILABLE
 - 当前 UID 已达到动态配额；
 - 当前 Redis 许可数据不可用。
 
-全局许可已满或 UID 配额已满时：
+Scheduler 发现全局余量为 0 或 Redis 不可用时：
 
-1. 在 Redis 需求 ZSET 中刷新该 UID 的 `lastDemandAt`。
-2. 计算 `dueAt = now + capacityDeferDelay + jitter`。
-3. 使用现有 `deferTask` 将 Task 延后。
-4. 使用错误码 `WORKFLOW_TASK_TENANT_CAPACITY_LIMITED` 记录延期原因。
-5. 不增加 Task `attempt`，但按现有规则增加 `task_version`。
-6. ACK 当前 Pulsar 消息。
+1. 直接结束本轮到期派发，不查询 Task 表。
+2. 已有 `pending` Task 保持原状态和 `due_at`。
 
-Redis 不可用时不写需求 ZSET，使用同一 `deferTask` 路径但改用
-`WORKFLOW_TASK_CAPACITY_UNAVAILABLE`。该路径使用至少 30 秒的退避，并需要限速观测，避免 Redis 故障时每条 Task 都立即产生一次 MySQL 延期写入。
+已经进入 Pulsar 的消息在 Consumer 内部等待：
+
+1. 全局或 UID 容量不足时继续以短间隔检查容量。
+2. Redis 不可用时至少 30 秒后再重试，避免 Redis 故障期间形成高频轮询。
+3. 等待期间不调用 Runtime，不修改 `due_at`、`task_version` 或 `attempt`，不 ACK/NACK。
+4. Worker 关闭时中止等待；消息保持未 ACK，交由 Broker 在连接恢复后重新投递。
+5. Scheduler 与 Consumer 的 reservation 竞态由 Redis Lua 和 MySQL Task Version 处理，不通过写回 Task 状态解决。
 
 推荐初始值：
 
 ```text
-capacityDeferDelay = 60 seconds
+capacityRetryDelay = 60 seconds
 jitter = 0..30 seconds
 ```
 
-延期不能使用几秒级固定重试，否则控制周期内会产生大量重复唤醒。随机抖动只用于分散同一 UID 的同时唤醒，不承担公平排序职责。
+抖动只用于分散重复容量检查，不承担公平排序职责；它不写入 Task 的 `due_at`。
 
 ### 6.4 许可释放保证
 
@@ -330,6 +349,13 @@ Runtime 必须使用 `try/finally` 覆盖以下所有路径：
 - Message rate limit 延期；
 - Workflow 暂停、停止或权益失效；
 - Abort、超时和未知异常。
+
+Scheduler reservation 还必须覆盖：
+
+- reservation 成功但 Task 状态已被其他 Scheduler 改变；
+- `pending -> dispatched` 事务失败；
+- Workflow 边界判断将候选转为 `suspended` 或 `cancelled`；
+- Outbox 写入失败。
 
 如果释放请求失败，许可不立即视为可复用，由 Redis TTL 自动回收；系统记录释放失败观测，不修改已提交的 MySQL 业务状态。
 
@@ -478,14 +504,15 @@ workflow:task-capacity:controller-lock
 
 ### 8.1 原子申请
 
-申请许可必须由一个 Redis Lua 脚本原子完成：
+Scheduler reservation 和 Consumer 执行许可必须由 Redis Lua 脚本原子完成。Lease 记录包含 `reserved` 和 `active` 两个阶段：
 
 1. 清理全局和当前 UID 已过期的 lease member。
 2. 读取当前 UID `Q(uid)`；没有有效配额时使用 `H`。如果全局饱和配额存在，则使用二者中的较小值。
 3. 检查全局有效 lease 数是否小于 `N`。
 4. 检查当前 UID 有效 lease 数是否小于 `Q(uid)`。
-5. 两项都满足时同时写入全局 ZSET 和 UID ZSET。
-6. 任一条件不满足时不写入 lease，并返回拒绝原因和建议重试时间。
+5. 两项都满足时写入 `reserved` lease，同时写入全局 ZSET 和 UID ZSET。
+6. Scheduler 完成 DB 派发后，Consumer 对同一 `leaseId` 的第一次 `acquire` 将 reservation 转为 `active`。
+7. 任一条件不满足时不写入 lease，并返回拒绝原因和建议重试时间。
 
 `ZSET` 没有 per-member TTL。每次申请、释放、续租和控制器扫描都必须显式清理过期 member；UID ZSET 在没有新 lease 时可以设置一个保守的 key TTL，但 TTL 不能替代 score 清理。
 
@@ -493,20 +520,22 @@ workflow:task-capacity:controller-lock
 
 - 释放脚本必须同时删除全局和 UID ZSET 中的 `leaseId`，并验证 lease 所属 UID。
 - 续租脚本只允许原 `leaseId` 延长 score，不允许凭 UID 扩大或替换其他 Task 的许可。
-- Lease TTL 至少覆盖当前 Task 的 `lease_expires_at`，并在长于 TTL 一半的执行中续租。
+- reservation TTL 至少覆盖 Scheduler 派发和 Outbox 投递的正常窗口；active lease TTL 至少覆盖当前 Task 的 `lease_expires_at`，并在长于 TTL 一半的执行中续租。
 - Worker 崩溃后不依赖 `finally`，过期 lease 由下一次 Lua 操作或控制器清理。
 - 许可清理只影响吞吐容量，不修改 MySQL Task 状态；Task 状态仍由现有 Reconciler 和版本条件恢复。
 
 ### 8.3 Redis 失败
 
-Redis 许可申请失败时不得直接执行 Task。生产环境 Task Consumer 必须保持 Redis 必需配置，运行期 Redis 不可用时采用 fail-closed：
+Redis availability、reservation 或 active lease 申请失败时不得直接执行 Task。生产环境 Task Consumer 必须保持 Redis 必需配置，运行期 Redis 不可用时采用 fail-closed：
 
 - 不消耗 Task `attempt`；
 - 不执行外部节点动作；
-- 按统一容量不可用退避处理，并记录 Worker 健康告警；
+- Scheduler 不再读取新的到期 Task；
+- 已收到的消息按 30 秒级退避等待，并记录 Worker 健康告警；
+- 不 ACK/NACK，不写入 MySQL Task 延期；
 - Redis 恢复后重新取得许可。
 
-实现时必须避免 Redis 故障导致每条 Task 都以几秒频率写回 MySQL。容量不可用退避至少使用 30 秒级延迟，或者由 Consumer 进入受控暂停接收状态；具体 Broker 停止接收方式由实现阶段按当前 Pulsar Adapter 能力确定。无论采用哪种方式，都不得因为 Redis 失败而绕过容量准入执行外部动作。
+实现时必须避免 Redis 故障导致每条 Task 都以几秒频率访问 Redis 或写回 MySQL。Task subscription 的 ACK timeout 必须关闭；容量等待是 Consumer 的反压，不是 NACK 重投。
 
 ## 9. 数据库与状态机边界
 
@@ -521,32 +550,25 @@ Redis 许可申请失败时不得直接执行 Task。生产环境 Task Consumer 
 
 控制器复用现有 Task、Outbox 和 Task Schedule 查询；容量许可只保存在 Redis 短期数据中。
 
-### 9.2 延期使用现有 Task 路径
+### 9.2 Task 创建与派发状态
 
-容量不足调用现有 `deferTask`，保持以下语义：
-
-- 支持 `dispatched` Task 回到 `pending`；
-- 更新 `due_at` 和 `bucket_time`；
-- 写入 `last_error_code`；
-- 清除 Task 执行租约字段；
-- 增加 `task_version`；
-- 不增加业务 `attempt`；
-- 按 Run 当前状态更新 `next_execute_at` 和等待状态；
-- 旧 Pulsar 消息 ACK 后不能再覆盖新版本 Task。
-
-容量延期不是 Capability Retry，不应进入最大 Task 执行尝试次数，也不应产生 Task DLQ。
-
-### 9.3 直接创建 `dispatched` Task
-
-当前以下路径可能直接创建 `dispatched` Task 并写 Outbox：
+所有会产生可执行 Task 的新写路径统一写入 `pending`，不直接写 `dispatched`，也不直接写 Task Outbox：
 
 - Entry 创建初始 Task；
 - 节点完成后创建下一 Task；
 - 外部等待或推理完成后恢复 Task。
 
-1.0 不要求先把这些路径统一改成 `pending`。这些 Task 仍可进入 Pulsar，Consumer 在真正 Claim 前执行统一容量准入，因此 仍受执行许可保护。
+Scheduler 只从 `pending` 到期队列读取候选。reservation 成功后，`dispatchReservedTasks` 在短事务内：
 
-这也是 1.0 与严格 Scheduler 公平方案的明确差异：1.0 保护的是实际执行，不保证派发队列本身的租户公平。
+1. 将候选校验为当前 `task_version` 且仍为 `pending`；
+2. 按 Workflow 当前边界将任务转为 `suspended`、`cancelled` 或 `dispatched`；
+3. 仅为转为 `dispatched` 的任务递增 `task_version` 并写入 Outbox。
+
+Scheduler reservation 使用派发后的 `task_version` 生成 `leaseId`，因此 Outbox 消息和 Consumer 的 active lease 使用同一个任务版本。
+
+已经 `dispatched` 的任务只由 Outbox Publisher 发布；发布超时的 Reconciler 必须先为当前任务版本申请 reservation，再创建同版本的新 Outbox。该路径不把容量等待写回 `pending`。
+
+本版本上线前确认生产环境没有需要迁移的遗留 `pending` Task；不提供旧状态回填或兼容迁移逻辑。旧 Worker 不得与启用该契约的 Task Consumer 并行执行同一 Task Topic。
 
 ## 10. 配置建议
 
@@ -560,8 +582,8 @@ Redis 许可申请失败时不得直接执行 Task。生产环境 Task Consumer 
 | `WORKFLOW_TASK_CAPACITY_DEMAND_WINDOW_MS` | `600000` | 竞争需求保留窗口，10 分钟 |
 | `WORKFLOW_TASK_CAPACITY_STABLE_CYCLES` | `2` | 当前仍可见的单 UID 恢复借用额度需要的稳定周期数 |
 | `WORKFLOW_TASK_CAPACITY_SCAN_LIMIT` | `500` | 单周期最多探测的活跃候选 UID 数 |
-| `WORKFLOW_TASK_CAPACITY_DEFER_DELAY_MS` | `60000` | 容量不足的基础延期时间 |
-| `WORKFLOW_TASK_CAPACITY_DEFER_JITTER_MS` | `30000` | 容量延期随机抖动上限 |
+| `WORKFLOW_TASK_CAPACITY_DEFER_DELAY_MS` | `60000` | Redis 容量等待的基础重试退避 |
+| `WORKFLOW_TASK_CAPACITY_DEFER_JITTER_MS` | `30000` | 容量等待重试的抖动上限，不写入 Task `due_at` |
 | `WORKFLOW_TASK_CAPACITY_QUOTA_TTL_MS` | `900000` | 动态配额记录 TTL，默认 15 分钟 |
 | `WORKFLOW_TASK_CAPACITY_CONTROLLER_LOCK_TTL_MS` | `30000` | 控制器短锁 TTL |
 
@@ -570,7 +592,7 @@ Redis 许可申请失败时不得直接执行 Task。生产环境 Task Consumer 
 - `N` 必须是正整数。
 - `1 <= tenantMaxSharePercent <= 100`，默认不得超过 90，除非有明确的部署级授权。
 - `scanLimit` 必须有上限，不能使用无界全表读取。
-- `deferDelay` 不得低于 30 秒，避免容量不足形成高频唤醒循环。
+- `deferDelay` 不得低于 30 秒，避免 Redis 不可用时形成高频容量检查循环。
 - `quotaTtl` 不得短于 `demandWindow + controllerInterval`，避免一次正常控制周期间隔就丢失收紧配额。
 - `controllerLockTtl` 必须覆盖单次扫描的最大执行时间并留有余量，释放锁时必须校验 owner token，不能删除其他实例新取得的锁。
 - 生产 `N` 必须由部署配置明确给出，不能从单个 Worker 进程的 `WORKFLOW_TASK_CONCURRENCY` 自动推断。
@@ -586,7 +608,7 @@ Task 观测需要区分：
 - `rate_limited`：消息发送节点坐席发送频控；
 - `deferred`：其他持久化延期原因；
 
-其中前两类都属于容量保护，但不能计入消息发送节点的 `rateLimited` 指标。
+其中前两类都属于容量保护，但不能计入消息发送节点的 `rateLimited` 指标。生产 Consumer 在容量等待期间不产生 ACK 观测；这两个分类保留给 Runtime 直接调用或其他需要记录容量结果的边界路径。
 
 `createTaskObservation` 的分类规则应按原因码判断：只有
 `WORKFLOW_MESSAGE_RATE_LIMITED` 进入 `rate_limited`；两个容量原因码分别进入
@@ -598,8 +620,8 @@ Task 观测需要区分：
 建议记录或汇总：
 
 - UID、Run、Task、Task Version；
-- 当前 UID 配额和拒绝原因；
-- `retryAt`；
+- 当前 UID 配额和 reservation 失败原因；
+- 容量重试时间；
 - 当前 Worker；
 - 当前 Redis 配置版本。
 
@@ -645,8 +667,8 @@ workflow.task.capacity.controller.summary
 1. 没有有效 Redis 许可的 Task 不得进入节点执行。
 2. 全局有效 Redis 许可数不得超过 `N`。
 3. UID 有效 Redis 许可数不得超过当前 `Q(uid)`；配额下调不追收已有许可。
-4. 容量拒绝不增加 Task `attempt`。
-5. 容量延期必须更新 `task_version`，旧消息不能提交结果。
+4. 容量等待不修改 Task `attempt`、`task_version`、`due_at` 或状态。
+5. 只有 reservation 成功且 DB CAS 成功的 Task 才能进入 `dispatched` 并写入 Outbox。
 6. MySQL Task、Run、Outbox 状态更新仍通过现有事务和版本条件完成。
 7. Redis lease 过期只能造成暂时容量释放，不能直接修改 Task 业务状态。
 8. 控制器失败只能使配额暂时停留在旧值，不能导致 Task 被错误取消或完成。
@@ -656,6 +678,8 @@ workflow.task.capacity.controller.summary
 - Worker 在取得许可后崩溃，Redis lease 在 TTL 到期后释放。
 - MySQL Task 的 `running` lease 由现有 Reconciler 恢复。
 - 恢复后的 Task 以新 `task_version` 重新进入现有派发路径。
+- Scheduler reservation 在 DB 提交前失联时由 TTL 回收；DB 事务失败时由 Scheduler 主动释放。
+- Consumer 关闭时不 ACK 等待中的消息，消息由 Broker 连接恢复机制重新投递。
 - Redis lease 和 MySQL Task lease 短时间不一致是允许的；不一致只能造成过度保守或短暂重复保护，不能允许同一 Task 绕过版本条件提交两次结果。
 
 ### 12.3 控制器延迟或停止
@@ -669,7 +693,7 @@ workflow.task.capacity.controller.summary
 
 - 多个 Consumer 通过 Redis Lua 原子申请，不会重复发放同一全局槽位。
 - 多个 Controller 通过短期锁减少重复计算；即使锁失效产生重复更新，也不会改变 Task 状态正确性。
-- Scheduler 仍可多副本运行，继续使用现有 MySQL `FOR UPDATE` / `SKIP LOCKED` 语义。
+- 多个 Scheduler 通过 Redis reservation 和 MySQL Task Version/CAS 协作；不会因候选重复读取而重复写入有效 Outbox。
 
 ## 13. 性能与容量边界
 
@@ -678,7 +702,10 @@ workflow.task.capacity.controller.summary
 每个 Task 的新增成本为：
 
 ```text
-一次 Redis Lua acquire
+一次 Redis availability
+一次 Redis Lua reservation
+一次现有 Task dispatch transaction
+一次 Redis Lua acquire/activate
 一次现有 Task claim
 一次外部节点执行
 一次 Redis release
@@ -686,31 +713,29 @@ workflow.task.capacity.controller.summary
 
 长任务按需要增加 Redis renew，但不新增 MySQL 表写入。
 
-### 13.2 容量拒绝路径
+### 13.2 容量等待路径
 
-每个被拒绝 Task 的新增成本为：
+容量不足时不写 MySQL Task。Scheduler 只在 availability 大于 0 时读取有限候选；候选 reservation 失败时继续尝试本批其他候选，剩余任务保持 `pending`。已经进入 Pulsar 的消息在 Consumer 内存中等待：
 
 ```text
-一次 Redis acquire
-一次需求信号更新
-一次现有 deferTask 数据库事务
-一次 Pulsar ACK
+Redis acquire / retry
+不 ACK/NACK
+不修改 Task due_at、task_version 或 attempt
 ```
 
-因此该方案不能在数十万 Task 每秒被重复拒绝的情况下无限扩展。1.0 需要通过 60 秒级延期、随机抖动、控制周期和批量扫描将拒绝频率保持在可接受范围。
+Redis 不可用时使用 30 秒级退避；Pulsar Task subscription 关闭 ACK timeout，等待中的消息形成受控反压，不通过 NACK 形成重投风暴。
 
 ### 13.3 何时需要升级
 
-出现以下任一情况时，应重新评估严格 Scheduler 公平调度：
+出现以下任一情况时，应重新评估后续调度方案：
 
-- 容量拒绝导致 MySQL `deferTask` 写入成为主要数据库负载；
-- Pulsar 中大量消息只是被读取后立即延期，实际执行占比下降；
-- 某 UID 在多个控制周期内持续占据运输层队头，其他 UID 明显饿死；
+- Pulsar 中大量消息长期处于未 ACK 的容量等待，实际执行占比下降；
+- 热点 UID 长期占据 Consumer 等待槽位并造成可观测的业务延迟；
 - 需要严格保证 `dispatched + running <= N`；
-- 需要严格 Round Robin、租户优先级或 SLA；
+- 需要 Broker 层 UID 公平、租户优先级或 SLA；
 - UID 数量和 Task 积压规模使周期性近似扫描无法在预算内完成。
 
-升级方向是将容量控制前移到 Scheduler：按 UID 选择到期 Task、以 MySQL 状态作为占用权威、增加适配查询形状的索引，并定义多 Scheduler 的全局公平协调。该方向不属于本 1.0。
+升级方向可以是 Ready 队列、UID 级索引或更严格的 Scheduler 协调；这些都不属于本 1.0。
 
 ## 14. 发布与兼容性
 
@@ -718,19 +743,19 @@ workflow.task.capacity.controller.summary
 
 - 不新增数据库表和字段。
 - 不改变现有 Task、Run、Outbox 状态枚举。
-- 历史 Task 消息仍按原 `uid`、`taskId`、`taskVersion` 解析。
-- 旧 Worker 不理解容量准入时会绕过该保护，因此严格容量保证必须在所有 Task Consumer 完成版本切换后才成立。
+- 所有新 Task 创建和节点推进路径从发布起写入 `pending`，不需要历史 `pending` 回填或状态迁移。
+- 发布前确认线上没有需要兼容的遗留 `pending` Task；本版本不提供旧 `pending` 的迁移分支。
+- 启用容量契约前必须停止旧 Task Consumer，避免旧 Worker 绕过 Redis reservation 和 active lease。
 
 ### 14.2 灰度顺序
 
-1. 先部署观测模式的 Controller，只扫描并输出竞争统计，不改变 quota。
-2. 验证 Redis key 前缀、Lua 脚本、全局 N 和部署实际 Consumer 容量一致。
-3. 所有 Task Consumer 部署支持 Capacity Admission，但先将拒绝观测和配额写入打开、执行开关关闭。
-4. 开启单个测试环境或小租户范围的执行准入。
-5. 观察 Task 延期、Pulsar backlog、MySQL 写入、Redis latency 和外部动作吞吐。
-6. 全量开启后保留旧 Task Version、Reconciler 和 Outbox 恢复路径。
+1. 验证 Redis key 前缀、Lua 脚本、全局 N 和部署实际 Consumer 容量一致。
+2. 先停止旧 Task Consumer，再部署包含 Scheduler reservation、Consumer 等待和 Reconciler reservation 的版本。
+3. 确认新建 Task 为 `pending`，Scheduler 只在 reservation 成功后写 `dispatched` 和 Outbox。
+4. 观察 Pulsar 未 ACK backlog、MySQL Task 状态写入、Redis latency、reservation 释放和外部动作吞吐。
+5. 验证 Redis 故障期间 Scheduler 不读取新到期 Task，Consumer 不 ACK/NACK、不写 Task 延期。
 
-滚动发布期间，新旧 Worker 并存可能暂时超过逻辑 `N`，这是容量保护的一致性窗口，不是数据破坏。若需要从第一秒起保证 `N`，必须先停止旧 Task Consumer 再切换。
+不支持新旧 Task Consumer 并行运行；若需要从第一秒起保证 `N`，必须先停止旧 Task Consumer 再切换。
 
 ## 15. 验收标准
 
@@ -740,12 +765,12 @@ workflow.task.capacity.controller.summary
 - 两个或以上 UID 被控制器识别为竞争者后，后续配额收敛到 `max(1, floor(N/C))`。
 - `C > N` 时每 UID 配额仍为 1，不出现小数配额。
 - 配额下调不抢占已经执行的 Task。
-- 容量拒绝 Task 在延迟后可以重新派发和执行。
-- 容量拒绝不增加 Task `attempt`。
-- 同一 Task 的旧消息在延期后不能覆盖新 Task Version。
+- reservation 成功后才会产生 `dispatched` Task 和 Outbox。
+- reservation 失败的候选保持 `pending`，不改变 `due_at`、`task_version` 或 `attempt`。
+- Consumer 容量等待期间不调用 Runtime、不 ACK/NACK、不写 MySQL。
+- 同一 Task 的重复消息仍由同一 `leaseId` 和 MySQL `task_version` / 状态条件阻止重复提交。
 - Worker 崩溃后 lease 自动过期，容量可以重新使用。
 - Redis 许可释放失败不会永久锁死 UID 或全局容量。
-- 同一 Task 消息重复投递时，同一 `leaseId` 不会重复计数，且最终仍由 MySQL `task_version` / 状态条件阻止重复提交。
 
 ### 15.2 负载与故障验收
 
@@ -753,9 +778,11 @@ workflow.task.capacity.controller.summary
 - 1000 个 UID 竞争时，Redis demand 只按 UID 保存 member、不按 Task 展开，控制器每轮最多读取 101 个 demand UID，并使用一个全局饱和配额 Key，不逐 UID 写入 1000 份配额。
 - 控制器扫描达到上限时不错误放大配额。
 - 控制器数据库查询失败时保留旧配额并产生告警。
+- Redis 不可用或全局余量为 0 时 Scheduler 不查询到期 Task。
+- DB 派发事务失败时所有未使用 reservation 都被释放或最终由 TTL 回收。
 - Redis 暂时不可用时没有 Task 外部动作绕过准入。
-- 容量拒绝不会造成 Pulsar 高频 NACK、Task attempt 快速耗尽或 Task DLQ 污染。
-- 观测能区分租户容量延期、消息发送频控延期和其他延期。
+- 容量等待不会造成 Pulsar 高频 NACK、Task attempt 快速耗尽、Task dueAt 改写或 Task DLQ 污染。
+- 观测能区分租户容量等待、消息发送频控延期和其他延期。
 - 控制器作为 `task-consumer` Worker 的后台循环运行，多副本下只有持锁实例扫描，不需要额外 Worker 部署。
 
 ### 15.3 停止条件
@@ -763,10 +790,10 @@ workflow.task.capacity.controller.summary
 以下任一条件出现时停止全量开启，回退到观测模式：
 
 - 出现超过 `N` 的实际并行外部 Task 执行；
-- 出现容量拒绝后 Task attempt 增长；
+- 出现容量等待后 Task attempt、Task Version 或 `due_at` 增长；
 - 出现旧 Task Version 覆盖新版本状态；
 - Redis lease 泄漏导致容量持续下降且无法由 TTL 恢复；
-- `deferTask` 写入成为明显数据库瓶颈；
+- 容量等待导致 Pulsar 未 ACK backlog 成为明显瓶颈；
 - 其他租户在一个以上控制窗口内持续无法取得任何执行机会。
 
 ## 16. 后续版本候选

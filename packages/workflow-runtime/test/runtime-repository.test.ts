@@ -41,7 +41,7 @@ describe("workflow runtime repository", () => {
     expect(first.deduplicated).toBe(false);
     expect(duplicate).toMatchObject({ deduplicated: true, run: { id: first.run.id } });
     expect(repository.snapshot().tasks).toHaveLength(1);
-    expect(repository.snapshot().outbox).toHaveLength(1);
+    expect(repository.snapshot().outbox).toHaveLength(0);
     expect(repository.snapshot().nodeMetricEvents).toEqual([
       expect.objectContaining({ entered: 1, eventKey: expect.stringContaining(":entered"), nodeId: "start" }),
     ]);
@@ -81,7 +81,7 @@ describe("workflow runtime repository", () => {
       taskId: created.task.id,
       uid: 9,
     })).resolves.toEqual({ kind: "conflict" });
-    expect(repository.tasks[0]).toMatchObject({ attempt: 0, status: "dispatched", taskVersion: 1 });
+    expect(repository.tasks[0]).toMatchObject({ attempt: 0, status: "pending", taskVersion: 1 });
   });
 
   it("commits execution and the next task under run and task version fences", async () => {
@@ -287,7 +287,7 @@ describe("workflow runtime repository", () => {
       nextTask: { nodeId: "end", revision: 2, status: "suspended" },
       run: { currentNodeId: "end", revision: 2, status: "running" },
     });
-    expect(repository.snapshot().outbox).toHaveLength(1);
+    expect(repository.snapshot().outbox).toHaveLength(0);
   });
 
   it("cleans deleted wait nodes across more pages than the retry limit", async () => {
@@ -874,8 +874,9 @@ describe("workflow runtime repository", () => {
     let now = new Date("2026-01-01T00:00:00.000Z");
     const repository = new InMemoryWorkflowRuntimeRepository(undefined, () => now);
     const completed = await repository.createRunWithInitialTask(createRunInput());
+    await expect(repository.dispatchDueTasks({ limit: 10, now })).resolves.toMatchObject({ dispatched: 1 });
     const claimed = await repository.claimTask({
-      expectedTaskVersion: 1,
+      expectedTaskVersion: 2,
       leaseExpiresAt: new Date("2026-01-01T00:01:00.000Z"),
       leaseOwner: "worker-1",
       taskId: completed.task.id,
@@ -954,13 +955,14 @@ describe("workflow runtime repository", () => {
       runs: [expect.objectContaining({ id: active.run.id, status: "queued" })],
       tasks: [expect.objectContaining({ runId: active.run.id })],
     });
-    expect(repository.snapshot().outbox).toHaveLength(1);
+    expect(repository.snapshot().outbox).toHaveLength(0);
   });
 
   it("keeps terminal task history while its outbox delivery is leased", async () => {
     const now = new Date("2026-01-01T00:00:00.000Z");
     const repository = new InMemoryWorkflowRuntimeRepository(undefined, () => now);
     const created = await repository.createRunWithInitialTask(createRunInput());
+    await expect(repository.dispatchDueTasks({ limit: 10, now })).resolves.toMatchObject({ dispatched: 1 });
     await repository.claimOutboxBatch({
       leaseExpiresAt: new Date("2026-07-14T00:01:00.000Z"),
       leaseOwner: "publisher-1",
@@ -968,7 +970,7 @@ describe("workflow runtime repository", () => {
       now,
     });
     const claimed = await repository.claimTask({
-      expectedTaskVersion: 1,
+      expectedTaskVersion: 2,
       leaseExpiresAt: new Date("2026-01-01T00:01:00.000Z"),
       leaseOwner: "worker-1",
       taskId: created.task.id,

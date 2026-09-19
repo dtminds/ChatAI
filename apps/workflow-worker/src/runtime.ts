@@ -6,6 +6,7 @@ import type {
   WorkflowInferenceRepository,
   WorkflowChatCompletionPort,
   WorkflowLlmTestAttemptRepository,
+  WorkflowTaskCapacityPort,
   WorkflowTaskCapacityRepository,
   WorkflowTriggerBindingReader,
 } from "@chatai/workflow-runtime";
@@ -124,6 +125,7 @@ export async function startWorkflowWorkerRuntime(input: {
   scheduler(input: Parameters<typeof scheduleWorkflowTasks>[0]): ReturnType<typeof scheduleWorkflowTasks>;
   schedulerRepository: Parameters<typeof scheduleWorkflowTasks>[0]["repository"];
   taskCapacityController?: WorkflowTaskCapacityController;
+  taskCapacityPort?: WorkflowTaskCapacityPort;
   taskCapacityRepository?: WorkflowTaskCapacityRepository;
   taskConsumer: typeof startTaskConsumer;
   triggerBindingReader: WorkflowTriggerBindingReader;
@@ -170,6 +172,10 @@ export async function startWorkflowWorkerRuntime(input: {
         maxRedeliverCount: input.config.maxRedeliverCount,
         logger: input.logger,
         runtimeService: input.runtimeService,
+        ...(input.taskCapacityPort
+          ? { capacityLeaseDurationMs: input.config.taskCapacity.leaseTtlMs }
+          : {}),
+        taskCapacityPort: input.taskCapacityPort,
         subscription: input.config.subscriptions.task,
         topic: input.config.topics.task,
         workerId: input.workerId,
@@ -206,6 +212,7 @@ export async function startWorkflowWorkerRuntime(input: {
           now: now(),
           repository: input.schedulerRepository,
           retryDelayMs: input.config.runtime.retryDelayMs,
+          taskCapacityPort: input.taskCapacityPort,
         })));
     }
     if (input.config.roles.has("inference")) {
@@ -298,6 +305,7 @@ export async function startWorkflowWorkerRuntime(input: {
             now: currentTime,
             reconciler: input.reconcilerService,
             retryDelayMs: input.config.runtime.retryDelayMs,
+            taskCapacityPort: input.taskCapacityPort,
           }),
           input.conversationDirectiveWorker({
             leaseDurationMs: input.config.runtime.leaseDurationMs,

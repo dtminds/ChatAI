@@ -69,7 +69,10 @@ describe("AI Collect runtime", () => {
     try {
       const lease = { leaseId: "9|ai-collect|1", token: "lease-token" };
       const taskCapacityPort: WorkflowTaskCapacityPort = {
+        availability: vi.fn(async () => ({ available: 1, kind: "available" as const })),
         acquire: vi.fn(async () => ({ kind: "allowed" as const, lease })),
+        releaseReservation: vi.fn(async () => {}),
+        reserve: vi.fn(async () => ({ kind: "reserved" as const, lease })),
         renew: vi.fn(async () => {
           throw new Error("Redis unavailable");
         }),

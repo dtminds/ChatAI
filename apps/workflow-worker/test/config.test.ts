@@ -185,7 +185,7 @@ describe("workflow worker config", () => {
       globalConcurrency: 10,
       leaseTtlMs: 60_000,
       quotaTtlMs: 900_000,
-      scanLimit: 10_000,
+      scanLimit: 500,
       stableCycles: 2,
       tenantMaxSharePercent: 90,
     });
@@ -203,6 +203,9 @@ describe("workflow worker config", () => {
     }))).toThrow(
       "WORKFLOW_TASK_CAPACITY_QUOTA_TTL_MS must be at least demand window plus controller interval",
     );
+    expect(() => loadWorkflowWorkerConfig(baseEnv({
+      WORKFLOW_TASK_CAPACITY_SCAN_LIMIT: "501",
+    }))).toThrow("WORKFLOW_TASK_CAPACITY_SCAN_LIMIT must be an integer from 1 to 500");
   });
 
   it("rejects a Message burst smaller than one maximum message group", () => {

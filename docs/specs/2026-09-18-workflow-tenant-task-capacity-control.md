@@ -361,25 +361,26 @@ SET workflow:task-capacity:controller-lock <workerId> NX PX <lockTtl>
 
 ### 7.3 扫描任务积压
 
-控制器读取 Task 表中：
+控制器先从租户容量守卫表读取当前 `active_run_count > 0` 的候选 UID，再对这批 UID 探测 Task 表中的：
 
 ```text
 status IN ('pending', 'dispatched')
 AND due_at <= now
 ```
 
-按 UID 聚合需求。1.0 不增加新的 UID 调度索引，优先复用现有 Task Schedule 索引和有界批量读取能力。
+按 UID 聚合需求。1.0 不增加新的 UID 调度索引，优先复用现有容量守卫表和 Task 表已有的 UID 前缀索引完成有界探测。
 
 扫描要求：
 
-- 单次最多读取 `WORKFLOW_TASK_CAPACITY_SCAN_LIMIT` 条候选 Task，默认 10,000。
-- 不按 UID 逐个查询，禁止产生 N 次 SQL。
-- 可以按现有 `(status, bucket_time, due_at, id)` 顺序分批读取，在应用层聚合 UID。
-- 扫描达到上限时标记 `scanComplete=false`，不能据此扩大任意 UID 的配额。
+- 单次最多读取 `WORKFLOW_TASK_CAPACITY_SCAN_LIMIT` 个活跃候选 UID，默认 500，配置上限也是 500；容量守卫表最多读取 501 条，用于判断是否完整。
+- 对候选 UID 执行一次 `uid IN (...)` 的 Task 查询，并在数据库侧按 UID 去重；不按 UID 逐个查询，禁止产生 N 次 SQL。
+- 容量控制查询不要求 Scheduler 的 Task FIFO 顺序，不使用 `ORDER BY bucket_time, due_at, id`。
+- 这里的“有界”只约束 SQL 次数、候选 UID 数和 `IN (...)` 参数数量，不代表第二跳的数据库行扫描量有固定上限。现有 UID 前缀索引不包含 `bucket_time` / `due_at`，对没有到期 Task 的候选 UID，MySQL 可能需要检查该 UID 下大量 `pending` / `dispatched` 行才能确认没有命中；最坏成本会随候选 UID 对应的 Task 行数增长，而不是只随 UID 数增长。1.0 接受该近似，不新增索引，需用真实数据和 `EXPLAIN` 持续验证。
+- 活跃候选 UID 达到上限时标记 `scanComplete=false`，不能据此扩大任意 UID 的配额。
 - `scanComplete=false` 时保留上一周期的收紧配额；没有历史配额的 UID 使用保守默认值 `H`，并明确记录“本轮竞争集合不完整”，不宣称本轮已经完成公平判断。
 - 数据库查询失败时保留上一周期配额，不把失败解释为空积压。
 
-由于 1.0 允许近似判断，扫描结果只影响后续配额，不影响 Task 状态正确性。热点 UID 未被本轮完整扫描时，Consumer 的需求信号仍可以将其加入竞争集合；在竞争 UID 尚未被扫描或消费端观测到之前，不能承诺其已经获得 `N / C` 的精确配额。
+由于 1.0 允许近似判断，扫描结果只影响后续配额，不影响 Task 状态正确性。活跃 UID 候选未被本轮完整扫描时，Consumer 的需求信号仍可以将已到达 Consumer 的 UID 加入竞争集合；在竞争 UID 尚未被扫描或消费端观测到之前，不能承诺其已经获得 `N / C` 的精确配额。
 
 ### 7.4 合并需求信号
 
@@ -547,7 +548,7 @@ Redis 许可申请失败时不得直接执行 Task。生产环境 Task Consumer 
 | `WORKFLOW_TASK_CAPACITY_CONTROLLER_INTERVAL_MS` | `300000` | 控制周期，5 分钟 |
 | `WORKFLOW_TASK_CAPACITY_DEMAND_WINDOW_MS` | `600000` | 竞争需求保留窗口，10 分钟 |
 | `WORKFLOW_TASK_CAPACITY_STABLE_CYCLES` | `2` | 恢复借用额度需要的稳定周期数 |
-| `WORKFLOW_TASK_CAPACITY_SCAN_LIMIT` | `10000` | 单周期最多扫描的候选 Task 数 |
+| `WORKFLOW_TASK_CAPACITY_SCAN_LIMIT` | `500` | 单周期最多探测的活跃候选 UID 数 |
 | `WORKFLOW_TASK_CAPACITY_DEFER_DELAY_MS` | `60000` | 容量不足的基础延期时间 |
 | `WORKFLOW_TASK_CAPACITY_DEFER_JITTER_MS` | `30000` | 容量延期随机抖动上限 |
 | `WORKFLOW_TASK_CAPACITY_QUOTA_TTL_MS` | `900000` | 动态配额记录 TTL，默认 15 分钟 |
@@ -605,7 +606,7 @@ workflow.task.capacity.controller.summary
 
 - `globalCapacity`；
 - `knownContenderCount`；
-- `scannedTaskCount`；
+- `scannedUidCount`；
 - `scanComplete`；
 - `demandUidCount`；
 - `quotaChangedCount`；

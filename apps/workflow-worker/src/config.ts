@@ -460,9 +460,9 @@ function parseTaskCapacityConfig(
     quotaTtlMs,
     scanLimit: parseInteger(
       env.WORKFLOW_TASK_CAPACITY_SCAN_LIMIT,
-      10_000,
+      500,
       "WORKFLOW_TASK_CAPACITY_SCAN_LIMIT",
-      10_000,
+      500,
     ),
     stableCycles: parseInteger(
       env.WORKFLOW_TASK_CAPACITY_STABLE_CYCLES,

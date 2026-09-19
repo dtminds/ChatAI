@@ -2127,22 +2127,24 @@ export class InMemoryWorkflowRuntimeRepository implements WorkflowRuntimeReposit
 
   async listDueTaskUids(input: { limit: number; now: Date }) {
     const limit = Math.max(0, Math.floor(input.limit));
-    if (limit === 0) return { scanComplete: true, scannedTaskCount: 0, uids: [] };
-    const candidates = this.tasks
-      .filter(task => (task.status === "pending" || task.status === "dispatched")
+    if (limit === 0) return { scanComplete: true, scannedUidCount: 0, uids: [] };
+    const candidateUids = [...new Set(this.runs.filter(run =>
+      WORKFLOW_ACTIVE_RUN_STATUSES.includes(
+        run.status as typeof WORKFLOW_ACTIVE_RUN_STATUSES[number],
+      )).map(run => run.uid))]
+      .sort((left, right) => left - right);
+    const candidateScanComplete = candidateUids.length <= limit;
+    const selectedCandidateUids = new Set(candidateUids.slice(0, limit));
+    const dueUids = new Set(this.tasks
+      .filter(task => selectedCandidateUids.has(task.uid)
+        && (task.status === "pending" || task.status === "dispatched")
         && task.dueAt <= input.now)
-      .sort((first, second) => compareDateAndId(
-        first.dueAt,
-        first.id,
-        second.dueAt,
-        second.id,
-      ));
-    const complete = candidates.length <= limit;
-    const selected = complete ? candidates : candidates.slice(0, limit);
+      .map(task => task.uid));
+    const uids = candidateUids.filter(uid => dueUids.has(uid)).slice(0, limit);
     return {
-      scanComplete: complete,
-      scannedTaskCount: selected.length,
-      uids: [...new Set(selected.map(task => task.uid))],
+      scanComplete: candidateScanComplete,
+      scannedUidCount: uids.length,
+      uids,
     };
   }
 

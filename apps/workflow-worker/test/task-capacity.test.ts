@@ -11,7 +11,7 @@ const config = {
   globalConcurrency: 2,
   leaseTtlMs: 60_000,
   quotaTtlMs: 900_000,
-  scanLimit: 10_000,
+  scanLimit: 500,
   stableCycles: 2,
   tenantMaxSharePercent: 50,
 };
@@ -156,7 +156,7 @@ describe("Workflow Task capacity", () => {
       repository: {
         listDueTaskUids: vi.fn(async () => ({
           scanComplete: true,
-          scannedTaskCount: 2,
+          scannedUidCount: 2,
           uids: [101, 202],
         })),
       },
@@ -207,7 +207,7 @@ describe("Workflow Task capacity", () => {
       repository: {
         listDueTaskUids: vi.fn(async () => ({
           scanComplete: false,
-          scannedTaskCount: 2,
+          scannedUidCount: 2,
           uids: [101, 202],
         })),
       },
@@ -257,7 +257,7 @@ describe("Workflow Task capacity", () => {
       repository: {
         listDueTaskUids: vi.fn(async () => ({
           scanComplete: true,
-          scannedTaskCount: 2,
+          scannedUidCount: 2,
           uids: [101, 202],
         })),
       },

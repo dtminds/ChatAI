@@ -20,7 +20,7 @@ type TaskCapacityControllerSummary = {
   knownContenderCount: number;
   quotaChangedCount: number;
   scanComplete: boolean;
-  scannedTaskCount: number;
+  scannedUidCount: number;
 };
 
 const ACQUIRE_SCRIPT = `
@@ -281,7 +281,7 @@ class RedisWorkflowTaskCapacity implements WorkflowTaskCapacityPort, WorkflowTas
         knownContenderCount: 0,
         quotaChangedCount: 0,
         scanComplete: true,
-        scannedTaskCount: 0,
+        scannedUidCount: 0,
       }, startedAt);
     }
 
@@ -348,7 +348,7 @@ class RedisWorkflowTaskCapacity implements WorkflowTaskCapacityPort, WorkflowTas
         knownContenderCount: contenderCount,
         quotaChangedCount,
         scanComplete: scan.scanComplete,
-        scannedTaskCount: scan.scannedTaskCount,
+        scannedUidCount: scan.scannedUidCount,
       }, startedAt);
       this.logger.info({ ...summary, event: "workflow.task.capacity.controller.summary" },
         "Workflow Task capacity controller completed");
@@ -547,7 +547,7 @@ class InMemoryWorkflowTaskCapacity implements WorkflowTaskCapacityPort {
       ]).size,
       quotaChangedCount: 0,
       scanComplete: true,
-      scannedTaskCount: 0,
+      scannedUidCount: 0,
     };
   }
 

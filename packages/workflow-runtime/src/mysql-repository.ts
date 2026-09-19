@@ -1295,29 +1295,48 @@ export class MysqlWorkflowRuntimeRepository implements
   }
 
   async listDueTaskUids(input: Parameters<WorkflowTaskCapacityRepository["listDueTaskUids"]>[0]) {
-    // Capacity control has its own bounded read budget; it is intentionally larger
-    // than the write-oriented runtime batch ceiling used by Scheduler transitions.
+    // Capacity control works on UID candidates first so one hot tenant cannot fill
+    // the bounded result window and hide other active tenants.
     const limit = Number.isFinite(input.limit) && input.limit > 0
-      ? Math.min(Math.trunc(input.limit), 10_000)
+      ? Math.min(Math.trunc(input.limit), 500)
       : 0;
-    if (limit <= 0) return { scanComplete: true, scannedTaskCount: 0, uids: [] };
-    const rows = await this.db.selectFrom(`${TASK_TABLE} as task`)
-      .modifyFront(sql`/*+ INDEX(task idx_workflow_task_schedule) */`)
+    if (limit <= 0) return { scanComplete: true, scannedUidCount: 0, uids: [] };
+
+    const candidateRows = await this.db.selectFrom(CAPACITY_GUARD_TABLE)
+      .select("uid")
+      .where("active_run_count", ">", 0)
+      .orderBy("uid", "asc")
+      .limit(limit + 1)
+      .execute();
+    const candidateScanComplete = candidateRows.length <= limit;
+    const candidateUids = candidateRows.slice(0, limit).map(row => normalizeTenantId(row.uid));
+    if (candidateUids.length === 0) {
+      return {
+        scanComplete: candidateScanComplete,
+        scannedUidCount: 0,
+        uids: [],
+      };
+    }
+
+    // The UID-leading index bounds the candidate set and IN-list, but it does
+    // not bound rows examined for a UID with only future Tasks because due_at
+    // and bucket_time are not part of the index. There is no Task FIFO
+    // requirement here, so distinct UID output—not Task row order—defines the
+    // scan boundary.
+    const dueUidRows = await this.db.selectFrom(`${TASK_TABLE} as task`)
+      .modifyFront(sql`/*+ INDEX(task idx_workflow_task_workflow_status) */`)
       .select("task.uid")
+      .distinct()
+      .where("task.uid", "in", candidateUids)
       .where("task.status", "in", ["pending", "dispatched"])
       .where("task.bucket_time", "<=", floorToMinute(input.now))
       .where("task.due_at", "<=", input.now)
-      .orderBy("task.bucket_time", "asc")
-      .orderBy("task.due_at", "asc")
-      .orderBy("task.id", "asc")
-      .limit(limit + 1)
+      .limit(candidateUids.length)
       .execute();
-    const complete = rows.length <= limit;
-    const selected = complete ? rows : rows.slice(0, limit);
     return {
-      scanComplete: complete,
-      scannedTaskCount: selected.length,
-      uids: [...new Set(selected.map(row => normalizeTenantId(row.uid)))],
+      scanComplete: candidateScanComplete,
+      scannedUidCount: dueUidRows.length,
+      uids: [...new Set(dueUidRows.map(row => normalizeTenantId(row.uid)))],
     };
   }
 

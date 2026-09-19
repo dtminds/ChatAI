@@ -608,7 +608,7 @@ export type WorkflowTaskCapacityRepository = {
     now: Date;
   }): Promise<{
     scanComplete: boolean;
-    scannedTaskCount: number;
+    scannedUidCount: number;
     uids: number[];
   }>;
 };

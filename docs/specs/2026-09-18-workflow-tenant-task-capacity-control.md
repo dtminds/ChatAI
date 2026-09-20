@@ -126,7 +126,7 @@ status, bucket_time, due_at, id
 `N` 是所有 Task Consumer 副本共享的最大同时执行许可数：
 
 ```text
-N = WORKFLOW_TASK_GLOBAL_CONCURRENCY
+N = online task-consumer replicas' registered WORKFLOW_TASK_CONCURRENCY sum
 ```
 
 它必须小于或等于所有 Task Consumer 实例的最大有效执行并发总和：
@@ -576,7 +576,7 @@ Scheduler reservation 使用派发后的 `task_version` 生成 `leaseId`，因�
 
 | 配置 | 默认值 | 说明 |
 |---|---:|---|
-| `WORKFLOW_TASK_GLOBAL_CONCURRENCY` | 生产必填 | 全局逻辑 Task 执行容量 `N` |
+| `WORKFLOW_TASK_CONCURRENCY` | Worker 必填 | 单个 task-consumer 实例的并发容量；所有有效实例的注册值之和构成全局逻辑容量 `N` |
 | `WORKFLOW_TASK_TENANT_MAX_SHARE_PERCENT` | `90` | 单 UID 无竞争最大占比 |
 | `WORKFLOW_TASK_CAPACITY_CONTROLLER_INTERVAL_MS` | `300000` | 控制周期，5 分钟 |
 | `WORKFLOW_TASK_CAPACITY_DEMAND_WINDOW_MS` | `600000` | 竞争需求保留窗口，10 分钟 |
@@ -589,13 +589,13 @@ Scheduler reservation 使用派发后的 `task_version` 生成 `leaseId`，因�
 
 约束：
 
-- `N` 必须是正整数。
+- 每个 `WORKFLOW_TASK_CONCURRENCY` 必须是正整数；在线实例注册值之和构成 `N`。
 - `1 <= tenantMaxSharePercent <= 100`，默认不得超过 90，除非有明确的部署级授权。
 - `scanLimit` 必须有上限，不能使用无界全表读取。
 - `deferDelay` 不得低于 30 秒，避免 Redis 不可用时形成高频容量检查循环。
 - `quotaTtl` 不得短于 `demandWindow + controllerInterval`，避免一次正常控制周期间隔就丢失收紧配额。
 - `controllerLockTtl` 必须覆盖单次扫描的最大执行时间并留有余量，释放锁时必须校验 owner token，不能删除其他实例新取得的锁。
-- 生产 `N` 必须由部署配置明确给出，不能从单个 Worker 进程的 `WORKFLOW_TASK_CONCURRENCY` 自动推断。
+- Worker 启动时必须先注册自身 `WORKFLOW_TASK_CONCURRENCY`；注册失败则启动失败。运行中注册信息读取失败或没有有效实例时使用代码内默认容量 10。
 
 ## 11. 可观测性
 
@@ -637,7 +637,7 @@ workflow.task.capacity.controller.summary
 
 至少包含：
 
-- `globalCapacity`；
+- `globalCapacity`；由 Redis 中有效 task-consumer 注册容量求和得到；无有效注册时使用代码内默认值 10；
 - `knownContenderCount`；
 - `scannedUidCount`；
 - `scanComplete`；

@@ -95,9 +95,11 @@ describe("Workflow Task capacity", () => {
       reasonCode: "WORKFLOW_TASK_TENANT_CAPACITY_LIMITED",
     });
     const [script, keyCount] = client.eval.mock.calls[0]!;
-    expect(keyCount).toBe(7);
+    expect(keyCount).toBe(9);
     expect(client.eval.mock.calls[0]?.[7]).toBe("test:workflow:task-capacity:saturated-quota");
     expect(client.eval.mock.calls[0]?.[8]).toBe("test:workflow:task-capacity:reserved-leases");
+    expect(client.eval.mock.calls[0]?.[9]).toBe("test:workflow:task-capacity:workers");
+    expect(client.eval.mock.calls[0]?.[10]).toBe("test:workflow:task-capacity:worker-expiry");
     expect(String(script)).toContain("ZREMRANGEBYSCORE");
     expect(String(script)).toContain("ZCARD");
     expect(String(script)).toContain("ZADD");
@@ -106,7 +108,8 @@ describe("Workflow Task capacity", () => {
 
   it("releases an active Redis lease with exactly three keys", async () => {
     const client = {
-      eval: vi.fn(async () => 1),
+      eval: vi.fn(async (script: unknown) =>
+        String(script).includes("local global_capacity") ? 1_000 : 1),
     } as unknown as Redis;
     const { port } = createWorkflowTaskCapacity({ config, keyPrefix: "test:", logger, client });
 
@@ -116,6 +119,32 @@ describe("Workflow Task capacity", () => {
     });
 
     expect(client.eval.mock.calls[0]?.[1]).toBe(3);
+  });
+
+  it("registers and unregisters task-consumer capacity in Redis", async () => {
+    const client = {
+      eval: vi.fn(async (script: unknown) =>
+        String(script).includes("local global_capacity") ? 1_000 : 1),
+    } as unknown as Redis;
+    const { registration } = createWorkflowTaskCapacity({ config, keyPrefix: "test:", logger, client });
+
+    await registration.register({ concurrency: 10, workerId: "worker-1" });
+    expect(client.eval.mock.calls[0]).toEqual(expect.arrayContaining([
+      2,
+      "test:workflow:task-capacity:workers",
+      "test:workflow:task-capacity:worker-expiry",
+      "worker-1",
+      10,
+      30_000,
+    ]));
+
+    await registration.unregister("worker-1");
+    expect(client.eval.mock.calls[1]).toEqual(expect.arrayContaining([
+      2,
+      "test:workflow:task-capacity:workers",
+      "test:workflow:task-capacity:worker-expiry",
+      "worker-1",
+    ]));
   });
 
   it("reports reserved leases when all global capacity is reserved", async () => {
@@ -346,7 +375,8 @@ describe("Workflow Task capacity", () => {
     const saturatedConfig = { ...config, globalConcurrency: 1_000, tenantMaxSharePercent: 90 };
     const demandUids = Array.from({ length: 101 }, (_, index) => String(index + 1));
     const client = {
-      eval: vi.fn(async () => 1),
+      eval: vi.fn(async (script: unknown) =>
+        String(script).includes("local global_capacity") ? 1_000 : 1),
       hget: vi.fn(async () => undefined),
       pipeline: vi.fn(() => ({
         exec: vi.fn(async () => []),
@@ -409,7 +439,8 @@ describe("Workflow Task capacity", () => {
       pexpire: vi.fn(),
     };
     const client = {
-      eval: vi.fn(async () => 1),
+      eval: vi.fn(async (script: unknown) =>
+        String(script).includes("local global_capacity") ? 1_000 : 1),
       hget: vi.fn(async () => undefined),
       pipeline: vi.fn(() => pipeline),
       set: vi.fn(async () => "OK"),

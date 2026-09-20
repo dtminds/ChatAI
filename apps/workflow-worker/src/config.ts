@@ -10,6 +10,8 @@ import {
 
 export type WorkflowWorkerRole = "entry-consumer" | "inference" | "outbox" | "reconciler" | "scheduler" | "task-consumer";
 
+export const DEFAULT_TASK_CAPACITY = 10;
+
 export type WorkflowWorkerConfig = {
   consumerConcurrency: {
     entry: number;
@@ -180,12 +182,6 @@ export function loadWorkflowWorkerConfig(env: NodeJS.ProcessEnv = process.env): 
     nodeEnvironment,
     "WORKFLOW_TASK_CONCURRENCY",
   );
-  const taskCapacityGlobalConcurrency = parseTaskCapacityGlobalConcurrency(
-    env.WORKFLOW_TASK_GLOBAL_CONCURRENCY,
-    nodeEnvironment,
-    roles,
-    taskConsumerConcurrency,
-  );
   const entryTopic = qualifyTopic(requireValue(env, "WORKFLOW_ENTRY_TOPIC"));
   const taskTopic = qualifyTopic(requireValue(env, "WORKFLOW_TASK_TOPIC"));
   const entryDeadLetterTopic = qualifyTopic(requireValue(env, "WORKFLOW_ENTRY_DLQ_TOPIC"));
@@ -256,7 +252,7 @@ export function loadWorkflowWorkerConfig(env: NodeJS.ProcessEnv = process.env): 
       url: redisUrl,
     },
     roles,
-    taskCapacity: parseTaskCapacityConfig(env, taskCapacityGlobalConcurrency, leaseDurationMs),
+    taskCapacity: parseTaskCapacityConfig(env, leaseDurationMs),
     runtime: {
       capabilityMaxRetryDelayMs: parseDurationMs(
         env.WORKFLOW_CAPABILITY_MAX_RETRY_DELAY_MS,
@@ -396,21 +392,8 @@ export function loadWorkflowWorkerConfig(env: NodeJS.ProcessEnv = process.env): 
   };
 }
 
-function parseTaskCapacityGlobalConcurrency(
-  value: string | undefined,
-  nodeEnvironment: string | undefined,
-  roles: ReadonlySet<WorkflowWorkerRole>,
-  fallback: number,
-) {
-  if (nodeEnvironment === "production" && roles.has("task-consumer") && !optionalValue(value)) {
-    throw new Error("Missing required environment variable: WORKFLOW_TASK_GLOBAL_CONCURRENCY");
-  }
-  return parseInteger(value, fallback, "WORKFLOW_TASK_GLOBAL_CONCURRENCY", 100_000);
-}
-
 function parseTaskCapacityConfig(
   env: NodeJS.ProcessEnv,
-  globalConcurrency: number,
   leaseTtlMs: number,
 ) {
   const controllerIntervalMs = parseDurationMs(
@@ -455,7 +438,7 @@ function parseTaskCapacityConfig(
       "WORKFLOW_TASK_CAPACITY_DEFER_JITTER_MS",
     ),
     demandWindowMs,
-    globalConcurrency,
+    globalConcurrency: DEFAULT_TASK_CAPACITY,
     leaseTtlMs,
     quotaTtlMs,
     scanLimit: parseInteger(

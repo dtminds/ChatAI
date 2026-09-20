@@ -293,6 +293,7 @@ export async function startWorkflowWorkerProcess(env: NodeJS.ProcessEnv = proces
       taskCapacityController: taskCapacity.controller,
       taskCapacityRepository: repository,
       taskCapacityPort: taskCapacity.port,
+      taskCapacityRegistration: taskCapacity.registration,
       taskConsumer: startTaskConsumer,
       triggerBindingReader: repository,
       workerId,

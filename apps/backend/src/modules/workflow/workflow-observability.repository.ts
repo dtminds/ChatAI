@@ -19,6 +19,7 @@ const RUN_TABLE = "xy_wap_embed_workflow_run" as const;
 const OUTBOX_TABLE = "xy_wap_embed_workflow_outbox" as const;
 const INFERENCE_TABLE = "xy_wap_embed_workflow_inference_job" as const;
 const WORKER_STATE_TABLE = "xy_wap_embed_workflow_worker_state" as const;
+const DEFAULT_TASK_CAPACITY = 10;
 const ACTIVE_TASK_STATUSES = [
   "pending",
   "suspended",
@@ -103,13 +104,12 @@ export type WorkflowListRow = {
   workflowId: string;
 };
 
-export type WorkflowTaskCapacityRedis = Pick<Redis, "zcount" | "zcard" | "get" | "time">;
+export type WorkflowTaskCapacityRedis = Pick<Redis, "zcount" | "zcard" | "get" | "time" | "hgetall" | "zrangebyscore">;
 
 export class WorkflowObservabilityRepository {
   constructor(
     private readonly db: Kysely<Database>,
     private readonly redis: WorkflowTaskCapacityRedis | null = null,
-    private readonly globalCapacity = 10,
     private readonly redisKeyPrefix = process.env.REDIS_KEY_PREFIX ?? "chatai:",
   ) {}
 
@@ -216,7 +216,8 @@ export class WorkflowObservabilityRepository {
     try {
       const [seconds, microseconds] = await this.redis.time();
       const nowMs = Number(seconds) * 1_000 + Math.floor(Number(microseconds) / 1_000);
-      const [globalLeaseCount, reservedLeaseCount, demandUidCount, saturatedQuota] = await Promise.all([
+      const [globalCapacity, globalLeaseCount, reservedLeaseCount, demandUidCount, saturatedQuota] = await Promise.all([
+        this.readGlobalCapacity(nowMs),
         this.redis.zcount(this.capacityKey("leases"), String(nowMs), "+inf"),
         this.redis.zcount(this.capacityKey("reserved-leases"), String(nowMs), "+inf"),
         this.redis.zcard(this.capacityKey("demand")),
@@ -232,9 +233,9 @@ export class WorkflowObservabilityRepository {
         : {};
       return {
         activeLeaseCount: Math.max(0, totalLeaseCount - reservedCount),
-        availableCapacity: Math.max(0, this.globalCapacity - totalLeaseCount),
+        availableCapacity: Math.max(0, globalCapacity - totalLeaseCount),
         demandUidCount: toCount(demandUidCount),
-        globalCapacity: this.globalCapacity,
+        globalCapacity,
         reservedLeaseCount: reservedCount,
         ...saturatedQuotaField,
       };
@@ -404,6 +405,22 @@ export class WorkflowObservabilityRepository {
 
   private capacityKey(name: string) {
     return `${this.redisKeyPrefix}workflow:task-capacity:${name}`;
+  }
+
+  private async readGlobalCapacity(nowMs: number) {
+    const [workerIds, workers] = await Promise.all([
+      this.redis!.zrangebyscore(
+        this.capacityKey("worker-expiry"),
+        String(nowMs),
+        "+inf",
+      ),
+      this.redis!.hgetall(this.capacityKey("workers")),
+    ]);
+    const total = workerIds.reduce((sum, workerId) => {
+      const capacity = Number(workers[workerId]);
+      return Number.isSafeInteger(capacity) && capacity > 0 ? sum + capacity : sum;
+    }, 0);
+    return total > 0 ? total : DEFAULT_TASK_CAPACITY;
   }
 
   private async listWorkflowKeys(query: WorkflowObservabilityListQuery, offset: number) {

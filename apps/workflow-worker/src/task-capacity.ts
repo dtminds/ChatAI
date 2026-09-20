@@ -12,6 +12,61 @@ import type { createWorkflowWorkerLogger } from "./logger.js";
 type TaskCapacityConfig = WorkflowWorkerConfig["taskCapacity"];
 type WorkflowWorkerLogger = ReturnType<typeof createWorkflowWorkerLogger>;
 
+const CAPACITY_UNAVAILABLE_LOG_INTERVAL_MS = 60_000;
+const CAPACITY_RELEASE_ERROR_LOG_INTERVAL_MS = 60_000;
+const MAX_MANAGED_CONTENDERS = 100;
+const WORKER_REGISTRATION_TTL_MS = 30_000;
+export const WORKER_REGISTRATION_HEARTBEAT_MS = 10_000;
+
+const dynamicGlobalCapacityLua = (workerKey: string, expiryKey: string, fallback: string) => `
+local expired_worker_ids = redis.call("ZRANGEBYSCORE", ${expiryKey}, "-inf", now_ms)
+for _, worker_id in ipairs(expired_worker_ids) do
+  redis.call("HDEL", ${workerKey}, worker_id)
+end
+if #expired_worker_ids > 0 then
+  redis.call("ZREMRANGEBYSCORE", ${expiryKey}, "-inf", now_ms)
+end
+local global_capacity = 0
+for _, raw_capacity in ipairs(redis.call("HVALS", ${workerKey})) do
+  local capacity = tonumber(raw_capacity)
+  if capacity and capacity > 0 then global_capacity = global_capacity + capacity end
+end
+if global_capacity <= 0 then global_capacity = tonumber(${fallback}) end
+`;
+
+const REGISTER_WORKER_SCRIPT = `
+local now = redis.call("TIME")
+local now_ms = now[1] * 1000 + math.floor(now[2] / 1000)
+local expires_at = now_ms + tonumber(ARGV[3])
+local expired_worker_ids = redis.call("ZRANGEBYSCORE", KEYS[2], "-inf", now_ms)
+for _, worker_id in ipairs(expired_worker_ids) do
+  redis.call("HDEL", KEYS[1], worker_id)
+end
+if #expired_worker_ids > 0 then
+  redis.call("ZREMRANGEBYSCORE", KEYS[2], "-inf", now_ms)
+end
+redis.call("HSET", KEYS[1], ARGV[1], ARGV[2])
+redis.call("ZADD", KEYS[2], expires_at, ARGV[1])
+redis.call("PEXPIRE", KEYS[1], tonumber(ARGV[3]) * 2)
+redis.call("PEXPIRE", KEYS[2], tonumber(ARGV[3]) * 2)
+return 1
+`;
+
+const UNREGISTER_WORKER_SCRIPT = `
+redis.call("HDEL", KEYS[1], ARGV[1])
+redis.call("ZREM", KEYS[2], ARGV[1])
+if redis.call("HLEN", KEYS[1]) == 0 then redis.call("DEL", KEYS[1]) end
+if redis.call("ZCARD", KEYS[2]) == 0 then redis.call("DEL", KEYS[2]) end
+return 1
+`;
+
+const GET_GLOBAL_CAPACITY_SCRIPT = `
+local now = redis.call("TIME")
+local now_ms = now[1] * 1000 + math.floor(now[2] / 1000)
+${dynamicGlobalCapacityLua("KEYS[1]", "KEYS[2]", "ARGV[1]")}
+return global_capacity
+`;
+
 type TaskCapacityControllerSummary = {
   controllerLockSkipped: boolean;
   demandUidCount: number;
@@ -51,10 +106,11 @@ if existing_token then redis.call("DEL", lease_key) end
 redis.call("ZREMRANGEBYSCORE", KEYS[1], "-inf", now_ms)
 redis.call("ZREMRANGEBYSCORE", KEYS[2], "-inf", now_ms)
 redis.call("ZREMRANGEBYSCORE", KEYS[7], "-inf", now_ms)
+${dynamicGlobalCapacityLua("KEYS[8]", "KEYS[9]", "ARGV[4]")}
 local quota = tonumber(redis.call("HGET", KEYS[3], "quota") or ARGV[5])
 local saturated_quota = tonumber(redis.call("GET", KEYS[6]) or "0")
 if saturated_quota > 0 and saturated_quota < quota then quota = saturated_quota end
-if redis.call("ZCARD", KEYS[1]) >= tonumber(ARGV[4]) then
+if redis.call("ZCARD", KEYS[1]) >= global_capacity then
   redis.call("ZADD", KEYS[5], now_ms, ARGV[1])
   redis.call("PEXPIRE", KEYS[5], ARGV[6])
   return {0, 1, "", now_ms}
@@ -79,7 +135,8 @@ local now = redis.call("TIME")
 local now_ms = now[1] * 1000 + math.floor(now[2] / 1000)
 redis.call("ZREMRANGEBYSCORE", KEYS[1], "-inf", now_ms)
 redis.call("ZREMRANGEBYSCORE", KEYS[2], "-inf", now_ms)
-local available = tonumber(ARGV[1]) - redis.call("ZCARD", KEYS[1])
+${dynamicGlobalCapacityLua("KEYS[3]", "KEYS[4]", "ARGV[1]")}
+local available = global_capacity - redis.call("ZCARD", KEYS[1])
 if available < 0 then available = 0 end
 return {available, redis.call("ZCARD", KEYS[2])}
 `;
@@ -100,10 +157,11 @@ if existing_token then redis.call("DEL", lease_key) end
 redis.call("ZREMRANGEBYSCORE", KEYS[1], "-inf", now_ms)
 redis.call("ZREMRANGEBYSCORE", KEYS[2], "-inf", now_ms)
 redis.call("ZREMRANGEBYSCORE", KEYS[7], "-inf", now_ms)
+${dynamicGlobalCapacityLua("KEYS[8]", "KEYS[9]", "ARGV[4]")}
 local quota = tonumber(redis.call("HGET", KEYS[3], "quota") or ARGV[5])
 local saturated_quota = tonumber(redis.call("GET", KEYS[6]) or "0")
 if saturated_quota > 0 and saturated_quota < quota then quota = saturated_quota end
-if redis.call("ZCARD", KEYS[1]) >= tonumber(ARGV[4]) then
+if redis.call("ZCARD", KEYS[1]) >= global_capacity then
   redis.call("ZADD", KEYS[5], now_ms, ARGV[1])
   redis.call("PEXPIRE", KEYS[5], ARGV[6])
   return {0, 1, "", now_ms}
@@ -184,15 +242,16 @@ end
 return 0
 `;
 
-const CAPACITY_UNAVAILABLE_LOG_INTERVAL_MS = 60_000;
-const CAPACITY_RELEASE_ERROR_LOG_INTERVAL_MS = 60_000;
-const MAX_MANAGED_CONTENDERS = 100;
-
 export type WorkflowTaskCapacityController = {
   run(input: {
     now: Date;
     repository: WorkflowTaskCapacityRepository;
   }): Promise<TaskCapacityControllerSummary>;
+};
+
+export type WorkflowTaskCapacityRegistration = {
+  register(input: { concurrency: number; workerId: string }): Promise<void>;
+  unregister(workerId: string): Promise<void>;
 };
 
 export function createWorkflowTaskCapacity(input: {
@@ -203,16 +262,18 @@ export function createWorkflowTaskCapacity(input: {
 }): {
   controller: WorkflowTaskCapacityController;
   port: WorkflowTaskCapacityPort;
+  registration: WorkflowTaskCapacityRegistration;
 } {
   if (!input.client) {
     const inMemory = new InMemoryWorkflowTaskCapacity(input.config);
     return {
       controller: { run: async ({ now }) => inMemory.controllerSummary(now) },
       port: inMemory,
+      registration: inMemory,
     };
   }
   const redis = new RedisWorkflowTaskCapacity(input.client, input.config, input.keyPrefix, input.logger);
-  return { controller: redis, port: redis };
+  return { controller: redis, port: redis, registration: redis };
 }
 
 class RedisWorkflowTaskCapacity implements WorkflowTaskCapacityPort, WorkflowTaskCapacityController {
@@ -227,13 +288,43 @@ class RedisWorkflowTaskCapacity implements WorkflowTaskCapacityPort, WorkflowTas
     private readonly logger: WorkflowWorkerLogger,
   ) {}
 
+  async register(input: { concurrency: number; workerId: string }) {
+    const result = await this.client.eval(
+      REGISTER_WORKER_SCRIPT,
+      2,
+      this.workerRegistryKey(),
+      this.workerExpiryKey(),
+      input.workerId,
+      input.concurrency,
+      WORKER_REGISTRATION_TTL_MS,
+    );
+    if (Number(result) !== 1) {
+      throw new Error("Workflow Task capacity worker registration failed");
+    }
+  }
+
+  async unregister(workerId: string) {
+    const result = await this.client.eval(
+      UNREGISTER_WORKER_SCRIPT,
+      2,
+      this.workerRegistryKey(),
+      this.workerExpiryKey(),
+      workerId,
+    );
+    if (Number(result) !== 1) {
+      throw new Error("Workflow Task capacity worker unregistration failed");
+    }
+  }
+
   async availability() {
     try {
       const result = await this.client.eval(
         AVAILABILITY_SCRIPT,
-        2,
+        4,
         this.globalLeasesKey(),
         this.globalReservedLeasesKey(),
+        this.workerRegistryKey(),
+        this.workerExpiryKey(),
         this.config.globalConcurrency,
       );
       if (!Array.isArray(result) || result.length < 2) {
@@ -264,7 +355,7 @@ class RedisWorkflowTaskCapacity implements WorkflowTaskCapacityPort, WorkflowTas
     try {
       const result = await this.client.eval(
         ACQUIRE_SCRIPT,
-        7,
+        9,
         this.globalLeasesKey(),
         this.uidLeasesKey(input.uid),
         this.quotaKey(input.uid),
@@ -272,6 +363,8 @@ class RedisWorkflowTaskCapacity implements WorkflowTaskCapacityPort, WorkflowTas
         this.demandKey(),
         this.saturatedQuotaKey(),
         this.globalReservedLeasesKey(),
+        this.workerRegistryKey(),
+        this.workerExpiryKey(),
         input.uid,
         leaseId,
         token,
@@ -319,7 +412,7 @@ class RedisWorkflowTaskCapacity implements WorkflowTaskCapacityPort, WorkflowTas
     try {
       const result = await this.client.eval(
         RESERVE_SCRIPT,
-        7,
+        9,
         this.globalLeasesKey(),
         this.uidLeasesKey(input.uid),
         this.quotaKey(input.uid),
@@ -327,6 +420,8 @@ class RedisWorkflowTaskCapacity implements WorkflowTaskCapacityPort, WorkflowTas
         this.demandKey(),
         this.saturatedQuotaKey(),
         this.globalReservedLeasesKey(),
+        this.workerRegistryKey(),
+        this.workerExpiryKey(),
         input.uid,
         leaseId,
         token,
@@ -386,6 +481,25 @@ class RedisWorkflowTaskCapacity implements WorkflowTaskCapacityPort, WorkflowTas
     );
     if (Number(result) !== 1) {
       throw new Error("Workflow Task capacity lease renewal was rejected");
+    }
+  }
+
+  async globalCapacity() {
+    try {
+      const result = await this.client.eval(
+        GET_GLOBAL_CAPACITY_SCRIPT,
+        2,
+        this.workerRegistryKey(),
+        this.workerExpiryKey(),
+        this.config.globalConcurrency,
+      );
+      const capacity = Number(result);
+      return Number.isSafeInteger(capacity) && capacity > 0
+        ? capacity
+        : this.config.globalConcurrency;
+    } catch (error) {
+      this.logUnavailable(error, 0);
+      return this.config.globalConcurrency;
     }
   }
 
@@ -463,12 +577,13 @@ class RedisWorkflowTaskCapacity implements WorkflowTaskCapacityPort, WorkflowTas
         quotaChangedCount: 0,
         scanComplete: true,
         scannedUidCount: 0,
-      }, startedAt);
+      }, startedAt, this.config.globalConcurrency);
     }
 
     let lockRenewalTimer: ReturnType<typeof setInterval> | undefined;
     try {
       const nowMs = await this.redisNowMs();
+      const globalCapacity = await this.globalCapacity();
       let lockRenewalInFlight: Promise<unknown> | undefined;
       let controllerLockLost = false;
       let controllerLockLossError: unknown;
@@ -535,14 +650,14 @@ class RedisWorkflowTaskCapacity implements WorkflowTaskCapacityPort, WorkflowTas
       if (contenderCount > MAX_MANAGED_CONTENDERS) {
         await this.client.set(
           this.saturatedQuotaKey(),
-          String(calculateContenderQuota(this.config.globalConcurrency, MAX_MANAGED_CONTENDERS)),
+          String(calculateContenderQuota(globalCapacity, MAX_MANAGED_CONTENDERS)),
           "PX",
           this.config.quotaTtlMs,
         );
         assertControllerLockHeld();
         quotaChangedCount += 1;
       } else if (contenderCount >= 2) {
-        const quota = calculateContenderQuota(this.config.globalConcurrency, contenderCount);
+        const quota = calculateContenderQuota(globalCapacity, contenderCount);
         const writes = [];
         for (const uid of contenders) {
           const current = await this.client.hget(this.quotaKey(uid), "quota");
@@ -564,7 +679,7 @@ class RedisWorkflowTaskCapacity implements WorkflowTaskCapacityPort, WorkflowTas
         const [uid] = contenders;
         if (uid !== undefined) {
           assertControllerLockHeld();
-          if (await this.restoreQuotaIfStable(uid)) quotaChangedCount += 1;
+          if (await this.restoreQuotaIfStable(uid, globalCapacity)) quotaChangedCount += 1;
           assertControllerLockHeld();
         }
       }
@@ -576,7 +691,7 @@ class RedisWorkflowTaskCapacity implements WorkflowTaskCapacityPort, WorkflowTas
         quotaChangedCount,
         scanComplete: scan.scanComplete,
         scannedUidCount: scan.scannedUidCount,
-      }, startedAt);
+      }, startedAt, globalCapacity);
       this.logger.info({ ...summary, event: "workflow.task.capacity.controller.summary" },
         "Workflow Task capacity controller completed");
       return summary;
@@ -586,11 +701,11 @@ class RedisWorkflowTaskCapacity implements WorkflowTaskCapacityPort, WorkflowTas
     }
   }
 
-  private async restoreQuotaIfStable(uid: number) {
+  private async restoreQuotaIfStable(uid: number, globalCapacity: number) {
     const current = await this.client.hgetall(this.quotaKey(uid));
     const quota = Number(current.quota);
     const stableCycles = Number(current.stable_cycles ?? 0);
-    const maxQuota = calculateTenantQuota(this.config.globalConcurrency, this.config.tenantMaxSharePercent);
+    const maxQuota = calculateTenantQuota(globalCapacity, this.config.tenantMaxSharePercent);
     if (!Number.isFinite(quota) || quota >= maxQuota) {
       await this.writeQuota(uid, maxQuota, 0);
       return false;
@@ -637,11 +752,12 @@ class RedisWorkflowTaskCapacity implements WorkflowTaskCapacityPort, WorkflowTas
   private summary(
     values: Omit<TaskCapacityControllerSummary, "durationMs" | "globalCapacity">,
     startedAt: number,
+    globalCapacity: number,
   ): TaskCapacityControllerSummary {
     return {
       ...values,
       durationMs: Math.max(0, Date.now() - startedAt),
-      globalCapacity: this.config.globalConcurrency,
+      globalCapacity,
     };
   }
 
@@ -687,6 +803,14 @@ class RedisWorkflowTaskCapacity implements WorkflowTaskCapacityPort, WorkflowTas
   private saturatedQuotaKey() {
     return `${this.keyPrefix}workflow:task-capacity:saturated-quota`;
   }
+
+  private workerRegistryKey() {
+    return `${this.keyPrefix}workflow:task-capacity:workers`;
+  }
+
+  private workerExpiryKey() {
+    return `${this.keyPrefix}workflow:task-capacity:worker-expiry`;
+  }
 }
 
 class InMemoryWorkflowTaskCapacity implements WorkflowTaskCapacityPort {
@@ -701,6 +825,10 @@ class InMemoryWorkflowTaskCapacity implements WorkflowTaskCapacityPort {
   private readonly demand = new Map<number, number>();
 
   constructor(private readonly config: TaskCapacityConfig) {}
+
+  async register(_input: { concurrency: number; workerId: string }) {}
+
+  async unregister(_workerId: string) {}
 
   async availability() {
     this.cleanup(Date.now());

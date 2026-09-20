@@ -176,7 +176,7 @@ describe("workflow worker config", () => {
     }))).toThrow("REDIS_ENABLED must be true for the production Workflow task-consumer");
   });
 
-  it("loads the shared Task capacity defaults and requires production capacity", () => {
+  it("loads the shared Task capacity defaults without a static global capacity setting", () => {
     expect(loadWorkflowWorkerConfig(baseEnv()).taskCapacity).toMatchObject({
       controllerIntervalMs: 300_000,
       deferDelayMs: 60_000,
@@ -189,9 +189,7 @@ describe("workflow worker config", () => {
       stableCycles: 2,
       tenantMaxSharePercent: 90,
     });
-    expect(() => loadWorkflowWorkerConfig(productionEnv({
-      WORKFLOW_TASK_GLOBAL_CONCURRENCY: undefined,
-    }))).toThrow("Missing required environment variable: WORKFLOW_TASK_GLOBAL_CONCURRENCY");
+    expect(loadWorkflowWorkerConfig(productionEnv()).taskCapacity.globalConcurrency).toBe(10);
   });
 
   it("rejects Task capacity settings that cause rapid retries or stale quotas", () => {
@@ -429,7 +427,6 @@ function productionEnv(overrides: NodeJS.ProcessEnv = {}): NodeJS.ProcessEnv {
     WORKFLOW_TASK_DLQ_TOPIC: "topic-workflow-task-prod-dlq",
     WORKFLOW_TASK_SUBSCRIPTION: "consumer-chatai-worker-task-prod",
     WORKFLOW_TASK_TOPIC: "topic-workflow-task-prod",
-    WORKFLOW_TASK_GLOBAL_CONCURRENCY: "30",
     WORKFLOW_WORKER_ROLES: "entry-consumer,task-consumer,scheduler",
     ...overrides,
   });

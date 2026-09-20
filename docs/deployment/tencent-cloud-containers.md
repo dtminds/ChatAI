@@ -247,8 +247,6 @@ WORKFLOW_HEALTH_PORT=3002
 WORKFLOW_MAX_REDELIVER_COUNT=5
 WORKFLOW_ENTRY_CONCURRENCY=10
 WORKFLOW_TASK_CONCURRENCY=10
-# Shared logical Task execution capacity across all task-consumer replicas.
-WORKFLOW_TASK_GLOBAL_CONCURRENCY=10
 WORKFLOW_MESSAGE_SEAT_RATE_PER_MINUTE=12
 WORKFLOW_MESSAGE_SEAT_BURST=6
 WORKFLOW_BATCH_SIZE=100
@@ -340,11 +338,9 @@ JAVA_INTERNAL_API_TIMEOUT_MS=8000
 JAVA_INTERNAL_API_STREAM_IDLE_TIMEOUT_MS=60000
 MEDIA_PROXY_TIMEOUT_MS=8000
 WORKFLOW_ACTIVE_RUN_LIMIT=10000
-# Must match the Workflow Worker value used for global Task capacity control.
-WORKFLOW_TASK_GLOBAL_CONCURRENCY=10
 ```
 
-Backend 的 Workflow 运行观测页使用 `WORKFLOW_TASK_GLOBAL_CONCURRENCY` 计算 Task 总容量和剩余容量。该值必须与 Workflow Worker 的同名配置保持一致。
+Workflow Task 总容量由在线 `task-consumer` 实例在 Redis 中注册的 `WORKFLOW_TASK_CONCURRENCY` 之和动态计算。实例启动时注册，运行中续租，停止或租约过期后自动移除；没有有效注册数据时使用代码内默认容量 10。Backend 观测页读取同一份 Redis 注册数据，不再配置独立的全局容量环境变量。
 
 敏感配置必须放 Secret：
 

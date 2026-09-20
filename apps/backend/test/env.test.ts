@@ -4,7 +4,6 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import {
   getWorkflowActiveRunLimit,
-  getWorkflowTaskGlobalConcurrency,
   getPort,
   loadBackendEnv,
   validateBackendEnv,
@@ -21,7 +20,6 @@ const ENV_KEYS = [
   "NODE_ENV",
   "PORT",
   "WORKFLOW_ACTIVE_RUN_LIMIT",
-  "WORKFLOW_TASK_GLOBAL_CONCURRENCY",
 ] as const;
 
 function clearEnv() {
@@ -165,11 +163,6 @@ describe("backend env config", () => {
 
     expect(() => validateBackendEnv(productionEnv)).not.toThrow();
     expect(getWorkflowActiveRunLimit(productionEnv)).toBe(10_000);
-    expect(getWorkflowTaskGlobalConcurrency(productionEnv)).toBe(10);
-    expect(getWorkflowTaskGlobalConcurrency({
-      ...productionEnv,
-      WORKFLOW_TASK_GLOBAL_CONCURRENCY: "30",
-    })).toBe(30);
     expect(getWorkflowActiveRunLimit({
       ...productionEnv,
       WORKFLOW_ACTIVE_RUN_LIMIT: "   ",

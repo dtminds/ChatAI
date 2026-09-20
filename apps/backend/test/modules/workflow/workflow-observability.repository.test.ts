@@ -39,11 +39,13 @@ describe("workflow observability repository", () => {
     const db = createRecordingDb();
     const redis = {
       get: async () => "4",
+      hgetall: async () => ({ worker1: "6", worker2: "4" }),
       time: async () => [1_789_000_000, 500_000] as [string, string],
       zcard: async () => 3,
       zcount: async (key: string) => key.endsWith(":reserved-leases") ? 2 : 7,
+      zrangebyscore: async () => ["worker1", "worker2"],
     };
-    const repository = new WorkflowObservabilityRepository(db as never, redis as never, 10, "test:");
+    const repository = new WorkflowObservabilityRepository(db as never, redis as never, "test:");
 
     await expect(repository.getTaskCapacity()).resolves.toEqual({
       activeLeaseCount: 5,
@@ -60,9 +62,11 @@ describe("workflow observability repository", () => {
     const disabledRepository = new WorkflowObservabilityRepository(db as never);
     const unavailableRepository = new WorkflowObservabilityRepository(db as never, {
       get: async () => null,
+      hgetall: async () => ({}),
       time: async () => { throw new Error("redis unavailable"); },
       zcard: async () => 0,
       zcount: async () => 0,
+      zrangebyscore: async () => [],
     } as never);
 
     await expect(disabledRepository.getTaskCapacity()).resolves.toBeNull();

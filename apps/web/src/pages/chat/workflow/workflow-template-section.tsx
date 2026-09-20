@@ -718,7 +718,7 @@ function TemplateCard({ item, onPreview }: { item: WorkflowTemplateListItem; onP
       tabIndex={0}
     >
       <div className="relative aspect-[1.8] overflow-hidden rounded-lg bg-muted">
-        <img alt="" className="h-full w-full object-cover" src={item.coverUrl || getWorkflowTemplateBackgroundUrl(item.id)} />
+        <img alt="" className="h-full w-full object-cover [filter:grayscale(0.5)]" src={item.coverUrl || getWorkflowTemplateBackgroundUrl(item.id)} />
         <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
           <TemplateNodeKinds nodeKinds={item.nodeKinds} tone={getWorkflowTemplateCoverTone(item)} />
         </div>

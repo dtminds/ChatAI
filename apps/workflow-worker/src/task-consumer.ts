@@ -20,11 +20,13 @@ import {
 } from "./observability.js";
 
 const CAPACITY_UNAVAILABLE_PROBE_DELAY_MS = 30_000;
+const CAPACITY_EXHAUSTED_PROBE_DELAY_MS = 5_000;
 
 type WorkflowTaskRuntimeService = {
   executeTask(input: {
     capacityLease?: WorkflowTaskCapacityLease;
     capacityLeaseDurationMs?: number;
+    capacitySignal?: AbortSignal;
     messageId?: string;
     now: Date;
     taskId: string;
@@ -67,20 +69,33 @@ export function createTaskConsumerHandler(input: {
         : undefined;
       if (input.taskCapacityPort && !capacityLease) return;
       if (input.capacityWaitSignal?.aborted) return;
-      const result = await input.runtimeService.executeTask({
-        ...(capacityLease ? { capacityLease } : {}),
-        ...(input.taskCapacityPort
-          ? { capacityLeaseDurationMs: input.capacityLeaseDurationMs ?? 60_000 }
-          : {}),
-        messageId: command.messageId,
-        now: input.now?.() ?? new Date(),
-        taskId: command.taskId,
-        taskVersion: command.taskVersion,
-        uid: parseSafeDatabaseId(command.uid),
-        workerId: input.workerId,
-      });
-      await message.ack();
-      input.observe?.(message, createTaskObservation(command, result));
+      const capacityRenewal = capacityLease && input.taskCapacityPort
+        ? startTaskCapacityLeaseRenewal({
+            lease: capacityLease,
+            leaseDurationMs: input.capacityLeaseDurationMs ?? 60_000,
+            port: input.taskCapacityPort,
+            uid: parseSafeDatabaseId(command.uid),
+          })
+        : undefined;
+      try {
+        const result = await input.runtimeService.executeTask({
+          ...(capacityLease ? { capacityLease } : {}),
+          ...(capacityRenewal ? { capacitySignal: capacityRenewal.signal } : {}),
+          ...(input.taskCapacityPort
+            ? { capacityLeaseDurationMs: input.capacityLeaseDurationMs ?? 60_000 }
+            : {}),
+          messageId: command.messageId,
+          now: input.now?.() ?? new Date(),
+          taskId: command.taskId,
+          taskVersion: command.taskVersion,
+          uid: parseSafeDatabaseId(command.uid),
+          workerId: input.workerId,
+        });
+        await message.ack();
+        input.observe?.(message, createTaskObservation(command, result));
+      } finally {
+        await capacityRenewal?.stop();
+      }
     } catch (error) {
       const disposition = classifyTaskError(error);
       const errorCode = getErrorCode(error);
@@ -185,8 +200,16 @@ export async function startTaskConsumer(input: {
           nextCapacityProbeAt = Date.now() + CAPACITY_UNAVAILABLE_PROBE_DELAY_MS;
           return false;
         }
+        if (availability.available <= 0) {
+          if ((availability.reserved ?? 0) > 0) {
+            nextCapacityProbeAt = 0;
+            return true;
+          }
+          nextCapacityProbeAt = Date.now() + CAPACITY_EXHAUSTED_PROBE_DELAY_MS;
+          return false;
+        }
         nextCapacityProbeAt = 0;
-        return availability.available > 0 || (availability.reserved ?? 0) > 0;
+        return true;
       },
       deadLetterTopic: input.deadLetterTopic,
       handler: createTaskConsumerHandler({
@@ -213,6 +236,48 @@ export async function startTaskConsumer(input: {
       }
     },
     isConnected: () => subscription.isConnected(),
+  };
+}
+
+function startTaskCapacityLeaseRenewal(input: {
+  lease: WorkflowTaskCapacityLease;
+  leaseDurationMs: number;
+  port: WorkflowTaskCapacityPort;
+  uid: number;
+}) {
+  const controller = new AbortController();
+  const intervalMs = Math.max(1_000, Math.floor(input.leaseDurationMs / 2));
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  let inFlight: Promise<void> | undefined;
+  let stopped = false;
+
+  const renew = () => {
+    if (stopped) return;
+    inFlight = input.port.renew({
+      lease: input.lease,
+      leaseDurationMs: input.leaseDurationMs,
+      uid: input.uid,
+    }).catch(error => {
+      if (!controller.signal.aborted) controller.abort(error);
+    }).finally(() => {
+      inFlight = undefined;
+      if (!stopped) {
+        timer = setTimeout(renew, intervalMs);
+        timer.unref?.();
+      }
+    });
+  };
+
+  timer = setTimeout(renew, intervalMs);
+  timer.unref?.();
+
+  return {
+    signal: controller.signal,
+    async stop() {
+      stopped = true;
+      if (timer) clearTimeout(timer);
+      if (inFlight) await inFlight;
+    },
   };
 }
 

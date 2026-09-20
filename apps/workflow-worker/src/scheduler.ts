@@ -42,7 +42,10 @@ export async function scheduleWorkflowTasks(input: {
         dispatched = { cancelled: 0, dispatched: 0, suspended: 0 };
       } else {
         const candidates = await input.repository.listDueTaskCandidates({
-          limit: Math.min(input.limit, availability.available),
+          // Keep the candidate window bounded by the normal scheduler batch.
+          // A tenant quota rejection must not hide later candidates while a
+          // global slot is still available.
+          limit: input.limit,
           now: input.now,
         });
         const reservations = new Map<string, {

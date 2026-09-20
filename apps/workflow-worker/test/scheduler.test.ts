@@ -93,6 +93,55 @@ describe("workflow scheduler", () => {
     ]);
   });
 
+  it("keeps scanning the scheduler batch when the first tenant is quota limited", async () => {
+    const candidates = [
+      { taskId: "hot-task", taskVersion: 3, uid: 9 },
+      { taskId: "other-task", taskVersion: 4, uid: 10 },
+    ];
+    const repository = {
+      dispatchReservedTasks: vi.fn(async () => ({
+        cancelled: 0,
+        dispatched: [candidates[1]!],
+        suspended: 0,
+      })),
+      listDueTaskCandidates: vi.fn(async () => candidates),
+      processTaskStatusTransitionBatch: vi.fn(async () => ({
+        claimed: false,
+        dead: 0,
+        failed: 0,
+        hasMore: false,
+        transitioned: 0,
+      })),
+    };
+    const taskCapacityPort = createCapacityPort({
+      availability: vi.fn(async () => ({ available: 1, kind: "available" as const })),
+      reserve: vi.fn(async input => input.uid === 9
+        ? {
+            kind: "deferred" as const,
+            reasonCode: "WORKFLOW_TASK_TENANT_CAPACITY_LIMITED" as const,
+            retryAt: new Date("2026-09-19T00:01:00.000Z"),
+          }
+        : {
+            kind: "reserved" as const,
+            lease: { leaseId: "lease-10", token: "token-10" },
+          }),
+    });
+
+    await expect(scheduleWorkflowTasks({
+      ...schedulerInput(repository, taskCapacityPort),
+    })).resolves.toMatchObject({ dispatched: 1 });
+
+    expect(repository.listDueTaskCandidates).toHaveBeenCalledWith({
+      limit: 100,
+      now: new Date("2026-07-11T00:00:00.000Z"),
+    });
+    expect(taskCapacityPort.reserve).toHaveBeenCalledTimes(2);
+    expect(repository.dispatchReservedTasks).toHaveBeenCalledWith({
+      candidates: [candidates[1]],
+      now: new Date("2026-07-11T00:00:00.000Z"),
+    });
+  });
+
   it("releases every reservation when database dispatch fails", async () => {
     const failure = new Error("dispatch unavailable");
     const candidates = [

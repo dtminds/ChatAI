@@ -125,6 +125,7 @@ import type {
 type WorkflowExecuteTaskInput = {
   capacityLease?: WorkflowTaskCapacityLease;
   capacityLeaseDurationMs?: number;
+  capacitySignal?: AbortSignal;
   messageId?: string;
   now: Date;
   taskId: string;
@@ -648,7 +649,7 @@ export class WorkflowRuntimeService {
     let capacityRenewalInFlight: Promise<void> | undefined;
     let capacityRenewalStopped = false;
     let capacityLeaseAbortController: AbortController | undefined;
-    if (capacityLease && this.taskCapacityPort) {
+    if (capacityLease && this.taskCapacityPort && !input.capacitySignal) {
       capacityLeaseAbortController = new AbortController();
       const renewalIntervalMs = Math.max(
         1_000,
@@ -684,7 +685,7 @@ export class WorkflowRuntimeService {
       capacityRenewalTimer.unref?.();
     }
 
-    const capacitySignal = capacityLeaseAbortController?.signal;
+    const capacitySignal = input.capacitySignal ?? capacityLeaseAbortController?.signal;
     let claimedTask: WorkflowTaskRecord | undefined;
     try {
       throwIfWorkflowTaskCapacityLeaseLost(capacitySignal);

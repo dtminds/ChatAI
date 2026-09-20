@@ -189,6 +189,116 @@ describe("workflow task consumer", () => {
     }
   });
 
+  it("backs off capacity availability probes while all capacity is occupied", async () => {
+    vi.useFakeTimers();
+    try {
+      let subscriptionInput: WorkflowBrokerSubscribeInput | undefined;
+      const subscription = {
+        close: vi.fn(async () => {}),
+        isConnected: vi.fn(() => true),
+      };
+      const broker: WorkflowBroker = {
+        checkHealth: vi.fn(async () => {}),
+        close: vi.fn(async () => {}),
+        publish: vi.fn(async () => ({ messageId: "message-1" })),
+        subscribe: vi.fn(async (input: WorkflowBrokerSubscribeInput) => {
+          subscriptionInput = input;
+          return subscription;
+        }),
+      };
+      const availability = vi.fn()
+        .mockResolvedValueOnce({ available: 0, kind: "available" as const, reserved: 0 })
+        .mockResolvedValueOnce({ available: 1, kind: "available" as const, reserved: 0 });
+      const taskCapacityPort = {
+        acquire: vi.fn(),
+        availability,
+        release: vi.fn(async () => {}),
+        releaseReservation: vi.fn(async () => {}),
+        renew: vi.fn(async () => {}),
+        reserve: vi.fn(),
+      };
+
+      const consumer = await startTaskConsumer({
+        broker,
+        maxInFlight: 1,
+        runtimeService: { executeTask: vi.fn(async () => undefined) },
+        taskCapacityPort,
+        subscription: "task-subscription",
+        topic: "task-topic",
+        workerId: "worker-1",
+      });
+
+      const beforeReceive = subscriptionInput?.beforeReceive;
+      expect(beforeReceive).toBeDefined();
+      await expect(beforeReceive!()).resolves.toBe(false);
+      await expect(beforeReceive!()).resolves.toBe(false);
+      expect(availability).toHaveBeenCalledTimes(1);
+
+      await vi.advanceTimersByTimeAsync(4_999);
+      await expect(beforeReceive!()).resolves.toBe(false);
+      expect(availability).toHaveBeenCalledTimes(1);
+
+      await vi.advanceTimersByTimeAsync(1);
+      await expect(beforeReceive!()).resolves.toBe(true);
+      expect(availability).toHaveBeenCalledTimes(2);
+
+      await consumer.close();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("renews a granted capacity lease while Runtime is still in preflight", async () => {
+    vi.useFakeTimers();
+    try {
+      const lease = { leaseId: "9|7|3", token: "lease-token" };
+      let releaseRuntime!: () => void;
+      const runtimeReleased = new Promise<void>(resolve => { releaseRuntime = resolve; });
+      const taskCapacityPort = {
+        acquire: vi.fn(async () => ({ kind: "allowed" as const, lease })),
+        availability: vi.fn(async () => ({ available: 1, kind: "available" as const })),
+        release: vi.fn(async () => {}),
+        releaseReservation: vi.fn(async () => {}),
+        renew: vi.fn(async () => {}),
+        reserve: vi.fn(),
+      };
+      let capacitySignal: AbortSignal | undefined;
+      let runtimeStarted!: () => void;
+      const runtimeStartedPromise = new Promise<void>(resolve => { runtimeStarted = resolve; });
+      const executeTask = vi.fn(async (input: { capacitySignal?: AbortSignal }) => {
+        capacitySignal = input.capacitySignal;
+        runtimeStarted();
+        await runtimeReleased;
+      });
+      const message = createBrokerMessage(taskMessage());
+      const handler = createTaskConsumerHandler({
+        capacityLeaseDurationMs: 60_000,
+        runtimeService: { executeTask },
+        taskCapacityPort,
+        workerId: "worker-1",
+      });
+
+      const execution = handler(message);
+      await runtimeStartedPromise;
+      expect(capacitySignal).toBeDefined();
+
+      await vi.advanceTimersByTimeAsync(30_000);
+      expect(taskCapacityPort.renew).toHaveBeenCalledWith({
+        lease,
+        leaseDurationMs: 60_000,
+        uid: 9,
+      });
+      expect(capacitySignal?.aborted).toBe(false);
+
+      releaseRuntime();
+      await execution;
+      expect(message.ack).toHaveBeenCalledTimes(1);
+      expect(taskCapacityPort.release).toHaveBeenCalledWith({ lease, uid: 9 });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("continues receiving when reserved leases are the only available capacity", async () => {
     let subscriptionInput: WorkflowBrokerSubscribeInput | undefined;
     const subscription = {

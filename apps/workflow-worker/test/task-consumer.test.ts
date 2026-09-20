@@ -299,6 +299,51 @@ describe("workflow task consumer", () => {
     }
   });
 
+  it("stops renewing after the first capacity lease renewal failure", async () => {
+    vi.useFakeTimers();
+    try {
+      const lease = { leaseId: "9|7|3", token: "lease-token" };
+      let releaseRuntime!: () => void;
+      const runtimeReleased = new Promise<void>(resolve => { releaseRuntime = resolve; });
+      const taskCapacityPort = {
+        acquire: vi.fn(async () => ({ kind: "allowed" as const, lease })),
+        availability: vi.fn(async () => ({ available: 1, kind: "available" as const })),
+        release: vi.fn(async () => {}),
+        releaseReservation: vi.fn(async () => {}),
+        renew: vi.fn(async () => { throw new Error("Redis unavailable"); }),
+        reserve: vi.fn(),
+      };
+      let runtimeStarted!: () => void;
+      const runtimeStartedPromise = new Promise<void>(resolve => { runtimeStarted = resolve; });
+      const executeTask = vi.fn(async () => {
+        runtimeStarted();
+        await runtimeReleased;
+      });
+      const message = createBrokerMessage(taskMessage());
+      const handler = createTaskConsumerHandler({
+        capacityLeaseDurationMs: 60_000,
+        runtimeService: { executeTask },
+        taskCapacityPort,
+        workerId: "worker-1",
+      });
+
+      const execution = handler(message);
+      await runtimeStartedPromise;
+
+      await vi.advanceTimersByTimeAsync(30_000);
+      expect(taskCapacityPort.renew).toHaveBeenCalledTimes(1);
+
+      await vi.advanceTimersByTimeAsync(60_000);
+      expect(taskCapacityPort.renew).toHaveBeenCalledTimes(1);
+
+      releaseRuntime();
+      await execution;
+      expect(taskCapacityPort.release).toHaveBeenCalledWith({ lease, uid: 9 });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("continues receiving when reserved leases are the only available capacity", async () => {
     let subscriptionInput: WorkflowBrokerSubscribeInput | undefined;
     const subscription = {

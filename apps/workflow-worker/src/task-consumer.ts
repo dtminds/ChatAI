@@ -258,10 +258,11 @@ function startTaskCapacityLeaseRenewal(input: {
       leaseDurationMs: input.leaseDurationMs,
       uid: input.uid,
     }).catch(error => {
+      stopped = true;
       if (!controller.signal.aborted) controller.abort(error);
     }).finally(() => {
       inFlight = undefined;
-      if (!stopped) {
+      if (!stopped && !controller.signal.aborted) {
         timer = setTimeout(renew, intervalMs);
         timer.unref?.();
       }

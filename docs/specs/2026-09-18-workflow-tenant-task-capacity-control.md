@@ -139,7 +139,7 @@ N <= sum(WORKFLOW_TASK_CONCURRENCY of all task-consumer replicas)
 
 如果 `N` 大于实际 Worker 并发，容量控制不会提升吞吐；如果 `N` 小于实际并发，则剩余 Worker 槽位作为有意保留的安全余量，不得绕过 Redis 许可直接执行。
 
-1.0 假设部署容量相对稳定。扩缩容时必须同步调整 `N`，并通过配置发布或等价的受控部署流程完成；不在本版本内自动根据 Worker 数量推导 `N`。
+1.0 通过在线 Worker 注册自动感知扩缩容。每个 task-consumer 以自己的 `WORKFLOW_TASK_CONCURRENCY` 注册并续租；实例失效或停止后，其注册容量自动从 `N` 中移除，不需要单独修改全局容量配置。
 
 ### 4.3 单租户硬上限 `H`
 

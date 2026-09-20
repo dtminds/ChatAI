@@ -100,10 +100,13 @@ describe("Workflow Task capacity", () => {
     expect(client.eval.mock.calls[0]?.[8]).toBe("test:workflow:task-capacity:reserved-leases");
     expect(client.eval.mock.calls[0]?.[9]).toBe("test:workflow:task-capacity:workers");
     expect(client.eval.mock.calls[0]?.[10]).toBe("test:workflow:task-capacity:worker-expiry");
+    expect(client.eval.mock.calls[0]?.[14]).toBe(config.globalConcurrency);
+    expect(client.eval.mock.calls[0]?.[15]).toBe(config.tenantMaxSharePercent);
     expect(String(script)).toContain("ZREMRANGEBYSCORE");
     expect(String(script)).toContain("ZCARD");
     expect(String(script)).toContain("ZADD");
     expect(String(script)).toContain("PEXPIRE");
+    expect(String(script)).toContain("global_capacity * tonumber(ARGV[5]) / 100");
   });
 
   it("releases an active Redis lease with exactly three keys", async () => {

@@ -99,6 +99,49 @@ describe("workflow worker runtime", () => {
     expect(resources.database.destroy).toHaveBeenCalledTimes(1);
   });
 
+  it("registers task capacity before starting the task consumer and unregisters on close", async () => {
+    const resources = createResources();
+    const registration = {
+      register: vi.fn(async () => {}),
+      unregister: vi.fn(async () => {}),
+    };
+
+    const runtime = await startWorkflowWorkerRuntime({
+      ...resources.dependencies,
+      config: config(),
+      taskCapacityRegistration: registration,
+    });
+
+    expect(registration.register).toHaveBeenCalledWith({
+      concurrency: 10,
+      workerId: "worker-1",
+    });
+    expect(resources.dependencies.taskConsumer).toHaveBeenCalled();
+
+    await runtime.close();
+
+    expect(registration.unregister).toHaveBeenCalledWith("worker-1");
+  });
+
+  it("does not start the task consumer when capacity registration fails", async () => {
+    const resources = createResources();
+    const registration = {
+      register: vi.fn(async () => { throw new Error("Redis unavailable"); }),
+      unregister: vi.fn(async () => {}),
+    };
+
+    await expect(startWorkflowWorkerRuntime({
+      ...resources.dependencies,
+      config: config(),
+      taskCapacityRegistration: registration,
+    })).rejects.toThrow("Redis unavailable");
+
+    expect(resources.dependencies.taskConsumer).not.toHaveBeenCalled();
+    expect(registration.unregister).not.toHaveBeenCalled();
+    expect(resources.broker.close).toHaveBeenCalledTimes(1);
+    expect(resources.database.destroy).toHaveBeenCalledTimes(1);
+  });
+
   it("starts selected background roles and closes every loop", async () => {
     const resources = createResources();
     const backgroundConfig = {

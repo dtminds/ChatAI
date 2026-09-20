@@ -39,7 +39,7 @@ describe("workflow observability repository", () => {
     const db = createRecordingDb();
     const redis = {
       get: async () => "4",
-      hgetall: async () => ({ worker1: "6", worker2: "4" }),
+      hgetall: async () => ({ worker1: "6", worker2: "7", expiredWorker: "100" }),
       time: async () => [1_789_000_000, 500_000] as [string, string],
       zcard: async () => 3,
       zcount: async (key: string) => key.endsWith(":reserved-leases") ? 2 : 7,
@@ -49,11 +49,36 @@ describe("workflow observability repository", () => {
 
     await expect(repository.getTaskCapacity()).resolves.toEqual({
       activeLeaseCount: 5,
-      availableCapacity: 3,
+      availableCapacity: 6,
       demandUidCount: 3,
-      globalCapacity: 10,
+      globalCapacity: 13,
       reservedLeaseCount: 2,
       saturatedQuota: 4,
+    });
+  });
+
+  it("ignores expired worker registrations and falls back when none are valid", async () => {
+    const db = createRecordingDb();
+    let activeWorkerIds = ["worker-1"];
+    const redis = {
+      get: async () => null,
+      hgetall: async () => ({ "worker-1": "6", "expired-worker": "100" }),
+      time: async () => [1_789_000_000, 500_000] as [string, string],
+      zcard: async () => 0,
+      zcount: async () => 0,
+      zrangebyscore: async () => activeWorkerIds,
+    };
+    const repository = new WorkflowObservabilityRepository(db as never, redis as never, "test:");
+
+    await expect(repository.getTaskCapacity()).resolves.toMatchObject({
+      globalCapacity: 6,
+      availableCapacity: 6,
+    });
+
+    activeWorkerIds = [];
+    await expect(repository.getTaskCapacity()).resolves.toMatchObject({
+      globalCapacity: 10,
+      availableCapacity: 10,
     });
   });
 

@@ -107,7 +107,10 @@ redis.call("ZREMRANGEBYSCORE", KEYS[1], "-inf", now_ms)
 redis.call("ZREMRANGEBYSCORE", KEYS[2], "-inf", now_ms)
 redis.call("ZREMRANGEBYSCORE", KEYS[7], "-inf", now_ms)
 ${dynamicGlobalCapacityLua("KEYS[8]", "KEYS[9]", "ARGV[4]")}
-local quota = tonumber(redis.call("HGET", KEYS[3], "quota") or ARGV[5])
+local quota = tonumber(redis.call("HGET", KEYS[3], "quota"))
+if not quota then
+  quota = math.max(1, math.floor(global_capacity * tonumber(ARGV[5]) / 100))
+end
 local saturated_quota = tonumber(redis.call("GET", KEYS[6]) or "0")
 if saturated_quota > 0 and saturated_quota < quota then quota = saturated_quota end
 if redis.call("ZCARD", KEYS[1]) >= global_capacity then
@@ -158,7 +161,10 @@ redis.call("ZREMRANGEBYSCORE", KEYS[1], "-inf", now_ms)
 redis.call("ZREMRANGEBYSCORE", KEYS[2], "-inf", now_ms)
 redis.call("ZREMRANGEBYSCORE", KEYS[7], "-inf", now_ms)
 ${dynamicGlobalCapacityLua("KEYS[8]", "KEYS[9]", "ARGV[4]")}
-local quota = tonumber(redis.call("HGET", KEYS[3], "quota") or ARGV[5])
+local quota = tonumber(redis.call("HGET", KEYS[3], "quota"))
+if not quota then
+  quota = math.max(1, math.floor(global_capacity * tonumber(ARGV[5]) / 100))
+end
 local saturated_quota = tonumber(redis.call("GET", KEYS[6]) or "0")
 if saturated_quota > 0 and saturated_quota < quota then quota = saturated_quota end
 if redis.call("ZCARD", KEYS[1]) >= global_capacity then
@@ -369,7 +375,7 @@ class RedisWorkflowTaskCapacity implements WorkflowTaskCapacityPort, WorkflowTas
         leaseId,
         token,
         this.config.globalConcurrency,
-        calculateTenantQuota(this.config.globalConcurrency, this.config.tenantMaxSharePercent),
+        this.config.tenantMaxSharePercent,
         this.config.demandWindowMs + this.config.controllerIntervalMs,
         Math.max(1_000, input.leaseDurationMs),
       );
@@ -426,7 +432,7 @@ class RedisWorkflowTaskCapacity implements WorkflowTaskCapacityPort, WorkflowTas
         leaseId,
         token,
         this.config.globalConcurrency,
-        calculateTenantQuota(this.config.globalConcurrency, this.config.tenantMaxSharePercent),
+        this.config.tenantMaxSharePercent,
         this.config.demandWindowMs + this.config.controllerIntervalMs,
         Math.max(1_000, input.leaseDurationMs),
       );

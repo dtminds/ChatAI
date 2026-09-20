@@ -7,6 +7,7 @@ import {
   type WorkflowAiCollectConversationPort,
   type WorkflowConversationDirectivePort,
   type WorkflowRuntimeDefinitionRecord,
+  type WorkflowTaskCapacityPort,
 } from "../src/index.js";
 
 const enteredAt = new Date("2026-08-30T01:00:00.000Z");
@@ -61,6 +62,47 @@ describe("AI Collect runtime", () => {
       }),
     ]);
     expect(harness.runtime.usageEvents[0]).not.toHaveProperty("modelUsages");
+  });
+
+  it("returns a persisted inference wait after capacity lease renewal is lost", async () => {
+    vi.useFakeTimers();
+    try {
+      const lease = { leaseId: "9|ai-collect|1", token: "lease-token" };
+      const taskCapacityPort: WorkflowTaskCapacityPort = {
+        availability: vi.fn(async () => ({ available: 1, kind: "available" as const })),
+        acquire: vi.fn(async () => ({ kind: "allowed" as const, lease })),
+        releaseReservation: vi.fn(async () => {}),
+        reserve: vi.fn(async () => ({ kind: "reserved" as const, lease })),
+        renew: vi.fn(async () => {
+          throw new Error("Redis unavailable");
+        }),
+        release: vi.fn(async () => {}),
+      };
+      const harness = createHarness({
+        inputSelector: ["trigger", "input"],
+        taskCapacityPort,
+      });
+      const collectTask = await enterCollect(harness, { input: "订单号是 A100" });
+      const beginInference = harness.runtime.beginInference.bind(harness.runtime);
+      vi.spyOn(harness.runtime, "beginInference").mockImplementation(async input => {
+        const result = await beginInference(input);
+        await vi.advanceTimersByTimeAsync(30_000);
+        return result;
+      });
+
+      await expect(harness.service.executeTask(taskInput(collectTask, enteredAt)))
+        .resolves.toMatchObject({ kind: "inference-waiting" });
+      expect(taskCapacityPort.renew).toHaveBeenCalledOnce();
+      expect(requireTask(harness.runtime, collectTask.id)).toMatchObject({
+        status: "waiting_external",
+        taskType: "inference",
+      });
+      expect(harness.runtime.aiCollectStates[0]).toMatchObject({
+        activeInferenceKey: expect.any(String),
+      });
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("activates Agent guidance only after the initial input remains incomplete", async () => {
@@ -370,6 +412,7 @@ function createHarness(options: {
   onOpeningMessage?: () => void;
   openingMessage?: string;
   readCustomerMessages?: WorkflowAiCollectConversationPort["readCustomerMessages"];
+  taskCapacityPort?: WorkflowTaskCapacityPort;
   usageCollectionEnabled?: boolean;
 } = {}) {
   const spec = compileWorkflowDraft({
@@ -416,6 +459,7 @@ function createHarness(options: {
     conversationDirectivePort: directivePort,
     entitlementPort: { check: async () => ({ activeRunLimit: 10_000, entitled: true }) },
     inferenceTotalTimeoutMs: 600_000,
+    ...(options.taskCapacityPort ? { taskCapacityPort: options.taskCapacityPort } : {}),
   });
   return {
     conversationPort,

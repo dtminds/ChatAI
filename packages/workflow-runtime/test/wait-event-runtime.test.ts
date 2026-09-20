@@ -4,6 +4,7 @@ import {
   InMemoryWorkflowRuntimeRepository,
   WorkflowRuntimeService,
   type WorkflowEventSubscriptionRecord,
+  type WorkflowTaskCapacityPort,
 } from "../src/index.js";
 
 const ENTERED_AT = new Date("2026-08-10T00:00:00.000Z");
@@ -56,6 +57,45 @@ describe("Wait Event runtime", () => {
     });
   });
 
+  it("returns a persisted subscription after capacity lease renewal is lost", async () => {
+    vi.useFakeTimers();
+    try {
+      const lease = { leaseId: "9|wait-event|1", token: "lease-token" };
+      const taskCapacityPort: WorkflowTaskCapacityPort = {
+        availability: vi.fn(async () => ({ available: 1, kind: "available" as const })),
+        acquire: vi.fn(async () => ({ kind: "allowed" as const, lease })),
+        releaseReservation: vi.fn(async () => {}),
+        reserve: vi.fn(async () => ({ kind: "reserved" as const, lease })),
+        renew: vi.fn(async () => {
+          throw new Error("Redis unavailable");
+        }),
+        release: vi.fn(async () => {}),
+      };
+      const harness = await createHarness(() => ENTERED_AT, { taskCapacityPort });
+      const beginEventWait = harness.repository.beginEventWait.bind(harness.repository);
+      vi.spyOn(harness.repository, "beginEventWait").mockImplementation(async input => {
+        const result = await beginEventWait(input);
+        await vi.advanceTimersByTimeAsync(30_000);
+        return result;
+      });
+
+      await expect(enterWaitEvent(harness)).resolves.toMatchObject({
+        kind: "waiting",
+        run: { status: "waiting" },
+        task: { status: "pending", taskType: "wait-event" },
+      });
+      expect(taskCapacityPort.renew).toHaveBeenCalledOnce();
+      expect(taskCapacityPort.release).toHaveBeenCalledWith({ lease, uid: 9 });
+      expect(harness.repository.snapshot()).toMatchObject({
+        eventSubscriptions: [{ status: "waiting" }],
+        runs: [{ status: "waiting" }],
+        tasks: [{ status: "pending", taskType: "wait-event" }],
+      });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("latches the first message, waits from event time and routes only that trigger fact", async () => {
     const harness = await createHarness();
     const waiting = await enterWaitEvent(harness);
@@ -89,7 +129,7 @@ describe("Wait Event runtime", () => {
 
     expect(completed).toMatchObject({
       kind: "success",
-      nextTask: { nodeId: "end", status: "dispatched" },
+      nextTask: { nodeId: "end", status: "pending" },
       run: {
         context: {
           outputs: {
@@ -135,7 +175,7 @@ describe("Wait Event runtime", () => {
 
     expect(completed).toMatchObject({
       kind: "success",
-      nextTask: { nodeId: "end", status: "dispatched" },
+      nextTask: { nodeId: "end", status: "pending" },
       run: { context: { outputs: { "wait-event": {} } } },
     });
   });
@@ -201,7 +241,10 @@ describe("Wait Event runtime", () => {
   });
 });
 
-async function createHarness(clock: () => Date = () => ENTERED_AT) {
+async function createHarness(
+  clock: () => Date = () => ENTERED_AT,
+  options: { taskCapacityPort?: WorkflowTaskCapacityPort } = {},
+) {
   const repository = new InMemoryWorkflowRuntimeRepository(undefined, () => ENTERED_AT);
   const spec = executionSpec();
   const service = new WorkflowRuntimeService({
@@ -225,6 +268,7 @@ async function createHarness(clock: () => Date = () => ENTERED_AT) {
     entitlementPort: {
       check: vi.fn(async () => ({ activeRunLimit: 10_000, entitled: true })),
     },
+    ...(options.taskCapacityPort ? { taskCapacityPort: options.taskCapacityPort } : {}),
   });
   const created = await repository.createRunWithInitialTask({
     activeRunLimit: 10_000,

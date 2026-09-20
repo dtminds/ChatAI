@@ -176,6 +176,36 @@ describe("workflow worker config", () => {
     }))).toThrow("REDIS_ENABLED must be true for the production Workflow task-consumer");
   });
 
+  it("loads the shared Task capacity defaults without a static global capacity setting", () => {
+    expect(loadWorkflowWorkerConfig(baseEnv()).taskCapacity).toMatchObject({
+      controllerIntervalMs: 300_000,
+      deferDelayMs: 60_000,
+      deferJitterMs: 30_000,
+      demandWindowMs: 600_000,
+      globalConcurrency: 10,
+      leaseTtlMs: 60_000,
+      quotaTtlMs: 900_000,
+      scanLimit: 500,
+      stableCycles: 2,
+      tenantMaxSharePercent: 90,
+    });
+    expect(loadWorkflowWorkerConfig(productionEnv()).taskCapacity.globalConcurrency).toBe(10);
+  });
+
+  it("rejects Task capacity settings that cause rapid retries or stale quotas", () => {
+    expect(() => loadWorkflowWorkerConfig(baseEnv({
+      WORKFLOW_TASK_CAPACITY_DEFER_DELAY_MS: "29999",
+    }))).toThrow("WORKFLOW_TASK_CAPACITY_DEFER_DELAY_MS must be at least 30000");
+    expect(() => loadWorkflowWorkerConfig(baseEnv({
+      WORKFLOW_TASK_CAPACITY_QUOTA_TTL_MS: "899999",
+    }))).toThrow(
+      "WORKFLOW_TASK_CAPACITY_QUOTA_TTL_MS must be at least demand window plus controller interval",
+    );
+    expect(() => loadWorkflowWorkerConfig(baseEnv({
+      WORKFLOW_TASK_CAPACITY_SCAN_LIMIT: "501",
+    }))).toThrow("WORKFLOW_TASK_CAPACITY_SCAN_LIMIT must be an integer from 1 to 500");
+  });
+
   it("rejects a Message burst smaller than one maximum message group", () => {
     expect(() => loadWorkflowWorkerConfig(baseEnv({
       WORKFLOW_MESSAGE_SEAT_BURST: "5",

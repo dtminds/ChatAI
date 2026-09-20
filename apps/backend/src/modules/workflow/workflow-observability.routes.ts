@@ -79,6 +79,9 @@ async function setNoStore(_request: FastifyRequest, reply: FastifyReply) {
 
 function createService(app: FastifyInstance) {
   return new WorkflowObservabilityService(
-    new WorkflowObservabilityRepository(app.db),
+    new WorkflowObservabilityRepository(
+      app.db,
+      app.redis,
+    ),
   );
 }

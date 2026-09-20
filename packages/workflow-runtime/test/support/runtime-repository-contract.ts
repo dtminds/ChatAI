@@ -223,9 +223,17 @@ export function runWorkflowRuntimeRepositoryContract(
       result: { content: "duplicate", type: "text" },
     })).resolves.toBe(false);
     await expect(harness.repository.findTask(9, created.task.id)).resolves.toMatchObject({
-      status: "dispatched",
+      status: "pending",
       taskType: "execute",
       taskVersion: 4,
+    });
+    await expect(harness.repository.dispatchDueTasks({
+      limit: 10,
+      now: new Date("2099-01-01T00:00:30.000Z"),
+    })).resolves.toMatchObject({ dispatched: 1 });
+    await expect(harness.repository.findTask(9, created.task.id)).resolves.toMatchObject({
+      status: "dispatched",
+      taskVersion: 5,
     });
     await expect(harness.repository.findInferenceByExecutionKey(9, input.executionKey))
       .resolves.toMatchObject({
@@ -240,7 +248,7 @@ export function runWorkflowRuntimeRepositoryContract(
       limit: 10,
       now: new Date("2099-01-01T00:00:30.000Z"),
     });
-    expect(outbox.filter(item => item.taskVersion === 4)).toHaveLength(1);
+    expect(outbox.filter(item => item.taskVersion === 5)).toHaveLength(1);
   });
 
   it("cancels a waiting Inference Run when the Workflow stops before completion", async () => {
@@ -558,6 +566,10 @@ export function runWorkflowRuntimeRepositoryContract(
     expect(created.filter((result) => !result.deduplicated)).toHaveLength(1);
     expect(new Set(created.map((result) => result.run.id)).size).toBe(1);
     expect(new Set(created.map((result) => result.task.id)).size).toBe(1);
+    await expect(harness.repository.dispatchDueTasks({
+      limit: 10,
+      now: OUTBOX_READY_AT,
+    })).resolves.toMatchObject({ dispatched: 1 });
 
     const outbox = await harness.repository.claimOutboxBatch({
       leaseExpiresAt: new Date("2099-01-01T00:01:00.000Z"),
@@ -571,7 +583,7 @@ export function runWorkflowRuntimeRepositoryContract(
           runId: created[0]!.run.id,
           taskId: created[0]!.task.id,
         }),
-        taskVersion: 1,
+        taskVersion: 2,
       }),
     ]);
   });
@@ -586,6 +598,10 @@ export function runWorkflowRuntimeRepositoryContract(
 
     expect(results.filter(result => result.kind === "success")).toHaveLength(1);
     expect(results.filter(result => result.kind === "capacity-rejected")).toHaveLength(7);
+    await expect(harness.repository.dispatchDueTasks({
+      limit: 10,
+      now: OUTBOX_READY_AT,
+    })).resolves.toMatchObject({ dispatched: 1 });
     const outbox = await harness.repository.claimOutboxBatch({
       leaseExpiresAt: new Date("2099-01-01T00:01:00.000Z"),
       leaseOwner: "publisher-1",
@@ -1048,6 +1064,10 @@ export function runWorkflowRuntimeRepositoryContract(
       entryEventId: "event-2",
       subjectId: "customer-2",
     }));
+    await expect(harness.repository.dispatchDueTasks({
+      limit: 10,
+      now: OUTBOX_READY_AT,
+    })).resolves.toMatchObject({ dispatched: 2 });
     const first = await harness.repository.claimOutboxBatch({
       leaseExpiresAt: new Date("2099-01-01T00:01:00.000Z"),
       leaseOwner: "publisher-1",
@@ -1078,6 +1098,10 @@ export function runWorkflowRuntimeRepositoryContract(
     const created = requireCreatedRun(
       await harness.repository.createRunWithInitialTask(createRunInput()),
     );
+    await expect(harness.repository.dispatchDueTasks({
+      limit: 10,
+      now: OUTBOX_READY_AT,
+    })).resolves.toMatchObject({ dispatched: 1 });
     const initialOutbox = await harness.repository.claimOutboxBatch({
       leaseExpiresAt: new Date("2099-01-01T00:01:00.000Z"),
       leaseOwner: "publisher-initial",
@@ -1092,7 +1116,7 @@ export function runWorkflowRuntimeRepositoryContract(
     })).resolves.toBe(1);
 
     const claimed = await harness.repository.claimTask({
-      expectedTaskVersion: 1,
+      expectedTaskVersion: 2,
       leaseExpiresAt: new Date("2099-01-01T00:01:00.000Z"),
       leaseOwner: "worker-1",
       taskId: created.task.id,
@@ -1146,7 +1170,7 @@ export function runWorkflowRuntimeRepositoryContract(
     };
     await expect(harness.repository.scheduleCapabilityRetry(retryInput)).resolves.toMatchObject({
       kind: "success",
-      task: { status: "pending", taskVersion: 3 },
+      task: { status: "pending", taskVersion: 4 },
     });
     await expect(harness.repository.scheduleCapabilityRetry(retryInput)).resolves.toEqual({
       kind: "already-processed",
@@ -1163,7 +1187,7 @@ export function runWorkflowRuntimeRepositoryContract(
       now: OUTBOX_RETRY_AT,
     });
     expect(retryOutbox).toEqual([
-      expect.objectContaining({ attempt: 1, taskVersion: 4 }),
+      expect.objectContaining({ attempt: 1, taskVersion: 5 }),
     ]);
     await expect(harness.repository.markOutboxFailed({
       id: retryOutbox[0]!.id,
@@ -1182,7 +1206,7 @@ export function runWorkflowRuntimeRepositoryContract(
       limit: 10,
       now: new Date("2099-01-01T00:10:00.000Z"),
     })).resolves.toEqual([
-      expect.objectContaining({ attempt: 2, taskVersion: 4 }),
+      expect.objectContaining({ attempt: 2, taskVersion: 5 }),
     ]);
   });
 

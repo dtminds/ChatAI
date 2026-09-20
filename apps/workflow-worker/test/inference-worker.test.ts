@@ -59,7 +59,7 @@ describe("workflow inference worker", () => {
         },
       });
     await expect(repository.findTask(9, taskId)).resolves.toMatchObject({
-      status: "dispatched",
+      status: "pending",
       taskType: "execute",
     });
   });
@@ -95,7 +95,7 @@ describe("workflow inference worker", () => {
       succeeded: 2,
     });
     await expect(first.repository.findTask(9, second.taskId))
-      .resolves.toMatchObject({ status: "dispatched" });
+      .resolves.toMatchObject({ status: "pending" });
   });
 
   it("schedules retryable failures and terminally fails malformed output", async () => {
@@ -369,7 +369,7 @@ describe("workflow inference worker", () => {
     });
     const resumedTask = await repository.findTask(9, startResult.nextTask.id);
     if (!resumedTask) throw new Error("Failed Inference Task was not resumed");
-    expect(resumedTask).toMatchObject({ status: "dispatched", taskType: "execute" });
+    expect(resumedTask).toMatchObject({ status: "pending", taskType: "execute" });
     expect(repository.inferenceJobs).toEqual([
       expect.objectContaining({ errorCode: "JAVA_FAILED", status: "failed" }),
     ]);

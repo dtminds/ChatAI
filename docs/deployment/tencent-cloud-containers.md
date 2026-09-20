@@ -340,6 +340,8 @@ MEDIA_PROXY_TIMEOUT_MS=8000
 WORKFLOW_ACTIVE_RUN_LIMIT=10000
 ```
 
+Workflow Task 总容量由在线 `task-consumer` 实例在 Redis 中注册的 `WORKFLOW_TASK_CONCURRENCY` 之和动态计算。实例启动时注册，运行中续租，停止或租约过期后自动移除；没有有效注册数据时使用代码内默认容量 10。Backend 观测页读取同一份 Redis 注册数据，不再配置独立的全局容量环境变量。
+
 敏感配置必须放 Secret：
 
 ```text

@@ -3,6 +3,10 @@ import {
   type WorkflowTaskMessage,
 } from "@chatai/contracts";
 import { Value } from "@sinclair/typebox/value";
+import {
+  type WorkflowTaskCapacityLease,
+  type WorkflowTaskCapacityPort,
+} from "@chatai/workflow-runtime";
 import type {
   WorkflowBroker,
   WorkflowBrokerMessage,
@@ -15,8 +19,14 @@ import {
   type WorkflowWorkerLogger,
 } from "./observability.js";
 
+const CAPACITY_UNAVAILABLE_PROBE_DELAY_MS = 30_000;
+const CAPACITY_EXHAUSTED_PROBE_DELAY_MS = 5_000;
+
 type WorkflowTaskRuntimeService = {
   executeTask(input: {
+    capacityLease?: WorkflowTaskCapacityLease;
+    capacityLeaseDurationMs?: number;
+    capacitySignal?: AbortSignal;
     messageId?: string;
     now: Date;
     taskId: string;
@@ -27,9 +37,12 @@ type WorkflowTaskRuntimeService = {
 };
 
 export function createTaskConsumerHandler(input: {
+  capacityLeaseDurationMs?: number;
+  capacityWaitSignal?: AbortSignal;
   now?: () => Date;
   observe?: (message: WorkflowBrokerMessage, result: WorkflowTaskConsumeObservation) => void;
   runtimeService: WorkflowTaskRuntimeService;
+  taskCapacityPort?: WorkflowTaskCapacityPort;
   workerId: string;
 }) {
   return async (message: WorkflowBrokerMessage) => {
@@ -43,17 +56,46 @@ export function createTaskConsumerHandler(input: {
       return;
     }
 
+    let capacityLease: WorkflowTaskCapacityLease | undefined;
     try {
-      const result = await input.runtimeService.executeTask({
-        messageId: command.messageId,
-        now: input.now?.() ?? new Date(),
-        taskId: command.taskId,
-        taskVersion: command.taskVersion,
-        uid: parseSafeDatabaseId(command.uid),
-        workerId: input.workerId,
-      });
-      await message.ack();
-      input.observe?.(message, createTaskObservation(command, result));
+      capacityLease = input.taskCapacityPort
+        ? (await waitForTaskCapacity({
+            capacityLeaseDurationMs: input.capacityLeaseDurationMs ?? 60_000,
+            command,
+            now: input.now ?? (() => new Date()),
+            port: input.taskCapacityPort,
+            signal: input.capacityWaitSignal,
+          })) ?? undefined
+        : undefined;
+      if (input.taskCapacityPort && !capacityLease) return;
+      if (input.capacityWaitSignal?.aborted) return;
+      const capacityRenewal = capacityLease && input.taskCapacityPort
+        ? startTaskCapacityLeaseRenewal({
+            lease: capacityLease,
+            leaseDurationMs: input.capacityLeaseDurationMs ?? 60_000,
+            port: input.taskCapacityPort,
+            uid: parseSafeDatabaseId(command.uid),
+          })
+        : undefined;
+      try {
+        const result = await input.runtimeService.executeTask({
+          ...(capacityLease ? { capacityLease } : {}),
+          ...(capacityRenewal ? { capacitySignal: capacityRenewal.signal } : {}),
+          ...(input.taskCapacityPort
+            ? { capacityLeaseDurationMs: input.capacityLeaseDurationMs ?? 60_000 }
+            : {}),
+          messageId: command.messageId,
+          now: input.now?.() ?? new Date(),
+          taskId: command.taskId,
+          taskVersion: command.taskVersion,
+          uid: parseSafeDatabaseId(command.uid),
+          workerId: input.workerId,
+        });
+        await message.ack();
+        input.observe?.(message, createTaskObservation(command, result));
+      } finally {
+        await capacityRenewal?.stop();
+      }
     } catch (error) {
       const disposition = classifyTaskError(error);
       const errorCode = getErrorCode(error);
@@ -66,6 +108,13 @@ export function createTaskConsumerHandler(input: {
         ...(disposition === "nack" ? { error } : {}),
         ...(errorCode ? { errorCode } : {}),
       });
+    } finally {
+      if (capacityLease && input.taskCapacityPort) {
+        await input.taskCapacityPort.release({
+          lease: capacityLease,
+          uid: parseSafeDatabaseId(command.uid),
+        });
+      }
     }
   };
 }
@@ -79,10 +128,15 @@ function createTaskObservation(
   }
   const outcome = result as Record<string, unknown>;
   if (outcome.kind === "deferred") {
+    const code = outcome.reasonCode === "WORKFLOW_MESSAGE_RATE_LIMITED"
+      ? "rate_limited"
+      : outcome.reasonCode === "WORKFLOW_TASK_TENANT_CAPACITY_LIMITED"
+        ? "tenant_capacity_limited"
+        : outcome.reasonCode === "WORKFLOW_TASK_CAPACITY_UNAVAILABLE"
+          ? "capacity_unavailable"
+          : "deferred";
     return {
-      code: outcome.reasonCode === "WORKFLOW_MESSAGE_RATE_LIMITED"
-        ? "rate_limited"
-        : "deferred",
+      code,
       command: pickTaskIdentity(command),
       disposition: "ack",
       retryAt: outcome.retryAt,
@@ -114,11 +168,13 @@ function createTaskObservation(
 
 export async function startTaskConsumer(input: {
   broker: WorkflowBroker;
+  capacityLeaseDurationMs?: number;
   deadLetterTopic?: string;
   logger?: WorkflowWorkerLogger;
   maxInFlight: number;
   maxRedeliverCount?: number;
   runtimeService: WorkflowTaskRuntimeService;
+  taskCapacityPort?: WorkflowTaskCapacityPort;
   subscription: string;
   topic: string;
   workerId: string;
@@ -130,11 +186,35 @@ export async function startTaskConsumer(input: {
       })
     : undefined;
   let subscription: WorkflowBrokerSubscription;
+  const capacityWaitController = new AbortController();
+  let nextCapacityProbeAt = 0;
   try {
     subscription = await input.broker.subscribe({
+      ackTimeoutMs: 0,
+      beforeReceive: async () => {
+        if (!input.taskCapacityPort) return true;
+        const now = Date.now();
+        if (now < nextCapacityProbeAt) return false;
+        const availability = await input.taskCapacityPort.availability();
+        if (availability.kind === "unavailable") {
+          nextCapacityProbeAt = Date.now() + CAPACITY_UNAVAILABLE_PROBE_DELAY_MS;
+          return false;
+        }
+        if (availability.available <= 0) {
+          if ((availability.reserved ?? 0) > 0) {
+            nextCapacityProbeAt = 0;
+            return true;
+          }
+          nextCapacityProbeAt = Date.now() + CAPACITY_EXHAUSTED_PROBE_DELAY_MS;
+          return false;
+        }
+        nextCapacityProbeAt = 0;
+        return true;
+      },
       deadLetterTopic: input.deadLetterTopic,
       handler: createTaskConsumerHandler({
         ...input,
+        capacityWaitSignal: capacityWaitController.signal,
         observe: (message, result) => observer?.record(message, result),
       }),
       maxInFlight: input.maxInFlight,
@@ -148,6 +228,7 @@ export async function startTaskConsumer(input: {
   }
   return {
     async close() {
+      capacityWaitController.abort();
       try {
         await subscription.close();
       } finally {
@@ -156,6 +237,102 @@ export async function startTaskConsumer(input: {
     },
     isConnected: () => subscription.isConnected(),
   };
+}
+
+function startTaskCapacityLeaseRenewal(input: {
+  lease: WorkflowTaskCapacityLease;
+  leaseDurationMs: number;
+  port: WorkflowTaskCapacityPort;
+  uid: number;
+}) {
+  const controller = new AbortController();
+  const intervalMs = Math.max(1_000, Math.floor(input.leaseDurationMs / 2));
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  let inFlight: Promise<void> | undefined;
+  let stopped = false;
+
+  const renew = () => {
+    if (stopped) return;
+    inFlight = input.port.renew({
+      lease: input.lease,
+      leaseDurationMs: input.leaseDurationMs,
+      uid: input.uid,
+    }).catch(error => {
+      stopped = true;
+      if (!controller.signal.aborted) controller.abort(error);
+    }).finally(() => {
+      inFlight = undefined;
+      if (!stopped && !controller.signal.aborted) {
+        timer = setTimeout(renew, intervalMs);
+        timer.unref?.();
+      }
+    });
+  };
+
+  timer = setTimeout(renew, intervalMs);
+  timer.unref?.();
+
+  return {
+    signal: controller.signal,
+    async stop() {
+      stopped = true;
+      if (timer) clearTimeout(timer);
+      if (inFlight) await inFlight;
+    },
+  };
+}
+
+async function waitForTaskCapacity(input: {
+  capacityLeaseDurationMs: number;
+  command: WorkflowTaskMessage;
+  now: () => Date;
+  port: WorkflowTaskCapacityPort;
+  signal?: AbortSignal;
+}): Promise<WorkflowTaskCapacityLease | null> {
+  const uid = parseSafeDatabaseId(input.command.uid);
+  while (!input.signal?.aborted) {
+    const admission = await input.port.acquire({
+      leaseDurationMs: input.capacityLeaseDurationMs,
+      now: input.now(),
+      taskId: input.command.taskId,
+      taskVersion: input.command.taskVersion,
+      uid,
+    });
+    if (admission.kind === "allowed") {
+      if (input.signal?.aborted) {
+        await input.port.release({ lease: admission.lease, uid });
+        return null;
+      }
+      return admission.lease;
+    }
+    if (input.signal?.aborted) return null;
+    const retryDelayMs = admission.reasonCode === "WORKFLOW_TASK_CAPACITY_UNAVAILABLE"
+      ? Math.max(1_000, admission.retryAt.getTime() - Date.now())
+      : Math.max(250, Math.min(
+          1_000,
+          admission.retryAt.getTime() - Date.now(),
+        ));
+    await waitForCapacityRetry(retryDelayMs, input.signal);
+  }
+  return null;
+}
+
+function waitForCapacityRetry(delayMs: number, signal?: AbortSignal) {
+  if (signal?.aborted) return Promise.resolve();
+  return new Promise<void>(resolve => {
+    let timer: ReturnType<typeof setTimeout>;
+    const onAbort = () => {
+      clearTimeout(timer);
+      signal?.removeEventListener("abort", onAbort);
+      resolve();
+    };
+    timer = setTimeout(() => {
+      signal?.removeEventListener("abort", onAbort);
+      resolve();
+    }, delayMs);
+    timer.unref?.();
+    signal?.addEventListener("abort", onAbort, { once: true });
+  });
 }
 
 function parseTaskMessage(data: Buffer): WorkflowTaskMessage | null {

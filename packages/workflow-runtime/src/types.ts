@@ -582,6 +582,26 @@ export type WorkflowRevisionCleanupRecord = {
 };
 
 export type WorkflowSchedulerRepository = {
+  listDueTaskCandidates(input: {
+    limit: number;
+    now: Date;
+  }): Promise<WorkflowTaskDispatchCandidate[]>;
+  dispatchReservedTasks(input: {
+    candidates: WorkflowTaskDispatchCandidate[];
+    now: Date;
+  }): Promise<{
+    cancelled: number;
+    dispatched: WorkflowTaskDispatchCandidate[];
+    suspended: number;
+  }>;
+  listStalledDispatchedTasks(input: {
+    dispatchedBefore: Date;
+    limit: number;
+  }): Promise<WorkflowTaskDispatchCandidate[]>;
+  republishReservedTasks(input: {
+    candidates: WorkflowTaskDispatchCandidate[];
+    now: Date;
+  }): Promise<WorkflowTaskDispatchCandidate[]>;
   dispatchDueTasks(input: {
     limit: number;
     now: Date;
@@ -599,6 +619,23 @@ export type WorkflowSchedulerRepository = {
     failed: number;
     hasMore: boolean;
     transitioned: number;
+  }>;
+};
+
+export type WorkflowTaskDispatchCandidate = {
+  taskId: string;
+  taskVersion: number;
+  uid: number;
+};
+
+export type WorkflowTaskCapacityRepository = {
+  listDueTaskUids(input: {
+    limit: number;
+    now: Date;
+  }): Promise<{
+    scanComplete: boolean;
+    scannedUidCount: number;
+    uids: number[];
   }>;
 };
 

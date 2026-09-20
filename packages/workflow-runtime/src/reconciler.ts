@@ -28,6 +28,18 @@ export class WorkflowRuntimeReconciler {
     return this.repository.republishStalledDispatchedTasks(input);
   }
 
+  listStalledDispatchedTasks(
+    input: Parameters<WorkflowRuntimeRepository["listStalledDispatchedTasks"]>[0],
+  ) {
+    return this.repository.listStalledDispatchedTasks(input);
+  }
+
+  republishReservedTasks(
+    input: Parameters<WorkflowRuntimeRepository["republishReservedTasks"]>[0],
+  ) {
+    return this.repository.republishReservedTasks(input);
+  }
+
   cleanupExpiredInbox(input: { limit: number; now: Date }) {
     return this.repository.cleanupExpiredInbox(input);
   }

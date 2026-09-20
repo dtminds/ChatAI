@@ -15,6 +15,7 @@ declare module "fastify" {
     cache: CachePort;
     cacheKeys: ReturnType<typeof buildCacheKeys>;
     dailyUsageLimiter: DailyUsageLimiter;
+    redis: Redis | null;
   }
 }
 
@@ -25,6 +26,7 @@ export const redisPlugin = fp(async (app) => {
   if (process.env.REDIS_ENABLED !== "true") {
     app.decorate("cache", new NoopCache());
     app.decorate("dailyUsageLimiter", new UnavailableDailyUsageLimiter());
+    app.decorate("redis", null);
     return;
   }
 
@@ -65,6 +67,7 @@ export const redisPlugin = fp(async (app) => {
 
   app.decorate("cache", cache);
   app.decorate("dailyUsageLimiter", dailyUsageLimiter);
+  app.decorate("redis", client);
   app.addHook("onClose", async () => {
     try {
       await client.quit();

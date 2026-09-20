@@ -6,6 +6,8 @@ import type {
   WorkflowInferenceRepository,
   WorkflowChatCompletionPort,
   WorkflowLlmTestAttemptRepository,
+  WorkflowTaskCapacityPort,
+  WorkflowTaskCapacityRepository,
   WorkflowTriggerBindingReader,
 } from "@chatai/workflow-runtime";
 import {
@@ -23,6 +25,11 @@ import {
   type WorkflowWorkerLogger,
 } from "./observability.js";
 import type { startTaskConsumer } from "./task-consumer.js";
+import type {
+  WorkflowTaskCapacityController,
+  WorkflowTaskCapacityRegistration,
+} from "./task-capacity.js";
+import { WORKER_REGISTRATION_HEARTBEAT_MS } from "./task-capacity.js";
 import type { processWorkflowInferenceBatch } from "./inference-worker.js";
 import type { processWorkflowConversationDirectiveDisableBatch } from "./conversation-directive-worker.js";
 import type { processWorkflowLlmTestAttemptBatch } from "./llm-test-attempt-worker.js";
@@ -121,6 +128,10 @@ export async function startWorkflowWorkerRuntime(input: {
   runtimeService: WorkerRuntimeService;
   scheduler(input: Parameters<typeof scheduleWorkflowTasks>[0]): ReturnType<typeof scheduleWorkflowTasks>;
   schedulerRepository: Parameters<typeof scheduleWorkflowTasks>[0]["repository"];
+  taskCapacityController?: WorkflowTaskCapacityController;
+  taskCapacityPort?: WorkflowTaskCapacityPort;
+  taskCapacityRegistration?: WorkflowTaskCapacityRegistration;
+  taskCapacityRepository?: WorkflowTaskCapacityRepository;
   taskConsumer: typeof startTaskConsumer;
   triggerBindingReader: WorkflowTriggerBindingReader;
   workerId: string;
@@ -133,6 +144,7 @@ export async function startWorkflowWorkerRuntime(input: {
     roles: Object.fromEntries([...input.config.roles].map(role => [role, false])),
   };
   let closed = false;
+  let taskCapacityRegistered = false;
   const now = input.now ?? (() => new Date());
   let previousReadiness = structuredClone(readiness);
 
@@ -159,6 +171,26 @@ export async function startWorkflowWorkerRuntime(input: {
       readiness.roles["entry-consumer"] = true;
     }
     if (input.config.roles.has("task-consumer")) {
+      if (input.taskCapacityRegistration) {
+        await input.taskCapacityRegistration.register({
+          concurrency: input.config.consumerConcurrency.task,
+          workerId: input.workerId,
+        });
+        taskCapacityRegistered = true;
+        loops.push(input.roleLoop({
+          intervalMs: WORKER_REGISTRATION_HEARTBEAT_MS,
+          onError: error => input.logger.error({
+            err: error,
+            event: "workflow.task-capacity.worker-registration.failed",
+            role: "task-capacity-registration",
+          }, "Workflow Task capacity worker registration renewal failed"),
+          role: "task-capacity-registration",
+          run: () => input.taskCapacityRegistration!.register({
+            concurrency: input.config.consumerConcurrency.task,
+            workerId: input.workerId,
+          }),
+        }));
+      }
       subscriptions.push(await input.taskConsumer({
         broker: input.broker,
         deadLetterTopic: input.config.deadLetterTopics.task,
@@ -166,11 +198,35 @@ export async function startWorkflowWorkerRuntime(input: {
         maxRedeliverCount: input.config.maxRedeliverCount,
         logger: input.logger,
         runtimeService: input.runtimeService,
+        ...(input.taskCapacityPort
+          ? { capacityLeaseDurationMs: input.config.taskCapacity.leaseTtlMs }
+          : {}),
+        taskCapacityPort: input.taskCapacityPort,
         subscription: input.config.subscriptions.task,
         topic: input.config.topics.task,
         workerId: input.workerId,
       }));
       readiness.roles["task-consumer"] = true;
+      if (input.taskCapacityController && input.taskCapacityRepository) {
+        loops.push(input.roleLoop({
+          intervalMs: input.config.taskCapacity.controllerIntervalMs,
+          onError: error => input.logger.error({
+            err: error,
+            event: "workflow.task-capacity.controller.failed",
+            role: "task-capacity-controller",
+          }, "Workflow Task capacity controller iteration failed"),
+          onHeartbeat: heartbeat => input.logger.info({
+            event: "workflow.task-capacity.controller.heartbeat",
+            result: heartbeat.result,
+            role: "task-capacity-controller",
+          }, "Workflow Task capacity controller heartbeat"),
+          role: "task-capacity-controller",
+          run: () => input.taskCapacityController!.run({
+            now: now(),
+            repository: input.taskCapacityRepository!,
+          }),
+        }));
+      }
     }
     if (input.config.roles.has("scheduler")) {
       loops.push(startBackgroundRole("scheduler", input.config.runtime.schedulerIntervalMs, () =>
@@ -182,6 +238,7 @@ export async function startWorkflowWorkerRuntime(input: {
           now: now(),
           repository: input.schedulerRepository,
           retryDelayMs: input.config.runtime.retryDelayMs,
+          taskCapacityPort: input.taskCapacityPort,
         })));
     }
     if (input.config.roles.has("inference")) {
@@ -274,6 +331,7 @@ export async function startWorkflowWorkerRuntime(input: {
             now: currentTime,
             reconciler: input.reconcilerService,
             retryDelayMs: input.config.runtime.retryDelayMs,
+            taskCapacityPort: input.taskCapacityPort,
           }),
           input.conversationDirectiveWorker({
             leaseDurationMs: input.config.runtime.leaseDurationMs,
@@ -396,6 +454,10 @@ export async function startWorkflowWorkerRuntime(input: {
     readiness.database = false;
     await Promise.allSettled(loops.map(loop => loop.close()));
     await Promise.allSettled(subscriptions.map(subscription => subscription.close()));
+    if (taskCapacityRegistered && input.taskCapacityRegistration) {
+      await Promise.allSettled([input.taskCapacityRegistration.unregister(input.workerId)]);
+      taskCapacityRegistered = false;
+    }
     await (input.runtimeState?.close() ?? Promise.resolve());
     await Promise.allSettled([
       input.entitlementCache?.close() ?? Promise.resolve(),

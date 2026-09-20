@@ -1,5 +1,6 @@
 import type {
   WorkflowObservabilityHealth,
+  WorkflowObservabilityCapacity,
   WorkflowObservabilityListState,
   WorkflowObservabilityRole,
   WorkflowObservabilitySummaryResponse,
@@ -403,6 +404,38 @@ export function WorkflowObservabilityPage() {
           />
         </section>
 
+        <section aria-label="Task 容量分配" className="overflow-hidden rounded-[8px] border bg-background">
+          <div className="border-b px-4 py-3">
+            <h2 className="text-sm font-semibold">Task 容量分配</h2>
+            <p className="mt-1 text-xs text-muted-foreground">查看当前全局 Task 槽位的大致使用情况</p>
+          </div>
+          {summary?.capacity ? (
+            <div className="grid sm:grid-cols-2 xl:grid-cols-4">
+              <CapacityValue label="总容量" value={summary.capacity.globalCapacity} />
+              <CapacityValue label="已占用" value={summary.capacity.activeLeaseCount + summary.capacity.reservedLeaseCount} />
+              <CapacityValue label="运行中" value={summary.capacity.activeLeaseCount} />
+              <CapacityValue label="已预留" value={summary.capacity.reservedLeaseCount} />
+              <CapacityValue
+                label="剩余"
+                value={summary.capacity.availableCapacity}
+                warning={summary.capacity.availableCapacity === 0}
+              />
+              <CapacityValue label="需求 UID" value={summary.capacity.demandUidCount} />
+              <CapacityValue
+                detail={summary.capacity.saturatedQuota == null ? "按当前 UID 数量动态分配" : "UID 较多时采用统一配额"}
+                label="当前配额"
+                value={summary.capacity.saturatedQuota}
+              />
+              <CapacityValue
+                label="状态"
+                value={capacityStatus(summary.capacity)}
+              />
+            </div>
+          ) : (
+            <p className="px-4 py-5 text-sm text-muted-foreground">容量数据暂不可用</p>
+          )}
+        </section>
+
         <section className="overflow-hidden rounded-[8px] border bg-background">
           <div className="flex flex-col gap-3 p-4 lg:flex-row lg:items-center lg:justify-between">
             <Tabs
@@ -726,6 +759,34 @@ function Metric({
       {detail ? <p className="mt-1 truncate text-xs text-muted-foreground">{detail}</p> : null}
     </div>
   );
+}
+
+function CapacityValue({
+  detail,
+  label,
+  value,
+  warning,
+}: {
+  detail?: string;
+  label: string;
+  value?: number | string;
+  warning?: boolean;
+}) {
+  return (
+    <div className="border-b p-4 last:border-b-0 sm:border-r sm:[&:nth-child(even)]:border-r-0 xl:border-b-0 xl:[&:nth-child(4n)]:border-r-0">
+      <MetricLabel label={label} />
+      <p className={cn("mt-2 text-sm font-semibold tabular-nums", warning && "text-destructive")}>
+        {value == null ? "—" : typeof value === "number" ? formatInteger(value) : value}
+      </p>
+      {detail ? <p className="mt-1 truncate text-xs text-muted-foreground">{detail}</p> : null}
+    </div>
+  );
+}
+
+function capacityStatus(capacity: WorkflowObservabilityCapacity) {
+  if (capacity.availableCapacity === 0) return "已满";
+  if (capacity.availableCapacity <= Math.ceil(capacity.globalCapacity * 0.2)) return "接近上限";
+  return "正常";
 }
 
 function StatusValue({

@@ -23,6 +23,7 @@ describe("workflow state machine", () => {
     expect(transitionTask("pending", "leased")).toBe("leased");
     expect(transitionTask("pending", "running")).toBe("running");
     expect(transitionTask("running", "pending")).toBe("pending");
+    expect(transitionTask("waiting_external", "pending")).toBe("pending");
     expect(() => transitionTask("completed", "running")).toThrow(WorkflowStateTransitionError);
   });
 

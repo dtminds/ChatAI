@@ -79,7 +79,17 @@ export const WorkflowObservabilityTransitionSchema = Type.Object({
   updateTime: EpochMsSchema,
 }, { additionalProperties: false });
 
+export const WorkflowObservabilityCapacitySchema = Type.Object({
+  activeLeaseCount: Type.Integer({ minimum: 0 }),
+  availableCapacity: Type.Integer({ minimum: 0 }),
+  demandUidCount: Type.Integer({ minimum: 0 }),
+  globalCapacity: Type.Integer({ minimum: 1 }),
+  reservedLeaseCount: Type.Integer({ minimum: 0 }),
+  saturatedQuota: Type.Optional(Type.Integer({ minimum: 1 })),
+}, { additionalProperties: false });
+
 export const WorkflowObservabilitySummaryResponseSchema = Type.Object({
+  capacity: Type.Union([WorkflowObservabilityCapacitySchema, Type.Null()]),
   deadTransitionCount: Type.Integer({ minimum: 0 }),
   inference: Type.Object({
     expiredLease: Type.Integer({ minimum: 0 }),
@@ -154,6 +164,7 @@ export type WorkflowObservabilityHealth = Static<typeof WorkflowObservabilityHea
 export type WorkflowObservabilityListState = Static<typeof WorkflowObservabilityListStateSchema>;
 export type WorkflowObservabilityWorker = Static<typeof WorkflowObservabilityWorkerSchema>;
 export type WorkflowObservabilityTransition = Static<typeof WorkflowObservabilityTransitionSchema>;
+export type WorkflowObservabilityCapacity = Static<typeof WorkflowObservabilityCapacitySchema>;
 export type WorkflowObservabilitySummaryResponse = Static<
   typeof WorkflowObservabilitySummaryResponseSchema
 >;

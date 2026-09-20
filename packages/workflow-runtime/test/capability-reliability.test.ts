@@ -11,6 +11,7 @@ import {
   type WorkflowCapabilityExecutionBinding,
   type WorkflowContactCustomFieldPort,
   type WorkflowContactIdentityPort,
+  type WorkflowTaskCapacityPort,
   InMemoryWorkflowRuntimeRepository,
   type WorkflowMessageQueryRequest,
   WORKFLOW_HANDOFF_CAPABILITY_BINDING,
@@ -56,6 +57,124 @@ describe("workflow capability reliability", () => {
       expect(signal?.aborted).toBe(true);
       expect(runtime.tasks.find(item => item.id === task.id)).toMatchObject({ attempt: 1, status: "completed" });
     } finally { vi.useRealTimers(); }
+  });
+
+  it("fails a claimed task when capacity lease renewal is lost", async () => {
+    vi.useFakeTimers();
+    try {
+      const runtime = new InMemoryWorkflowRuntimeRepository(undefined, () => now);
+      const lease = { leaseId: "9|task|1", token: "lease-token" };
+      let executionStarted: () => void = () => {};
+      const executionStartedPromise = new Promise<void>(resolve => {
+        executionStarted = resolve;
+      });
+      let executionSignal: AbortSignal | undefined;
+      const taskCapacityPort: WorkflowTaskCapacityPort = {
+        availability: vi.fn(async () => ({ available: 1, kind: "available" as const })),
+        acquire: vi.fn(async () => ({ kind: "allowed" as const, lease })),
+        releaseReservation: vi.fn(async () => {}),
+        reserve: vi.fn(async () => ({ kind: "reserved" as const, lease })),
+        renew: vi.fn(async () => {
+          throw new Error("Redis unavailable");
+        }),
+        release: vi.fn(async () => {}),
+      };
+      const service = createService(runtime, async (request: unknown) => {
+        executionSignal = (request as { signal: AbortSignal }).signal;
+        executionStarted();
+        return new Promise<Record<string, unknown>>(() => {});
+      }, {
+        capabilityBindings: [{ ...WORKFLOW_SMARTSHEET_WRITE_CAPABILITY_BINDING, executionTimeoutMs: 10_000 }],
+        capabilityTimeoutMs: 10_000,
+        spec: smartsheetSpec(),
+        taskCapacityPort,
+        taskLeaseDurationMs: 20_000,
+      });
+      const task = await startCapability(runtime, service);
+      const execution = service.executeTask({
+        now,
+        taskId: task.id,
+        taskVersion: task.taskVersion,
+        uid: 9,
+        workerId: "worker-1",
+      });
+      const executionRejection = expect(execution).rejects.toMatchObject({
+        code: "WORKFLOW_TASK_CAPACITY_UNAVAILABLE",
+      });
+
+      await executionStartedPromise;
+      await vi.advanceTimersByTimeAsync(10_000);
+
+      await executionRejection;
+      expect(executionSignal?.aborted).toBe(true);
+      expect(taskCapacityPort.release).toHaveBeenCalledWith({ lease, uid: 9 });
+      expect(runtime.tasks.find(item => item.id === task.id)).toMatchObject({
+        attempt: 1,
+        status: "running",
+      });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("commits a completed node result after capacity lease renewal is lost", async () => {
+    vi.useFakeTimers();
+    try {
+      const runtime = new InMemoryWorkflowRuntimeRepository(undefined, () => now);
+      const lease = { leaseId: "9|task|1", token: "lease-token" };
+      const taskCapacityPort: WorkflowTaskCapacityPort = {
+        availability: vi.fn(async () => ({ available: 1, kind: "available" as const })),
+        acquire: vi.fn(async () => ({ kind: "allowed" as const, lease })),
+        releaseReservation: vi.fn(async () => {}),
+        reserve: vi.fn(async () => ({ kind: "reserved" as const, lease })),
+        renew: vi.fn(async () => {
+          throw new Error("Redis unavailable");
+        }),
+        release: vi.fn(async () => {}),
+      };
+      const executors = new WorkflowNodeExecutorRegistry().register("start", {
+        execute: async () => {
+          await vi.advanceTimersByTimeAsync(1_000);
+          return { output: { completed: true }, sourceOutletId: "default", type: "advance" as const };
+        },
+      });
+      const service = createService(runtime, async () => ({}), {
+        capabilityTimeoutMs: 1_000,
+        executors,
+        spec: coreOutputSpec(),
+        taskCapacityPort,
+        taskLeaseDurationMs: 2_000,
+      });
+      const started = await service.startRun({
+        entryEventId: "capacity-lost-after-result",
+        expectedRevision: 1,
+        subjectId: "customer-1",
+        subjectType: "chatai_contact",
+        trigger: {},
+        uid: 9,
+        workflowId: "31",
+      });
+
+      await expect(service.executeTask({
+        now,
+        taskId: started.task.id,
+        taskVersion: started.task.taskVersion,
+        uid: 9,
+        workerId: "worker-1",
+      })).resolves.toMatchObject({
+        kind: "success",
+        nextTask: { nodeId: "end" },
+        run: { context: { outputs: { start: { completed: true } } } },
+      });
+      expect(taskCapacityPort.renew).toHaveBeenCalledOnce();
+      expect(taskCapacityPort.release).toHaveBeenCalledWith({ lease, uid: 9 });
+      expect(runtime.tasks.find(task => task.id === started.task.id)).toMatchObject({
+        attempt: 1,
+        status: "completed",
+      });
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("does not resend a smartsheet action after a crash or a lost completion commit", async () => {
@@ -1590,6 +1709,7 @@ function createService(
     messageQueryExecute?: (input: WorkflowMessageQueryRequest) => Promise<unknown>;
     spec?: WorkflowExecutionSpec;
     strictNodeMaturity?: boolean;
+    taskCapacityPort?: WorkflowTaskCapacityPort;
     taskLeaseDurationMs?: number;
   } = {},
 ) {
@@ -1617,6 +1737,7 @@ function createService(
       ? { execute: options.messageQueryExecute }
       : undefined,
     taskLeaseDurationMs: options.taskLeaseDurationMs ?? 60_000,
+    ...(options.taskCapacityPort ? { taskCapacityPort: options.taskCapacityPort } : {}),
   });
 }
 

@@ -35,6 +35,69 @@ describe("workflow observability repository", () => {
     expect(db.queries[0]?.whereSql).toContain("1");
   });
 
+  it("reads the current Task capacity overview without mutating Redis", async () => {
+    const db = createRecordingDb();
+    const redis = {
+      get: async () => "4",
+      hgetall: async () => ({ worker1: "6", worker2: "7", expiredWorker: "100" }),
+      time: async () => [1_789_000_000, 500_000] as [string, string],
+      zcard: async () => 3,
+      zcount: async (key: string) => key.endsWith(":reserved-leases") ? 2 : 7,
+      zrangebyscore: async () => ["worker1", "worker2"],
+    };
+    const repository = new WorkflowObservabilityRepository(db as never, redis as never, "test:");
+
+    await expect(repository.getTaskCapacity()).resolves.toEqual({
+      activeLeaseCount: 5,
+      availableCapacity: 6,
+      demandUidCount: 3,
+      globalCapacity: 13,
+      reservedLeaseCount: 2,
+      saturatedQuota: 4,
+    });
+  });
+
+  it("ignores expired worker registrations and falls back when none are valid", async () => {
+    const db = createRecordingDb();
+    let activeWorkerIds = ["worker-1"];
+    const redis = {
+      get: async () => null,
+      hgetall: async () => ({ "worker-1": "6", "expired-worker": "100" }),
+      time: async () => [1_789_000_000, 500_000] as [string, string],
+      zcard: async () => 0,
+      zcount: async () => 0,
+      zrangebyscore: async () => activeWorkerIds,
+    };
+    const repository = new WorkflowObservabilityRepository(db as never, redis as never, "test:");
+
+    await expect(repository.getTaskCapacity()).resolves.toMatchObject({
+      globalCapacity: 6,
+      availableCapacity: 6,
+    });
+
+    activeWorkerIds = [];
+    await expect(repository.getTaskCapacity()).resolves.toMatchObject({
+      globalCapacity: 10,
+      availableCapacity: 10,
+    });
+  });
+
+  it("returns no Task capacity when Redis is disabled or unavailable", async () => {
+    const db = createRecordingDb();
+    const disabledRepository = new WorkflowObservabilityRepository(db as never);
+    const unavailableRepository = new WorkflowObservabilityRepository(db as never, {
+      get: async () => null,
+      hgetall: async () => ({}),
+      time: async () => { throw new Error("redis unavailable"); },
+      zcard: async () => 0,
+      zcount: async () => 0,
+      zrangebyscore: async () => [],
+    } as never);
+
+    await expect(disabledRepository.getTaskCapacity()).resolves.toBeNull();
+    await expect(unavailableRepository.getTaskCapacity()).resolves.toBeNull();
+  });
+
   it("pages from the filter driver table instead of slicing definitions", async () => {
     const cases = [
       { firstTable: DEFINITION_TABLE, state: "all" as const },

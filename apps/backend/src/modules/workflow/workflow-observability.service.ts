@@ -39,14 +39,16 @@ export class WorkflowObservabilityService {
 
   async getSummary(): Promise<WorkflowObservabilitySummaryResponse> {
     const observedAt = await this.repository.getObservedAt();
-    const [workerRows, tasks, transitions, outbox, inference] = await Promise.all([
+    const [workerRows, tasks, transitions, outbox, inference, capacity] = await Promise.all([
       this.repository.listWorkerStates(),
       this.repository.getTaskQueueCounts(),
       this.repository.getTransitionCounts(),
       this.repository.getOutboxPending(),
       this.repository.getInferenceCounts(),
+      this.repository.getTaskCapacity(),
     ]);
     return {
+      capacity,
       deadTransitionCount: transitions.dead,
       inference,
       observedAt,

@@ -715,6 +715,7 @@ describe("workflow contracts", () => {
 
   it("validates the Workflow observability summary and paged list", () => {
     const summary = {
+      capacity: null,
       deadTransitionCount: 1,
       inference: { expiredLease: 0, pending: 2, retryWait: 0 },
       observedAt: 1_784_800_000_000,

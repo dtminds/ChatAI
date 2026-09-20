@@ -23,6 +23,7 @@ export const EnvSchema = Type.Object({
   NODE_ENV: Type.Optional(Type.String()),
   PORT: Type.Optional(Type.String()),
   WORKFLOW_ACTIVE_RUN_LIMIT: Type.Optional(Type.String()),
+  WORKFLOW_TASK_GLOBAL_CONCURRENCY: Type.Optional(Type.String()),
   REDIS_COMMAND_TIMEOUT_MS: Type.Optional(Type.String()),
   REDIS_CONNECT_TIMEOUT_MS: Type.Optional(Type.String()),
   REDIS_ENABLED: Type.Optional(Type.String()),
@@ -34,6 +35,7 @@ export const EnvSchema = Type.Object({
 export type Env = Static<typeof EnvSchema>;
 
 export const DEFAULT_WORKFLOW_ACTIVE_RUN_LIMIT = 10_000;
+export const DEFAULT_WORKFLOW_TASK_GLOBAL_CONCURRENCY = 10;
 
 type LoadBackendEnvOptions = {
   appDir?: string;
@@ -141,6 +143,7 @@ export function validateBackendEnv(env: NodeJS.ProcessEnv = process.env) {
   }
 
   getWorkflowActiveRunLimit(env);
+  getWorkflowTaskGlobalConcurrency(env);
   return {
     workerObserverSubjects: parseInsightsWorkerObserverSubjects(
       env.INSIGHTS_WORKER_OBSERVER_SUBJECTS,
@@ -156,4 +159,14 @@ export function getWorkflowActiveRunLimit(env: NodeJS.ProcessEnv = process.env) 
     throw new Error("WORKFLOW_ACTIVE_RUN_LIMIT must be a non-negative safe integer");
   }
   return activeRunLimit;
+}
+
+export function getWorkflowTaskGlobalConcurrency(env: NodeJS.ProcessEnv = process.env) {
+  const configured = env.WORKFLOW_TASK_GLOBAL_CONCURRENCY?.trim();
+  if (!configured) return DEFAULT_WORKFLOW_TASK_GLOBAL_CONCURRENCY;
+  const globalConcurrency = Number(configured);
+  if (!Number.isSafeInteger(globalConcurrency) || globalConcurrency <= 0 || globalConcurrency > 100_000) {
+    throw new Error("WORKFLOW_TASK_GLOBAL_CONCURRENCY must be an integer from 1 to 100000");
+  }
+  return globalConcurrency;
 }

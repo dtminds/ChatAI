@@ -8,6 +8,7 @@ import {
   ForbiddenError,
   UnauthorizedError,
 } from "../../shared/errors.js";
+import { getWorkflowTaskGlobalConcurrency } from "../../config/env.js";
 import { canViewInsightsWorkerObservability } from "../insights/insights-worker-observer-access.js";
 import { WorkflowObservabilityRepository } from "./workflow-observability.repository.js";
 import { WorkflowObservabilityService } from "./workflow-observability.service.js";
@@ -79,6 +80,10 @@ async function setNoStore(_request: FastifyRequest, reply: FastifyReply) {
 
 function createService(app: FastifyInstance) {
   return new WorkflowObservabilityService(
-    new WorkflowObservabilityRepository(app.db),
+    new WorkflowObservabilityRepository(
+      app.db,
+      app.redis,
+      getWorkflowTaskGlobalConcurrency(),
+    ),
   );
 }

@@ -34,6 +34,13 @@ vi.mock("@/pages/chat/ai-hosting/ai-hosting-layout", () => ({
 }));
 
 const summary: WorkflowObservabilitySummaryResponse = {
+  capacity: {
+    activeLeaseCount: 3,
+    availableCapacity: 5,
+    demandUidCount: 2,
+    globalCapacity: 10,
+    reservedLeaseCount: 2,
+  },
   deadTransitionCount: 2,
   inference: { expiredLease: 0, pending: 1, retryWait: 0 },
   observedAt: 1_784_800_000_000,
@@ -169,6 +176,9 @@ describe("workflow observability page", () => {
     const user = userEvent.setup();
     renderPage();
     expect(await screen.findByRole("heading", { name: "运行观测" })).toBeInTheDocument();
+    const capacitySection = screen.getByRole("region", { name: "Task 容量分配" });
+    expect(within(capacitySection).getByRole("heading", { name: "Task 容量分配" })).toBeInTheDocument();
+    expect(within(capacitySection).getByText("正常")).toBeInTheDocument();
     expect(screen.getByText("2 个暂停或恢复请求已失败")).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: "迁移失败" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "查看迁移失败" })).toBeInTheDocument();
@@ -198,6 +208,18 @@ describe("workflow observability page", () => {
     });
     expect(api.listWorkflowObservabilityWorkflows.mock.calls).toHaveLength(2);
     expect(api.getWorkflowObservabilityDetail).not.toHaveBeenCalled();
+  });
+
+  it("keeps the other observations visible when Task capacity is unavailable", async () => {
+    api.getWorkflowObservabilitySummary.mockResolvedValue({ ...summary, capacity: null });
+
+    renderPage();
+
+    const capacitySection = await screen.findByRole("region", { name: "Task 容量分配" });
+    expect(within(capacitySection).getByText("容量数据暂不可用")).toBeInTheDocument();
+    const queueSection = screen.getByRole("region", { name: "队列指标" });
+    expect(within(queueSection).getByText("到期积压")).toBeInTheDocument();
+    expect(screen.getByText("新客旅程")).toBeInTheDocument();
   });
 
   it("shows a filter tip when hovering the info icon", async () => {

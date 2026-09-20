@@ -340,7 +340,11 @@ JAVA_INTERNAL_API_TIMEOUT_MS=8000
 JAVA_INTERNAL_API_STREAM_IDLE_TIMEOUT_MS=60000
 MEDIA_PROXY_TIMEOUT_MS=8000
 WORKFLOW_ACTIVE_RUN_LIMIT=10000
+# Must match the Workflow Worker value used for global Task capacity control.
+WORKFLOW_TASK_GLOBAL_CONCURRENCY=10
 ```
+
+Backend 的 Workflow 运行观测页使用 `WORKFLOW_TASK_GLOBAL_CONCURRENCY` 计算 Task 总容量和剩余容量。该值必须与 Workflow Worker 的同名配置保持一致。
 
 敏感配置必须放 Secret：
 

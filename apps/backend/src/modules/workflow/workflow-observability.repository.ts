@@ -1,6 +1,8 @@
 import { sql, type Kysely } from "kysely";
+import type { Redis } from "ioredis";
 import type { Database } from "@chatai/database";
 import type {
+  WorkflowObservabilityCapacity,
   WorkflowObservabilityListState,
   WorkflowObservabilityRole,
   WorkflowObservabilityTaskDistribution,
@@ -101,8 +103,15 @@ export type WorkflowListRow = {
   workflowId: string;
 };
 
+export type WorkflowTaskCapacityRedis = Pick<Redis, "zcount" | "zcard" | "get" | "time">;
+
 export class WorkflowObservabilityRepository {
-  constructor(private readonly db: Kysely<Database>) {}
+  constructor(
+    private readonly db: Kysely<Database>,
+    private readonly redis: WorkflowTaskCapacityRedis | null = null,
+    private readonly globalCapacity = 10,
+    private readonly redisKeyPrefix = process.env.REDIS_KEY_PREFIX ?? "chatai:",
+  ) {}
 
   async getObservedAt() {
     const result = await sql<{ observed_at: Date }>`
@@ -200,6 +209,38 @@ export class WorkflowObservabilityRepository {
       pending,
       retryWait,
     };
+  }
+
+  async getTaskCapacity(): Promise<WorkflowObservabilityCapacity | null> {
+    if (!this.redis) return null;
+    try {
+      const [seconds, microseconds] = await this.redis.time();
+      const nowMs = Number(seconds) * 1_000 + Math.floor(Number(microseconds) / 1_000);
+      const [globalLeaseCount, reservedLeaseCount, demandUidCount, saturatedQuota] = await Promise.all([
+        this.redis.zcount(this.capacityKey("leases"), String(nowMs), "+inf"),
+        this.redis.zcount(this.capacityKey("reserved-leases"), String(nowMs), "+inf"),
+        this.redis.zcard(this.capacityKey("demand")),
+        this.redis.get(this.capacityKey("saturated-quota")),
+      ]);
+      const totalLeaseCount = toCount(globalLeaseCount);
+      const reservedCount = toCount(reservedLeaseCount);
+      const saturated = saturatedQuota == null ? null : Number(saturatedQuota);
+      const saturatedQuotaField = saturated !== null
+        && Number.isSafeInteger(saturated)
+        && saturated > 0
+        ? { saturatedQuota: saturated }
+        : {};
+      return {
+        activeLeaseCount: Math.max(0, totalLeaseCount - reservedCount),
+        availableCapacity: Math.max(0, this.globalCapacity - totalLeaseCount),
+        demandUidCount: toCount(demandUidCount),
+        globalCapacity: this.globalCapacity,
+        reservedLeaseCount: reservedCount,
+        ...saturatedQuotaField,
+      };
+    } catch {
+      return null;
+    }
   }
 
   async listWorkflows(query: WorkflowObservabilityListQuery): Promise<{
@@ -359,6 +400,10 @@ export class WorkflowObservabilityRepository {
       .where("status", "=", status)
       .executeTakeFirstOrThrow();
     return toCount(row.count);
+  }
+
+  private capacityKey(name: string) {
+    return `${this.redisKeyPrefix}workflow:task-capacity:${name}`;
   }
 
   private async listWorkflowKeys(query: WorkflowObservabilityListQuery, offset: number) {

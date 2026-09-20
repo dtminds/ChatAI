@@ -26,6 +26,7 @@ describe("workflow observability service", () => {
       getTransitionCounts: vi.fn(async () => ({ dead: 2, leased: 0, pending: 1 })),
       getOutboxPending: vi.fn(async () => ({ pending: 0 })),
       getInferenceCounts: vi.fn(async () => ({ expiredLease: 0, pending: 0, retryWait: 0 })),
+      getTaskCapacity: vi.fn(async () => null),
     };
     const service = new WorkflowObservabilityService(repository as never);
 
@@ -35,6 +36,7 @@ describe("workflow observability service", () => {
     expect(byRole.scheduler).toBe("offline");
     expect(byRole.outbox).toBe("unknown");
     expect(summary.deadTransitionCount).toBe(2);
+    expect(summary.capacity).toBeNull();
   });
 
   it("caps pageSize and keeps filter in the repository query instead of slicing in memory", async () => {

@@ -4,6 +4,7 @@ import { buildMockedApp } from "../../helpers/build-mocked-app";
 const serviceMocks = vi.hoisted(() => ({
   getSummary: vi.fn(async () => ({
     deadTransitionCount: 0,
+    capacity: null,
     inference: { expiredLease: 0, pending: 0, retryWait: 0 },
     observedAt: 1_784_800_000_000,
     outbox: { pending: 0 },

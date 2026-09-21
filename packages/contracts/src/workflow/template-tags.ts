@@ -22,21 +22,17 @@ export const workflowTemplateTagDimensions = [
     tags: [
       { id: "industry:apparel", label: "服饰" },
       { id: "industry:beauty", label: "美妆" },
-      { id: "industry:fast_moving_consumer", label: "快消" },
-      { id: "industry:digital", label: "数码" },
-      { id: "industry:local", label: "同城" },
       { id: "industry:maternal_baby", label: "母婴" },
+      { id: "industry:pet", label: "宠物" },
+      { id: "industry:health", label: "大健康" },
     ],
   },
   {
     id: "scene",
     label: "常见场景",
     tags: [
-      { id: "scene:stored_value", label: "储值运营" },
       { id: "scene:points", label: "积分运营" },
-      { id: "scene:birthday", label: "生日运营" },
       { id: "scene:customer_care", label: "客户关怀" },
-      { id: "scene:store_event", label: "门店活动" },
       { id: "scene:promotion_event", label: "大促活动" },
       { id: "scene:product_marketing", label: "商品营销" },
     ],

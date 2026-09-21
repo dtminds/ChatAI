@@ -1360,6 +1360,10 @@ html.dark[data-appearance-theme="nature"] {
   font-family: inherit;
 }
 
+[data-sonner-toast][data-expanded="false"][data-front="false"] > * {
+  opacity: 0;
+}
+
 [data-sonner-toast] [data-icon] {
   position: relative;
 }

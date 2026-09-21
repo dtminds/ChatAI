@@ -1356,26 +1356,36 @@ html.dark[data-appearance-theme="nature"] {
   pointer-events: none;
 }
 
-[data-sonner-toast][data-styled="true"] [data-close-button] {
-  background: var(--background) !important;
-  border-color: var(--border) !important;
-  color: var(--muted-foreground) !important;
-  left: auto !important;
-  opacity: 0;
-  pointer-events: none;
-  right: 0 !important;
-  transform: translate(35%, -35%) !important;
-  transition: opacity 120ms ease;
+[data-sonner-toaster] {
+  font-family: inherit;
 }
 
-[data-sonner-toast][data-styled="true"]:hover [data-close-button],
-[data-sonner-toast][data-styled="true"]:focus-within [data-close-button] {
+[data-sonner-toast] [data-icon] {
+  position: relative;
+}
+
+[data-sonner-toast] .sonner-loader[data-visible="true"] {
+  position: static;
+  inset: auto;
+  transform: none;
+  width: 16px;
+  height: 16px;
+}
+
+[data-sonner-toast] [data-close-button] {
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 120ms ease, background-color 120ms ease, color 120ms ease;
+}
+
+[data-sonner-toast]:hover [data-close-button],
+[data-sonner-toast]:focus-within [data-close-button] {
   opacity: 1;
   pointer-events: auto;
 }
 
 @media (hover: none), (pointer: coarse) {
-  [data-sonner-toast][data-styled="true"] [data-close-button] {
+  [data-sonner-toast] [data-close-button] {
     opacity: 1;
     pointer-events: auto;
   }

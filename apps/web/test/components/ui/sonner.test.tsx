@@ -30,4 +30,16 @@ describe("Toaster", () => {
       expect(screen.queryByText("已提交审核")).not.toBeInTheDocument();
     });
   });
+
+  it("keeps the loading spinner in the leading icon slot", async () => {
+    render(<Toaster position="top-right" />);
+
+    act(() => {
+      toast.loading("正在保存");
+    });
+
+    const title = await screen.findByText("正在保存");
+    const icon = title.closest("[data-sonner-toast]")?.querySelector("[data-icon]");
+    expect(icon?.querySelector("[data-slot='spinner']")).not.toBeNull();
+  });
 });

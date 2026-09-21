@@ -1,5 +1,6 @@
 import {
   AlertCircleIcon,
+  ArrowDown01Icon,
   ArrowRight01Icon,
   Calendar03Icon,
   Database01Icon,
@@ -62,6 +63,12 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import {
   Form,
   FormControl,
@@ -148,6 +155,48 @@ const iconStackVariants = [
   label: string;
   variant: IconStackVariant;
 }>;
+
+const toastDemos = [
+  {
+    label: "成功",
+    onSelect: () =>
+      toast.success("配置已保存", {
+        description: "DEMO 中的 Toast 已接入全局 Toaster。",
+      }),
+  },
+  {
+    label: "失败",
+    onSelect: () =>
+      toast.error("保存失败", {
+        description: "请稍后重试",
+      }),
+  },
+  {
+    label: "警告",
+    onSelect: () =>
+      toast.warning("存储空间将满", {
+        description: "已使用 92% 配额",
+      }),
+  },
+  {
+    label: "信息",
+    onSelect: () =>
+      toast.info("系统维护", {
+        description: "计划于周日进行",
+      }),
+  },
+  {
+    label: "加载",
+    onSelect: () => {
+      const toastId = toast.loading("正在保存");
+      window.setTimeout(() => toast.dismiss(toastId), 4000);
+    },
+  },
+  {
+    label: "无图标",
+    onSelect: () => toast("已加入队列"),
+  },
+] as const;
 
 export function UiComponentDemoPage() {
   const [selectedDate, setSelectedDate] = React.useState<Date | undefined>(
@@ -588,23 +637,32 @@ export function UiComponentDemoPage() {
                 </AlertDialogContent>
               </AlertDialog>
 
-              <Button
-                onClick={() => {
-                  toast.success("配置已保存", {
-                    description: "DEMO 中的 Toast 已接入全局 Toaster。",
-                  });
-                }}
-                type="button"
-                variant="secondary"
-              >
-                <HugeiconsIcon
-                  color="currentColor"
-                  icon={Notification03Icon}
-                  size={17}
-                  strokeWidth={1.8}
-                />
-                触发 Toast
-              </Button>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button type="button" variant="secondary">
+                    <HugeiconsIcon
+                      color="currentColor"
+                      icon={Notification03Icon}
+                      size={17}
+                      strokeWidth={1.8}
+                    />
+                    触发 Toast
+                    <HugeiconsIcon
+                      color="currentColor"
+                      icon={ArrowDown01Icon}
+                      size={16}
+                      strokeWidth={1.8}
+                    />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="start">
+                  {toastDemos.map((item) => (
+                    <DropdownMenuItem key={item.label} onSelect={item.onSelect}>
+                      {item.label}
+                    </DropdownMenuItem>
+                  ))}
+                </DropdownMenuContent>
+              </DropdownMenu>
 
               <Sheet>
                 <SheetTrigger asChild>

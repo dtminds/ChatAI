@@ -10919,6 +10919,36 @@ describe("useWorkbenchStore", () => {
     expect(state.conversationListsByScope.ndt[0].unread).toBe(1);
   });
 
+  it("preserves seat references when a summary refresh has no changes", async () => {
+    const baseService = createMockWorkbenchService();
+
+    setWorkbenchService({
+      ...baseService,
+      async getSeats() {
+        return baseService.getSeats();
+      },
+    });
+
+    await useWorkbenchStore.getState().initializeWorkbench();
+
+    const beforeRefresh = useWorkbenchStore.getState();
+    const accountsBeforeRefresh = beforeRefresh.accounts;
+    const accountReferencesBeforeRefresh = new Map(
+      accountsBeforeRefresh.map((account) => [account.id, account]),
+    );
+
+    await useWorkbenchStore.getState().refreshSeatSummaries();
+
+    const afterRefresh = useWorkbenchStore.getState();
+
+    expect(afterRefresh.accounts).toBe(accountsBeforeRefresh);
+    expect(afterRefresh.accounts).toHaveLength(accountReferencesBeforeRefresh.size);
+
+    for (const account of afterRefresh.accounts) {
+      expect(account).toBe(accountReferencesBeforeRefresh.get(account.id));
+    }
+  });
+
   it("evicts old seat conversation list caches while keeping recent and active seats", async () => {
     await useWorkbenchStore.getState().initializeWorkbench();
     await useWorkbenchStore.getState().setActiveAccount("ndt");

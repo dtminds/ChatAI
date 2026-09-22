@@ -108,6 +108,27 @@ describe("ChatWorkbenchPage render scope", () => {
     expect(chatPanelRenderMock).not.toHaveBeenCalled();
   });
 
+  it("does not re-render ChatPanel when seat summaries are unchanged", async () => {
+    const baseService = createMockWorkbenchService();
+
+    setWorkbenchService({
+      ...baseService,
+      async getSeats() {
+        return baseService.getSeats();
+      },
+    });
+
+    await renderReadyWorkbenchPage();
+    await screen.findByTestId("mock-chat-panel");
+    chatPanelRenderMock.mockClear();
+
+    await act(async () => {
+      await useWorkbenchStore.getState().refreshSeatSummaries();
+    });
+
+    expect(chatPanelRenderMock).not.toHaveBeenCalled();
+  });
+
   it("keeps visible conversation references stable across unrelated page renders", async () => {
     await renderReadyWorkbenchPage();
     await screen.findByTestId("mock-conversation-list-panel");

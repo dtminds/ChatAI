@@ -9,7 +9,8 @@ import {
   type WorkbenchQuickReplyUpdateRequest,
 } from "@chatai/contracts";
 import { toast } from "sonner";
-import { getWorkbenchService } from "@/pages/chat/api/workbench-service";
+import { createHttpQuickReplyRepository } from "@/pages/chat/api/quick-reply-http-repository";
+import type { QuickReplyRepository } from "@/pages/chat/api/quick-reply-repository";
 import {
   buildQuickReplyBatchItems,
   buildQuickReplyCategoryEnsureRequest,
@@ -25,8 +26,16 @@ export type QuickReplyFormValues = {
   labelText: string;
 };
 
-export function useQuickReplies(options?: { enabled?: boolean }) {
+const defaultQuickReplyRepository = createHttpQuickReplyRepository();
+
+export function useQuickReplies(options?: {
+  enabled?: boolean;
+  repository?: QuickReplyRepository;
+}) {
   const enabled = options?.enabled ?? true;
+  const [repository] = useState(
+    () => options?.repository ?? defaultQuickReplyRepository,
+  );
   const [activeScopeType, setActiveScopeTypeState] = useState<QuickReplyScopeType>(
     QUICK_REPLY_SCOPE_TYPE.ENTERPRISE,
   );
@@ -67,7 +76,7 @@ export function useQuickReplies(options?: { enabled?: boolean }) {
     setIsLoading(true);
 
     try {
-      const categoryResponse = await getWorkbenchService().listQuickReplyCategories({
+      const categoryResponse = await repository.listCategories({
         scopeType: activeScopeType,
       });
       const topCategories = categoryResponse.categories.filter(
@@ -78,7 +87,7 @@ export function useQuickReplies(options?: { enabled?: boolean }) {
         topCategories[0] ??
         null;
       const contentResponse = resolvedTopCategory
-        ? await getWorkbenchService().listQuickReplyCategoryContent({
+        ? await repository.listCategoryContent({
             parentCategoryId: resolvedTopCategory.id,
             scopeType: activeScopeType,
           })
@@ -109,7 +118,7 @@ export function useQuickReplies(options?: { enabled?: boolean }) {
         setIsLoading(false);
       }
     }
-  }, [activeScopeType, enabled]);
+  }, [activeScopeType, enabled, repository]);
 
   useEffect(() => {
     if (!enabled) {
@@ -143,7 +152,7 @@ export function useQuickReplies(options?: { enabled?: boolean }) {
     (input: { parentId: string | 0; title: string }) =>
       runMutation(
         async () => {
-          await getWorkbenchService().createQuickReplyCategory({
+          await repository.createCategory({
             parentId: input.parentId,
             scopeType: activeScopeType,
             title: input.title,
@@ -151,14 +160,14 @@ export function useQuickReplies(options?: { enabled?: boolean }) {
         },
         "分类已保存",
       ),
-    [activeScopeType, runMutation],
+    [activeScopeType, repository, runMutation],
   );
 
   const updateCategory = useCallback(
     (categoryId: string, title: string, scopeType = activeScopeType) =>
       runMutation(
         async () => {
-          await getWorkbenchService().renameQuickReplyCategory(
+          await repository.renameCategory(
             categoryId,
             scopeType,
             { title },
@@ -166,60 +175,60 @@ export function useQuickReplies(options?: { enabled?: boolean }) {
         },
         "分类已保存",
       ),
-    [activeScopeType, runMutation],
+    [activeScopeType, repository, runMutation],
   );
 
   const topCategory = useCallback(
     (category: WorkbenchQuickReplyCategoryDto) =>
       runMutation(async () => {
-        await getWorkbenchService().topQuickReplyCategory(
+        await repository.topCategory(
           category.id,
           category.scopeType,
         );
       }),
-    [runMutation],
+    [repository, runMutation],
   );
 
   const bottomCategory = useCallback(
     (category: WorkbenchQuickReplyCategoryDto) =>
       runMutation(async () => {
-        await getWorkbenchService().bottomQuickReplyCategory(
+        await repository.bottomCategory(
           category.id,
           category.scopeType,
         );
       }),
-    [runMutation],
+    [repository, runMutation],
   );
 
   const moveCategory = useCallback(
     (category: WorkbenchQuickReplyCategoryDto, parentId: string) =>
       runMutation(async () => {
-        await getWorkbenchService().moveQuickReplyCategory(
+        await repository.moveCategory(
           category.id,
           category.scopeType,
           { parentId },
         );
       }),
-    [runMutation],
+    [repository, runMutation],
   );
 
   const sortCategories = useCallback(
     (input: { parentId: string; categoryIds: string[] }) =>
       runMutation(async () => {
-        await getWorkbenchService().sortQuickReplyCategories({
+        await repository.sortCategories({
           categoryIds: input.categoryIds,
           parentId: input.parentId,
           scopeType: activeScopeType,
         });
       }),
-    [activeScopeType, runMutation],
+    [activeScopeType, repository, runMutation],
   );
 
   const deleteCategory = useCallback(
     (category: WorkbenchQuickReplyCategoryDto) =>
       runMutation(
         async () => {
-          await getWorkbenchService().deleteQuickReplyCategory(
+          await repository.deleteCategory(
             category.id,
             category.scopeType,
           );
@@ -233,20 +242,20 @@ export function useQuickReplies(options?: { enabled?: boolean }) {
         },
         "分类已删除",
       ),
-    [runMutation],
+    [repository, runMutation],
   );
 
   const createQuickReply = useCallback(
     (values: QuickReplyFormValues) =>
       runMutation(
         async () => {
-          await getWorkbenchService().createQuickReply(
+          await repository.createQuickReply(
             buildQuickReplyRequest(activeScopeType, values),
           );
         },
         "话术已保存",
       ),
-    [activeScopeType, runMutation],
+    [activeScopeType, repository, runMutation],
   );
 
   const updateQuickReply = useCallback(
@@ -257,74 +266,74 @@ export function useQuickReplies(options?: { enabled?: boolean }) {
     ) =>
       runMutation(
         async () => {
-          await getWorkbenchService().updateQuickReply(
+          await repository.updateQuickReply(
             quickReplyId,
             buildQuickReplyRequest(scopeType, values),
           );
         },
         "话术已保存",
       ),
-    [activeScopeType, runMutation],
+    [activeScopeType, repository, runMutation],
   );
 
   const topQuickReply = useCallback(
     (quickReply: WorkbenchQuickReplyDto) =>
       runMutation(async () => {
-        await getWorkbenchService().topQuickReply(
+        await repository.topQuickReply(
           quickReply.id,
           quickReply.scopeType,
         );
       }),
-    [runMutation],
+    [repository, runMutation],
   );
 
   const bottomQuickReply = useCallback(
     (quickReply: WorkbenchQuickReplyDto) =>
       runMutation(async () => {
-        await getWorkbenchService().bottomQuickReply(
+        await repository.bottomQuickReply(
           quickReply.id,
           quickReply.scopeType,
         );
       }),
-    [runMutation],
+    [repository, runMutation],
   );
 
   const moveQuickReply = useCallback(
     (quickReply: WorkbenchQuickReplyDto, categoryId: string) =>
       runMutation(async () => {
-        await getWorkbenchService().moveQuickReply(
+        await repository.moveQuickReply(
           quickReply.id,
           quickReply.scopeType,
           { categoryId },
         );
       }),
-    [runMutation],
+    [repository, runMutation],
   );
 
   const sortQuickReplies = useCallback(
     (input: { categoryId: string; quickReplyIds: string[] }) =>
       runMutation(async () => {
-        await getWorkbenchService().sortQuickReplies({
+        await repository.sortQuickReplies({
           categoryId: input.categoryId,
           quickReplyIds: input.quickReplyIds,
           scopeType: activeScopeType,
         });
       }),
-    [activeScopeType, runMutation],
+    [activeScopeType, repository, runMutation],
   );
 
   const deleteQuickReply = useCallback(
     (quickReply: WorkbenchQuickReplyDto) =>
       runMutation(
         async () => {
-          await getWorkbenchService().deleteQuickReply(
+          await repository.deleteQuickReply(
             quickReply.id,
             quickReply.scopeType,
           );
         },
         "话术已删除",
       ),
-    [runMutation],
+    [repository, runMutation],
   );
 
   const importQuickReplies = useCallback(
@@ -340,7 +349,7 @@ export function useQuickReplies(options?: { enabled?: boolean }) {
 
       try {
         const ensureResponse =
-          await getWorkbenchService().ensureQuickReplyCategories(
+          await repository.ensureCategories(
             buildQuickReplyCategoryEnsureRequest(activeScopeType, rows),
           );
 
@@ -364,7 +373,7 @@ export function useQuickReplies(options?: { enabled?: boolean }) {
         });
 
         for (const chunk of chunks) {
-          const response = await getWorkbenchService().batchCreateQuickReplies({
+          const response = await repository.batchCreateQuickReplies({
             items: chunk,
             scopeType: activeScopeType,
           });
@@ -400,7 +409,7 @@ export function useQuickReplies(options?: { enabled?: boolean }) {
         setIsMutating(false);
       }
     },
-    [activeScopeType, loadQuickReplies],
+    [activeScopeType, loadQuickReplies, repository],
   );
 
   const setActiveScopeType = useCallback((scopeType: QuickReplyScopeType) => {

@@ -88,25 +88,6 @@ import {
   type WorkbenchMaterialCollectionMoveRequest,
   type WorkbenchMaterialCollectionOkResponse,
   type WorkbenchMaterialCollectionUpdateRequest,
-  type WorkbenchQuickReplyCategoryCreateRequest,
-  type WorkbenchQuickReplyBatchCreateRequest,
-  type WorkbenchQuickReplyBatchCreateResponse,
-  type WorkbenchQuickReplyCategoryContentRequest,
-  type WorkbenchQuickReplyCategoryContentResponse,
-  type WorkbenchQuickReplyCategoryEnsureRequest,
-  type WorkbenchQuickReplyCategoryEnsureResponse,
-  type WorkbenchQuickReplyCategoryListRequest,
-  type WorkbenchQuickReplyCategoryListResponse,
-  type WorkbenchQuickReplyCategoryMoveRequest,
-  type WorkbenchQuickReplyCategorySortRequest,
-  type WorkbenchQuickReplyCategoryUpdateRequest,
-  type WorkbenchQuickReplyCreateRequest,
-  type WorkbenchQuickReplyListRequest,
-  type WorkbenchQuickReplyListResponse,
-  type WorkbenchQuickReplyMoveRequest,
-  type WorkbenchQuickReplyOkResponse,
-  type WorkbenchQuickReplySortRequest,
-  type WorkbenchQuickReplyUpdateRequest,
 } from "@chatai/contracts";
 import type {
   ChatMode,
@@ -310,76 +291,6 @@ export type WorkbenchService = {
     groupId: string,
     bizType: WorkbenchMaterialCollectionGroupCreateRequest["bizType"],
   ) => Promise<WorkbenchMaterialCollectionOkResponse>;
-  listQuickReplyCategories: (
-    request: WorkbenchQuickReplyCategoryListRequest,
-  ) => Promise<WorkbenchQuickReplyCategoryListResponse>;
-  ensureQuickReplyCategories: (
-    request: WorkbenchQuickReplyCategoryEnsureRequest,
-  ) => Promise<WorkbenchQuickReplyCategoryEnsureResponse>;
-  listQuickReplyCategoryContent: (
-    request: WorkbenchQuickReplyCategoryContentRequest,
-  ) => Promise<WorkbenchQuickReplyCategoryContentResponse>;
-  listQuickReplies: (
-    request: WorkbenchQuickReplyListRequest,
-  ) => Promise<WorkbenchQuickReplyListResponse>;
-  createQuickReplyCategory: (
-    request: WorkbenchQuickReplyCategoryCreateRequest,
-  ) => Promise<WorkbenchQuickReplyOkResponse>;
-  renameQuickReplyCategory: (
-    categoryId: string,
-    scopeType: WorkbenchQuickReplyCategoryListRequest["scopeType"],
-    request: WorkbenchQuickReplyCategoryUpdateRequest,
-  ) => Promise<WorkbenchQuickReplyOkResponse>;
-  topQuickReplyCategory: (
-    categoryId: string,
-    scopeType: WorkbenchQuickReplyCategoryListRequest["scopeType"],
-  ) => Promise<WorkbenchQuickReplyOkResponse>;
-  bottomQuickReplyCategory: (
-    categoryId: string,
-    scopeType: WorkbenchQuickReplyCategoryListRequest["scopeType"],
-  ) => Promise<WorkbenchQuickReplyOkResponse>;
-  deleteQuickReplyCategory: (
-    categoryId: string,
-    scopeType: WorkbenchQuickReplyCategoryListRequest["scopeType"],
-  ) => Promise<WorkbenchQuickReplyOkResponse>;
-  moveQuickReplyCategory: (
-    categoryId: string,
-    scopeType: WorkbenchQuickReplyCategoryListRequest["scopeType"],
-    request: WorkbenchQuickReplyCategoryMoveRequest,
-  ) => Promise<WorkbenchQuickReplyOkResponse>;
-  sortQuickReplyCategories: (
-    request: WorkbenchQuickReplyCategorySortRequest,
-  ) => Promise<WorkbenchQuickReplyOkResponse>;
-  createQuickReply: (
-    request: WorkbenchQuickReplyCreateRequest,
-  ) => Promise<WorkbenchQuickReplyOkResponse>;
-  batchCreateQuickReplies: (
-    request: WorkbenchQuickReplyBatchCreateRequest,
-  ) => Promise<WorkbenchQuickReplyBatchCreateResponse>;
-  updateQuickReply: (
-    quickReplyId: string,
-    request: WorkbenchQuickReplyUpdateRequest,
-  ) => Promise<WorkbenchQuickReplyOkResponse>;
-  topQuickReply: (
-    quickReplyId: string,
-    scopeType: WorkbenchQuickReplyListRequest["scopeType"],
-  ) => Promise<WorkbenchQuickReplyOkResponse>;
-  bottomQuickReply: (
-    quickReplyId: string,
-    scopeType: WorkbenchQuickReplyListRequest["scopeType"],
-  ) => Promise<WorkbenchQuickReplyOkResponse>;
-  deleteQuickReply: (
-    quickReplyId: string,
-    scopeType: WorkbenchQuickReplyListRequest["scopeType"],
-  ) => Promise<WorkbenchQuickReplyOkResponse>;
-  moveQuickReply: (
-    quickReplyId: string,
-    scopeType: WorkbenchQuickReplyListRequest["scopeType"],
-    request: WorkbenchQuickReplyMoveRequest,
-  ) => Promise<WorkbenchQuickReplyOkResponse>;
-  sortQuickReplies: (
-    request: WorkbenchQuickReplySortRequest,
-  ) => Promise<WorkbenchQuickReplyOkResponse>;
 };
 
 export type WorkbenchServiceMode = "mock" | "http";

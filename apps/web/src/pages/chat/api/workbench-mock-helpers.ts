@@ -23,8 +23,6 @@ import {
   type WorkbenchMaterialCollectionCreateRequest,
   type WorkbenchMaterialCollectionGroupDto,
   type WorkbenchMaterialCollectionItemDto,
-  type WorkbenchQuickReplyCategoryDto,
-  type WorkbenchQuickReplyDto,
   buildMaterialFileContentJson,
   buildMaterialH5ContentJson,
   buildMaterialImageContentJson,
@@ -76,8 +74,6 @@ export type MockState = {
   materialItems: WorkbenchMaterialCollectionItemDto[];
   messagesByConversationId: Record<string, WorkbenchMessageDto[]>;
   nextId: number;
-  quickReplyCategories: WorkbenchQuickReplyCategoryDto[];
-  quickReplies: WorkbenchQuickReplyDto[];
   version: number;
 };
 
@@ -379,8 +375,6 @@ export function buildInitialState(): MockState {
     materialItems: buildInitialMaterialItems(messagesByConversationId),
     messagesByConversationId,
     nextId: 1,
-    quickReplyCategories: [],
-    quickReplies: [],
     version: INITIAL_VERSION,
   };
 }
@@ -1634,103 +1628,6 @@ export function sortConversations(conversations: WorkbenchConversationSummaryDto
       Number(Boolean(right.isPinned)) - Number(Boolean(left.isPinned)) ||
       (right.lastMessageTime ?? 0) - (left.lastMessageTime ?? 0),
   );
-}
-
-export function sortQuickReplyEntries<T extends { id: string; sort: number }>(left: T, right: T) {
-  return right.sort - left.sort || right.id.localeCompare(left.id);
-}
-
-export function getAppendQuickReplyCategorySort(
-  categories: WorkbenchQuickReplyCategoryDto[],
-  scopeType: WorkbenchQuickReplyCategoryDto["scopeType"],
-  parentId: WorkbenchQuickReplyCategoryDto["parentId"],
-) {
-  return getSiblingBoundarySort(
-    categories,
-    (category) =>
-      category.scopeType === scopeType && category.parentId === parentId,
-    "append",
-  );
-}
-
-export function getPrependQuickReplyCategorySort(
-  categories: WorkbenchQuickReplyCategoryDto[],
-  scopeType: WorkbenchQuickReplyCategoryDto["scopeType"],
-  parentId: WorkbenchQuickReplyCategoryDto["parentId"],
-) {
-  return getSiblingBoundarySort(
-    categories,
-    (category) =>
-      category.scopeType === scopeType && category.parentId === parentId,
-    "prepend",
-  );
-}
-
-export function getAppendQuickReplySort(
-  quickReplies: WorkbenchQuickReplyDto[],
-  scopeType: WorkbenchQuickReplyDto["scopeType"],
-  categoryId: WorkbenchQuickReplyDto["categoryId"],
-) {
-  return getSiblingBoundarySort(
-    quickReplies,
-    (reply) =>
-      reply.scopeType === scopeType && reply.categoryId === categoryId,
-    "append",
-  );
-}
-
-export function getPrependQuickReplySort(
-  quickReplies: WorkbenchQuickReplyDto[],
-  scopeType: WorkbenchQuickReplyDto["scopeType"],
-  categoryId: WorkbenchQuickReplyDto["categoryId"],
-) {
-  return getSiblingBoundarySort(
-    quickReplies,
-    (reply) =>
-      reply.scopeType === scopeType && reply.categoryId === categoryId,
-    "prepend",
-  );
-}
-
-function getSiblingBoundarySort<T extends { sort: number }>(
-  items: T[],
-  isSibling: (item: T) => boolean,
-  placement: "append" | "prepend",
-) {
-  let boundarySort: number | undefined;
-
-  for (const item of items) {
-    if (!isSibling(item)) {
-      continue;
-    }
-
-    boundarySort = boundarySort === undefined
-      ? item.sort
-      : placement === "append"
-        ? Math.min(boundarySort, item.sort)
-        : Math.max(boundarySort, item.sort);
-  }
-
-  if (boundarySort === undefined) {
-    return Date.now();
-  }
-
-  return boundarySort + (placement === "append" ? -1 : 1);
-}
-
-export function assertSameQuickReplySortScope(currentIds: string[], submittedIds: string[]) {
-  if (currentIds.length !== submittedIds.length) {
-    throw new Error("排序数据已变化，请刷新后重试");
-  }
-
-  const submittedSet = new Set(submittedIds);
-
-  if (
-    submittedSet.size !== submittedIds.length ||
-    !currentIds.every((id) => submittedSet.has(id))
-  ) {
-    throw new Error("排序数据已变化，请刷新后重试");
-  }
 }
 
 export function collapseLatest<T>(

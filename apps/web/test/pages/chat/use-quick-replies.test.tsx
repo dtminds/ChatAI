@@ -126,6 +126,40 @@ describe("useQuickReplies", () => {
     });
   });
 
+  it("keeps the injected repository stable across rerenders", async () => {
+    const baseRepository = createMockQuickReplyRepository();
+    const categoriesResponse =
+      createDeferred<WorkbenchQuickReplyCategoryListResponse>();
+    const listCategories = vi.fn(() => categoriesResponse.promise);
+
+    const { rerender, result } = renderHook(() =>
+      useQuickReplies({
+        repository: {
+          ...baseRepository,
+          listCategories,
+        },
+      }),
+    );
+
+    await waitFor(() => {
+      expect(result.current.isLoading).toBe(true);
+    });
+    expect(listCategories).toHaveBeenCalledTimes(1);
+
+    rerender();
+
+    expect(listCategories).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      categoriesResponse.resolve({ categories: [] });
+    });
+
+    await waitFor(() => {
+      expect(result.current.isLoading).toBe(false);
+    });
+    expect(listCategories).toHaveBeenCalledTimes(1);
+  });
+
   it("keeps mutation failures rejected so dialogs can stay open", async () => {
     const baseRepository = createMockQuickReplyRepository();
     const createQuickReply = vi.fn().mockRejectedValue(new Error("保存失败"));

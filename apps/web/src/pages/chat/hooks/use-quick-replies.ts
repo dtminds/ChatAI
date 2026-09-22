@@ -33,7 +33,9 @@ export function useQuickReplies(options?: {
   repository?: QuickReplyRepository;
 }) {
   const enabled = options?.enabled ?? true;
-  const repository = options?.repository ?? defaultQuickReplyRepository;
+  const [repository] = useState(
+    () => options?.repository ?? defaultQuickReplyRepository,
+  );
   const [activeScopeType, setActiveScopeTypeState] = useState<QuickReplyScopeType>(
     QUICK_REPLY_SCOPE_TYPE.ENTERPRISE,
   );

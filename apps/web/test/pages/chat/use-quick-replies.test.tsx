@@ -7,10 +7,8 @@ import {
   type WorkbenchQuickReplyCategoryListResponse,
 } from "@chatai/contracts";
 import {
-  createMockWorkbenchService,
-  resetWorkbenchService,
-  setWorkbenchService,
-} from "@/pages/chat/api/workbench-service";
+  createMockQuickReplyRepository,
+} from "@/pages/chat/api/quick-reply-mock-repository";
 import { useQuickReplies } from "@/pages/chat/hooks/use-quick-replies";
 
 vi.mock("sonner", async (importOriginal) => {
@@ -29,14 +27,13 @@ vi.mock("sonner", async (importOriginal) => {
 
 describe("useQuickReplies", () => {
   afterEach(() => {
-    resetWorkbenchService();
     vi.useRealTimers();
     vi.clearAllMocks();
   });
 
   it("loads active top category content only after the panel is enabled", async () => {
-    const baseService = createMockWorkbenchService();
-    const listQuickReplies = vi.fn(baseService.listQuickReplies);
+    const baseRepository = createMockQuickReplyRepository();
+    const listQuickReplies = vi.fn(baseRepository.listQuickReplies);
     const listQuickReplyCategories = vi.fn().mockResolvedValue({
       categories: [
         {
@@ -82,15 +79,15 @@ describe("useQuickReplies", () => {
       },
     });
 
-    setWorkbenchService({
-      ...baseService,
+    const repository = {
+      ...baseRepository,
       listQuickReplies,
-      listQuickReplyCategories,
-      listQuickReplyCategoryContent,
-    });
+      listCategories: listQuickReplyCategories,
+      listCategoryContent: listQuickReplyCategoryContent,
+    };
 
     const { rerender, result } = renderHook(
-      ({ enabled }: { enabled: boolean }) => useQuickReplies({ enabled }),
+      ({ enabled }: { enabled: boolean }) => useQuickReplies({ enabled, repository }),
       {
         initialProps: { enabled: false },
       },
@@ -130,15 +127,15 @@ describe("useQuickReplies", () => {
   });
 
   it("keeps mutation failures rejected so dialogs can stay open", async () => {
-    const baseService = createMockWorkbenchService();
+    const baseRepository = createMockQuickReplyRepository();
     const createQuickReply = vi.fn().mockRejectedValue(new Error("保存失败"));
 
-    setWorkbenchService({
-      ...baseService,
+    const repository = {
+      ...baseRepository,
       createQuickReply,
-    });
+    };
 
-    const { result } = renderHook(() => useQuickReplies());
+    const { result } = renderHook(() => useQuickReplies({ repository }));
 
     await waitFor(() => {
       expect(result.current.isLoading).toBe(false);
@@ -158,8 +155,8 @@ describe("useQuickReplies", () => {
     expect(toast.error).toHaveBeenCalledWith("保存失败");
   });
 
-  it("sorts quick reply categories and replies through the service", async () => {
-    const baseService = createMockWorkbenchService();
+  it("sorts quick reply categories and replies through the repository", async () => {
+    const baseRepository = createMockQuickReplyRepository();
     const sortQuickReplyCategories = vi.fn().mockResolvedValue({ ok: true });
     const sortQuickReplies = vi.fn().mockResolvedValue({ ok: true });
     const listQuickReplyCategories = vi.fn().mockResolvedValue({
@@ -186,15 +183,15 @@ describe("useQuickReplies", () => {
       },
     });
 
-    setWorkbenchService({
-      ...baseService,
-      listQuickReplyCategories,
-      listQuickReplyCategoryContent,
-      sortQuickReplyCategories,
+    const repository = {
+      ...baseRepository,
+      listCategories: listQuickReplyCategories,
+      listCategoryContent: listQuickReplyCategoryContent,
+      sortCategories: sortQuickReplyCategories,
       sortQuickReplies,
-    });
+    };
 
-    const { result } = renderHook(() => useQuickReplies());
+    const { result } = renderHook(() => useQuickReplies({ repository }));
 
     await waitFor(() => {
       expect(result.current.isLoading).toBe(false);
@@ -224,7 +221,7 @@ describe("useQuickReplies", () => {
   });
 
   it("reloads category content when the active top category changes", async () => {
-    const baseService = createMockWorkbenchService();
+    const baseRepository = createMockQuickReplyRepository();
     const listQuickReplyCategories = vi.fn().mockResolvedValue({
       categories: [
         {
@@ -256,13 +253,13 @@ describe("useQuickReplies", () => {
       },
     });
 
-    setWorkbenchService({
-      ...baseService,
-      listQuickReplyCategories,
-      listQuickReplyCategoryContent,
-    });
+    const repository = {
+      ...baseRepository,
+      listCategories: listQuickReplyCategories,
+      listCategoryContent: listQuickReplyCategoryContent,
+    };
 
-    const { result } = renderHook(() => useQuickReplies());
+    const { result } = renderHook(() => useQuickReplies({ repository }));
 
     await waitFor(() => {
       expect(listQuickReplyCategoryContent).toHaveBeenCalledWith({
@@ -284,8 +281,8 @@ describe("useQuickReplies", () => {
   });
 
   it("changes keyword locally without reloading quick replies", async () => {
-    const baseService = createMockWorkbenchService();
-    const listQuickReplies = vi.fn(baseService.listQuickReplies);
+    const baseRepository = createMockQuickReplyRepository();
+    const listQuickReplies = vi.fn(baseRepository.listQuickReplies);
     const listQuickReplyCategories = vi.fn().mockResolvedValue({
       categories: [
         {
@@ -310,14 +307,14 @@ describe("useQuickReplies", () => {
       },
     });
 
-    setWorkbenchService({
-      ...baseService,
-      listQuickReplyCategories,
+    const repository = {
+      ...baseRepository,
+      listCategories: listQuickReplyCategories,
       listQuickReplies,
-      listQuickReplyCategoryContent,
-    });
+      listCategoryContent: listQuickReplyCategoryContent,
+    };
 
-    const { result } = renderHook(() => useQuickReplies());
+    const { result } = renderHook(() => useQuickReplies({ repository }));
 
     await waitFor(() => {
       expect(listQuickReplyCategoryContent).toHaveBeenCalledTimes(1);
@@ -333,7 +330,7 @@ describe("useQuickReplies", () => {
   });
 
   it("enters loading state immediately when switching scope", async () => {
-    const baseService = createMockWorkbenchService();
+    const baseRepository = createMockQuickReplyRepository();
     const personalCategories =
       createDeferred<WorkbenchQuickReplyCategoryListResponse>();
     const listQuickReplyCategories = vi.fn(
@@ -370,13 +367,13 @@ describe("useQuickReplies", () => {
       },
     });
 
-    setWorkbenchService({
-      ...baseService,
-      listQuickReplyCategories,
-      listQuickReplyCategoryContent,
-    });
+    const repository = {
+      ...baseRepository,
+      listCategories: listQuickReplyCategories,
+      listCategoryContent: listQuickReplyCategoryContent,
+    };
 
-    const { result } = renderHook(() => useQuickReplies());
+    const { result } = renderHook(() => useQuickReplies({ repository }));
 
     await waitFor(() => {
       expect(result.current.isLoading).toBe(false);
@@ -392,13 +389,13 @@ describe("useQuickReplies", () => {
   });
 
   it("keeps the submitted category when creating quick replies", async () => {
-    const baseService = createMockWorkbenchService();
-    const createQuickReply = vi.fn(baseService.createQuickReply);
+    const baseRepository = createMockQuickReplyRepository();
+    const createQuickReply = vi.fn(baseRepository.createQuickReply);
 
-    setWorkbenchService({
-      ...baseService,
+    const repository = {
+      ...baseRepository,
       createQuickReply,
-      listQuickReplyCategories: vi.fn().mockResolvedValue({
+      listCategories: vi.fn().mockResolvedValue({
         categories: [
           {
             id: "cat-1",
@@ -409,9 +406,9 @@ describe("useQuickReplies", () => {
           },
         ],
       }),
-    });
+    };
 
-    const { result } = renderHook(() => useQuickReplies());
+    const { result } = renderHook(() => useQuickReplies({ repository }));
 
     await waitFor(() => {
       expect(result.current.isLoading).toBe(false);
@@ -441,14 +438,14 @@ describe("useQuickReplies", () => {
     );
   });
 
-  it("moves secondary categories and quick replies through the workbench service", async () => {
-    const baseService = createMockWorkbenchService();
+  it("moves secondary categories and quick replies through the repository", async () => {
+    const baseRepository = createMockQuickReplyRepository();
     const moveQuickReplyCategory = vi.fn().mockResolvedValue({ ok: true });
     const moveQuickReply = vi.fn().mockResolvedValue({ ok: true });
 
-    setWorkbenchService({
-      ...baseService,
-      listQuickReplyCategories: vi.fn().mockResolvedValue({
+    const repository = {
+      ...baseRepository,
+      listCategories: vi.fn().mockResolvedValue({
         categories: [
           {
             id: "cat-1",
@@ -460,10 +457,10 @@ describe("useQuickReplies", () => {
         ],
       }),
       moveQuickReply,
-      moveQuickReplyCategory,
-    });
+      moveCategory: moveQuickReplyCategory,
+    };
 
-    const { result } = renderHook(() => useQuickReplies());
+    const { result } = renderHook(() => useQuickReplies({ repository }));
 
     await waitFor(() => {
       expect(result.current.isLoading).toBe(false);
@@ -510,7 +507,7 @@ describe("useQuickReplies", () => {
   });
 
   it("imports quick replies by ensuring categories then posting 100-item batches", async () => {
-    const baseService = createMockWorkbenchService();
+    const baseRepository = createMockQuickReplyRepository();
     const ensureQuickReplyCategories = vi.fn().mockResolvedValue({
       categories: [
         {
@@ -545,15 +542,15 @@ describe("useQuickReplies", () => {
       },
     });
 
-    setWorkbenchService({
-      ...baseService,
+    const repository = {
+      ...baseRepository,
       batchCreateQuickReplies,
-      ensureQuickReplyCategories,
-      listQuickReplyCategories,
-      listQuickReplyCategoryContent,
-    });
+      ensureCategories: ensureQuickReplyCategories,
+      listCategories: listQuickReplyCategories,
+      listCategoryContent: listQuickReplyCategoryContent,
+    };
 
-    const { result } = renderHook(() => useQuickReplies());
+    const { result } = renderHook(() => useQuickReplies({ repository }));
 
     await waitFor(() => {
       expect(result.current.isLoading).toBe(false);
@@ -580,7 +577,7 @@ describe("useQuickReplies", () => {
   });
 
   it("reloads quick replies when a later import batch fails", async () => {
-    const baseService = createMockWorkbenchService();
+    const baseRepository = createMockQuickReplyRepository();
     const ensureQuickReplyCategories = vi.fn().mockResolvedValue({
       categories: [
         {
@@ -621,15 +618,15 @@ describe("useQuickReplies", () => {
       },
     });
 
-    setWorkbenchService({
-      ...baseService,
+    const repository = {
+      ...baseRepository,
       batchCreateQuickReplies,
-      ensureQuickReplyCategories,
-      listQuickReplyCategories,
-      listQuickReplyCategoryContent,
-    });
+      ensureCategories: ensureQuickReplyCategories,
+      listCategories: listQuickReplyCategories,
+      listCategoryContent: listQuickReplyCategoryContent,
+    };
 
-    const { result } = renderHook(() => useQuickReplies());
+    const { result } = renderHook(() => useQuickReplies({ repository }));
 
     await waitFor(() => {
       expect(result.current.isLoading).toBe(false);
@@ -657,7 +654,7 @@ describe("useQuickReplies", () => {
   });
 
   it("returns an import failure when category ensure throws", async () => {
-    const baseService = createMockWorkbenchService();
+    const baseRepository = createMockQuickReplyRepository();
     const ensureQuickReplyCategories = vi
       .fn()
       .mockRejectedValue(new Error("network failed"));
@@ -675,14 +672,14 @@ describe("useQuickReplies", () => {
       },
     });
 
-    setWorkbenchService({
-      ...baseService,
-      ensureQuickReplyCategories,
-      listQuickReplyCategories,
-      listQuickReplyCategoryContent,
-    });
+    const repository = {
+      ...baseRepository,
+      ensureCategories: ensureQuickReplyCategories,
+      listCategories: listQuickReplyCategories,
+      listCategoryContent: listQuickReplyCategoryContent,
+    };
 
-    const { result } = renderHook(() => useQuickReplies());
+    const { result } = renderHook(() => useQuickReplies({ repository }));
 
     await waitFor(() => {
       expect(result.current.isLoading).toBe(false);

@@ -43,7 +43,7 @@ const Toaster = ({
         classNames: {
           ...toastOptions?.classNames,
           toast: cn(
-            "flex w-[var(--width)] items-start gap-2.5 rounded-[12px] border border-border bg-popover px-4 py-3 text-sm text-popover-foreground shadow-[0_10px_28px_var(--shadow-soft)]",
+            "flex w-[var(--width)] flex-wrap items-start gap-2.5 rounded-[12px] border border-border bg-popover px-4 py-3 text-sm text-popover-foreground shadow-[0_10px_28px_var(--shadow-soft)]",
             toastOptions?.classNames?.toast,
           ),
           title: cn(

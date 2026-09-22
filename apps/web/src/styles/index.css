@@ -1382,6 +1382,19 @@ html.dark[data-appearance-theme="nature"] {
   transition: opacity 120ms ease, background-color 120ms ease, color 120ms ease;
 }
 
+[data-sonner-toast] > [data-content] {
+  flex: 1 1 calc(100% - 1.625rem);
+}
+
+[data-sonner-toast] > [data-action],
+[data-sonner-toast] > [data-cancel] {
+  margin-left: auto;
+}
+
+[data-sonner-toast] > [data-cancel] + [data-action] {
+  margin-left: 0;
+}
+
 [data-sonner-toast]:hover [data-close-button],
 [data-sonner-toast]:focus-within [data-close-button] {
   opacity: 1;

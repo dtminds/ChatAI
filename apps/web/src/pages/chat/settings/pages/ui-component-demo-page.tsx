@@ -196,6 +196,17 @@ const toastDemos = [
     label: "无图标",
     onSelect: () => toast("已加入队列"),
   },
+  {
+    label: "操作",
+    onSelect: () =>
+      toast.success("更改已保存", {
+        description: "偏好设置已更新",
+        action: {
+          label: "撤销",
+          onClick: () => {},
+        },
+      }),
+  },
 ] as const;
 
 export function UiComponentDemoPage() {

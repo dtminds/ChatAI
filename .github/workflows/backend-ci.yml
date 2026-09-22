@@ -63,20 +63,6 @@ jobs:
     needs: changes
     if: github.event_name == 'workflow_dispatch' || needs.changes.outputs.backend == 'true'
     runs-on: ubuntu-latest
-    services:
-      mysql:
-        image: mysql:8.4
-        env:
-          MYSQL_ROOT_HOST: "%"
-          MYSQL_ROOT_PASSWORD: workflow-test
-          TZ: Asia/Shanghai
-        ports:
-          - 3306:3306
-        options: >-
-          --health-cmd="mysqladmin ping -h 127.0.0.1 -pworkflow-test"
-          --health-interval=10s
-          --health-timeout=5s
-          --health-retries=10
     steps:
       - name: Checkout
         uses: actions/checkout@v7
@@ -132,14 +118,6 @@ jobs:
       - name: Test database
         run: pnpm --filter @chatai/database test
 
-      - name: Test database AI usage MySQL repository
-        run: pnpm --filter @chatai/database test:repository:mysql
-        env:
-          AI_USAGE_TEST_MYSQL_HOST: 127.0.0.1
-          AI_USAGE_TEST_MYSQL_PASSWORD: workflow-test
-          AI_USAGE_TEST_MYSQL_PORT: 3306
-          AI_USAGE_TEST_MYSQL_USER: root
-
       - name: Test LLM policy and usage
         run: pnpm --filter @chatai/llm test
 
@@ -158,14 +136,6 @@ jobs:
       - name: Test workflow runtime
         run: pnpm --filter @chatai/workflow-runtime test
 
-      - name: Test workflow runtime MySQL repository
-        run: pnpm --filter @chatai/workflow-runtime test:repository:mysql
-        env:
-          WORKFLOW_TEST_MYSQL_HOST: 127.0.0.1
-          WORKFLOW_TEST_MYSQL_PASSWORD: workflow-test
-          WORKFLOW_TEST_MYSQL_PORT: 3306
-          WORKFLOW_TEST_MYSQL_USER: root
-
       - name: Test workflow worker
         run: pnpm --filter @chatai/workflow-worker test
 
@@ -183,3 +153,62 @@ jobs:
 
       - name: Verify workflow worker production imports
         run: pnpm --filter @chatai/workflow-worker verify:production-imports
+
+  backend-mysql-repository:
+    name: Backend MySQL Repository
+    needs: changes
+    if: github.event_name == 'workflow_dispatch' || needs.changes.outputs.backend == 'true'
+    runs-on: ubuntu-latest
+    services:
+      mysql:
+        image: mysql:8.4
+        env:
+          MYSQL_ROOT_HOST: "%"
+          MYSQL_ROOT_PASSWORD: workflow-test
+          TZ: Asia/Shanghai
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -pworkflow-test"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Enable pnpm
+        run: corepack enable
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build MySQL test dependencies
+        run: >-
+          pnpm --filter @chatai/workflow-runtime exec tsc -b
+          ../../packages/contracts
+          ../../packages/database
+          ../../packages/llm
+          ../../packages/workflow-engine
+
+      - name: Test database AI usage MySQL repository
+        run: pnpm --filter @chatai/database test:repository:mysql
+        env:
+          AI_USAGE_TEST_MYSQL_HOST: 127.0.0.1
+          AI_USAGE_TEST_MYSQL_PASSWORD: workflow-test
+          AI_USAGE_TEST_MYSQL_PORT: 3306
+          AI_USAGE_TEST_MYSQL_USER: root
+
+      - name: Test workflow runtime MySQL repository
+        run: pnpm --filter @chatai/workflow-runtime test:repository:mysql
+        env:
+          WORKFLOW_TEST_MYSQL_HOST: 127.0.0.1
+          WORKFLOW_TEST_MYSQL_PASSWORD: workflow-test
+          WORKFLOW_TEST_MYSQL_PORT: 3306
+          WORKFLOW_TEST_MYSQL_USER: root

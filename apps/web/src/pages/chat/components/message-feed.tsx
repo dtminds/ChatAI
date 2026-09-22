@@ -17,6 +17,7 @@ import { HugeiconsIcon } from "@hugeicons/react";
 import { Spinner } from "@/components/ui/spinner";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
+  memo,
   type RefObject,
   useEffect,
   useLayoutEffect,
@@ -150,7 +151,7 @@ type FeedItem =
       type: "message";
     };
 
-export function ChatMessageList({
+export const ChatMessageList = memo(function ChatMessageList({
   canCollectMaterialActions = true,
   canUseMessageActions = true,
   canUseMessageForward = false,
@@ -356,7 +357,7 @@ export function ChatMessageList({
       </TooltipProvider>
     </ConversationImageGalleryProvider>
   );
-}
+});
 
 function getAppendStartIndex(
   messages: Message[],
@@ -396,7 +397,7 @@ function SystemMessageNotice({ text }: { text: string }) {
   );
 }
 
-export function MessageRow({
+export const MessageRow = memo(function MessageRow({
   conversationId,
   customerAvatarFallbackUrl,
   message,
@@ -782,7 +783,7 @@ export function MessageRow({
       </div>
     </div>
   );
-}
+});
 
 function getMessageEntranceAnimationClassName(
   direction: "left" | "right",

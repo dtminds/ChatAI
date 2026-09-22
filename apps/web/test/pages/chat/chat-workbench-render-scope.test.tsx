@@ -17,11 +17,40 @@ const conversationListPanelRenderMock = vi.hoisted(() => vi.fn());
 vi.mock("@/pages/chat/components/chat-panel", () => ({
   ChatPanel: (props: {
     activeConversation?: { id: string; isShadowGroup?: boolean };
+    groupMembers: unknown;
+    messages: unknown;
+    onCancelFileUpload: unknown;
+    onClearQuotedMessage: unknown;
+    onDownloadMessageFile?: unknown;
+    onFileSelect: unknown;
+    onLoadMoreCollectedExpressions?: unknown;
+    onMentionMessage?: unknown;
+    onOpenQuotedMessage?: unknown;
+    onQuoteMessage?: unknown;
     onRevokeMessage?: unknown;
+    onSendDraft: unknown;
+    onTranscribeVoice?: unknown;
+    onVoicePlaybackReady?: unknown;
   }) => {
     chatPanelRenderMock({
       activeConversationId: props.activeConversation?.id ?? null,
       isShadowGroup: props.activeConversation?.isShadowGroup,
+      messageComposerBoundaryProps: {
+        groupMembers: props.groupMembers,
+        messages: props.messages,
+        onCancelFileUpload: props.onCancelFileUpload,
+        onClearQuotedMessage: props.onClearQuotedMessage,
+        onDownloadMessageFile: props.onDownloadMessageFile,
+        onFileSelect: props.onFileSelect,
+        onLoadMoreCollectedExpressions:
+          props.onLoadMoreCollectedExpressions,
+        onMentionMessage: props.onMentionMessage,
+        onOpenQuotedMessage: props.onOpenQuotedMessage,
+        onQuoteMessage: props.onQuoteMessage,
+        onSendDraft: props.onSendDraft,
+        onTranscribeVoice: props.onTranscribeVoice,
+        onVoicePlaybackReady: props.onVoicePlaybackReady,
+      },
       onRevokeMessage: props.onRevokeMessage,
     });
 
@@ -152,6 +181,35 @@ describe("ChatWorkbenchPage render scope", () => {
     expect(nextProps.searchableConversations).toBe(
       firstProps.searchableConversations,
     );
+  });
+
+  it("keeps message and composer callbacks stable across unrelated page renders", async () => {
+    await renderReadyWorkbenchPage();
+    await screen.findByTestId("mock-chat-panel");
+    await waitFor(() => expect(chatPanelRenderMock).toHaveBeenCalled());
+    const firstBoundaryProps = chatPanelRenderMock.mock.lastCall?.[0]
+      .messageComposerBoundaryProps;
+    const renderCount = chatPanelRenderMock.mock.calls.length;
+
+    act(() => {
+      useWorkbenchStore.setState({
+        readReceiptError: "已读状态同步失败",
+      });
+    });
+
+    await waitFor(() =>
+      expect(chatPanelRenderMock.mock.calls.length).toBeGreaterThan(renderCount),
+    );
+    const nextBoundaryProps = chatPanelRenderMock.mock.lastCall?.[0]
+      .messageComposerBoundaryProps;
+
+    expect(
+      Object.entries(nextBoundaryProps).flatMap(([name, value]) =>
+        value === firstBoundaryProps[name as keyof typeof firstBoundaryProps]
+          ? []
+          : [name],
+      ),
+    ).toEqual([]);
   });
 
   it("does not expose the revoke handler for shadow group conversations", async () => {

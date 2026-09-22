@@ -782,6 +782,16 @@ function haveSameShallowValues(left: object, right: object) {
   );
 }
 
+function haveSameAccountValues(left: Account, right: Account) {
+  const { metrics: leftMetrics, ...leftWithoutMetrics } = left;
+  const { metrics: rightMetrics, ...rightWithoutMetrics } = right;
+
+  return (
+    haveSameShallowValues(leftWithoutMetrics, rightWithoutMetrics) &&
+    haveSameShallowValues(leftMetrics, rightMetrics)
+  );
+}
+
 function resolvePolledConversation(
   currentConversation: Conversation | undefined,
   conversation: Conversation,
@@ -7641,24 +7651,32 @@ export function createWorkbenchStore() {
 
       try {
         const nextAccounts = await loadSeats();
+        const nextAccountsById = new Map(
+          nextAccounts.map((account) => [account.id, account]),
+        );
 
         if (!isReadyScopeRequest(requestId, get())) {
           return;
         }
 
         set((currentState) => {
+          let didAccountsChange = false;
           const mergedAccounts = currentState.accounts.map((account) => {
             if (account.id === currentState.activeAccountId) {
               return account;
             }
 
-            const nextAccount = nextAccounts.find((item) => item.id === account.id);
-            return nextAccount ?? account;
+            const nextAccount = nextAccountsById.get(account.id);
+
+            if (!nextAccount || haveSameAccountValues(account, nextAccount)) {
+              return account;
+            }
+
+            didAccountsChange = true;
+            return nextAccount;
           });
 
-          return {
-            accounts: mergedAccounts,
-          };
+          return didAccountsChange ? { accounts: mergedAccounts } : currentState;
         });
       } catch {
         // Keep current seat summaries if the refresh fails.

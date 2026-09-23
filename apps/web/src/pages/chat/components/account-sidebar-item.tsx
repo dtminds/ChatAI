@@ -1,4 +1,5 @@
 import {
+  memo,
   useEffect,
   useRef,
   useState,
@@ -40,7 +41,7 @@ import { cn } from "@/lib/utils";
 import { isExpiredAccountSeat } from "@/pages/chat/lib/workbench-permissions";
 import type { Account } from "@/pages/chat/chat-types";
 
-export function AccountSidebarItem({
+export const AccountSidebarItem = memo(function AccountSidebarItem({
   account,
   currentEmployeeId,
   canTakeOverAccount = true,
@@ -54,7 +55,7 @@ export function AccountSidebarItem({
   canTakeOverAccount?: boolean;
   currentEmployeeId?: string;
   isActive: boolean;
-  onClick: () => void;
+  onClick: (accountId: string) => void;
   onTakeOverAccount?: (accountId: string) => void | Promise<void>;
   takeoverStatus: "idle" | "taking-over";
   variant?: "default" | "compact";
@@ -150,7 +151,7 @@ export function AccountSidebarItem({
     }
 
     event.preventDefault();
-    onClick();
+    onClick(account.id);
   };
   const handleTakeoverConfirmOpenChange = (open: boolean) => {
     if (isTakeoverConfirmPending && !open) {
@@ -210,7 +211,7 @@ export function AccountSidebarItem({
         )}
         data-testid={`account-sidebar-item-${account.id}`}
         onBlur={closeTakeoverPopover}
-        onClick={onClick}
+        onClick={() => onClick(account.id)}
         onFocus={canShowTakeoverPopover ? openTakeoverPopover : undefined}
         onKeyDown={handleCardKeyDown}
         onMouseEnter={canShowTakeoverPopover ? openTakeoverPopover : undefined}
@@ -355,7 +356,7 @@ export function AccountSidebarItem({
           )}
           data-testid={`account-sidebar-item-${account.id}`}
           onBlur={closeTakeoverPopover}
-          onClick={onClick}
+          onClick={() => onClick(account.id)}
           onFocus={canShowTakeoverPopover ? openTakeoverPopover : undefined}
           onKeyDown={handleCardKeyDown}
           onMouseEnter={canShowTakeoverPopover ? openTakeoverPopover : undefined}
@@ -466,7 +467,7 @@ export function AccountSidebarItem({
       />
     </Popover>
   );
-}
+});
 
 function TakeoverConfirmationDialog({
   account,

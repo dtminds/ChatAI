@@ -1,5 +1,7 @@
 import {
+  memo,
   startTransition,
+  useCallback,
   type PointerEvent as ReactPointerEvent,
 } from "react";
 import {
@@ -95,7 +97,7 @@ type AccountRailProps = {
   takeoverStatusByAccountId?: Record<string, "idle" | "taking-over">;
 };
 
-export function AccountRail({
+export const AccountRail = memo(function AccountRail({
   accounts,
   activeAccountId,
   activeNavItem = "聊天",
@@ -125,6 +127,11 @@ export function AccountRail({
   const availableRailItems = visibleRailItems;
   const toggleLabel = isCollapsed ? "展开侧栏" : "折叠侧栏";
   const toggleIcon = isCollapsed ? PanelLeftIcon : LayoutAlignLeftIcon;
+  const handleSelectAccount = useCallback((accountId: string) => {
+    startTransition(() => {
+      void onSelectAccount(accountId);
+    });
+  }, [onSelectAccount]);
 
   if (isCollapsed) {
     return (
@@ -238,11 +245,7 @@ export function AccountRail({
                   currentEmployeeId={currentEmployeeId}
                   isActive={isActive}
                   key={account.id}
-                  onClick={() => {
-                    startTransition(() => {
-                      void onSelectAccount(account.id);
-                    });
-                  }}
+                  onClick={handleSelectAccount}
                   onTakeOverAccount={onTakeOverAccount}
                   takeoverStatus={takeoverStatusByAccountId[account.id] ?? "idle"}
                   canTakeOverAccount={canTakeOverAccount}
@@ -395,11 +398,7 @@ export function AccountRail({
                 currentEmployeeId={currentEmployeeId}
                 isActive={isActive}
                 key={account.id}
-                onClick={() => {
-                  startTransition(() => {
-                    void onSelectAccount(account.id);
-                  });
-                }}
+                onClick={handleSelectAccount}
                 onTakeOverAccount={onTakeOverAccount}
                 takeoverStatus={takeoverStatusByAccountId[account.id] ?? "idle"}
                 canTakeOverAccount={canTakeOverAccount}
@@ -438,7 +437,7 @@ export function AccountRail({
       />
     </section>
   );
-}
+});
 
 function TicketReminderIndicator({
   compact = false,

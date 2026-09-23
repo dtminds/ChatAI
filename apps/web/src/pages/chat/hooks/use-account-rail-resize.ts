@@ -1,5 +1,6 @@
 import {
   type PointerEvent as ReactPointerEvent,
+  useCallback,
   useEffect,
   useRef,
   useState,
@@ -99,17 +100,18 @@ export function useAccountRailResize() {
     };
   }, [isResizingAccountRail]);
 
-  const handleAccountRailResizeStart = (
-    event: ReactPointerEvent<HTMLButtonElement>,
-  ) => {
-    event.preventDefault();
-    resizeStartRef.current = {
-      pointerX: event.clientX,
-      width: accountRailWidth,
-    };
-    latestWidthRef.current = accountRailWidth;
-    setIsResizingAccountRail(true);
-  };
+  const handleAccountRailResizeStart = useCallback(
+    (event: ReactPointerEvent<HTMLButtonElement>) => {
+      event.preventDefault();
+      resizeStartRef.current = {
+        pointerX: event.clientX,
+        width: accountRailWidth,
+      };
+      latestWidthRef.current = accountRailWidth;
+      setIsResizingAccountRail(true);
+    },
+    [accountRailWidth],
+  );
 
   return {
     accountRailWidth,

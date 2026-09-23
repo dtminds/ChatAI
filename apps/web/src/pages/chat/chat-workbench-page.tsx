@@ -943,6 +943,12 @@ function ChatWorkbenchContent({
       ? (groupMembersByConversationId[activeConversation.id] ??
         EMPTY_GROUP_MEMBERS)
       : EMPTY_GROUP_MEMBERS;
+  const activeMessagesRef = useRef(activeMessages);
+  const activeGroupMembersRef = useRef(activeGroupMembers);
+  useLayoutEffect(() => {
+    activeMessagesRef.current = activeMessages;
+    activeGroupMembersRef.current = activeGroupMembers;
+  }, [activeMessages, activeGroupMembers]);
   const isActiveGroupMembersLoading =
     activeConversation?.mode === "group"
       ? groupMembersLoadingByConversationId[activeConversation.id] === true
@@ -2345,7 +2351,7 @@ function ChatWorkbenchContent({
     (quoteMsgId: string) => {
       const quoteSeq = Number(quoteMsgId);
       const originalMessage = Number.isSafeInteger(quoteSeq)
-        ? activeMessages.find((message) => message.seq === quoteSeq)
+        ? activeMessagesRef.current.find((message) => message.seq === quoteSeq)
         : undefined;
       const viewport = messageViewportRef.current;
       const anchor =
@@ -2363,7 +2369,7 @@ function ChatWorkbenchContent({
         block: "start",
       });
     },
-    [activeMessages],
+    [],
   );
 
   const handleViewHandoffMessage = () => {
@@ -2431,7 +2437,7 @@ function ChatWorkbenchContent({
       }
 
       const activeGroupMember = findGroupMemberForMention(
-        activeGroupMembers,
+        activeGroupMembersRef.current,
         message.sender.groupMemberId,
       );
 
@@ -2454,7 +2460,7 @@ function ChatWorkbenchContent({
       });
       composerRef.current?.focus();
     },
-    [activeGroupMembers],
+    [],
   );
   const handleClearQuotedMessage = useCallback(() => {
     setQuotedMessage(null);

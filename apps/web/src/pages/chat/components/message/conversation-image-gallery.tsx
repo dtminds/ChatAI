@@ -1,7 +1,9 @@
 import {
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from "react";
@@ -109,6 +111,10 @@ export function ConversationImageGalleryProvider({
   messages: Message[];
 }) {
   const [session, setSession] = useState<GallerySession | null>(null);
+  const messagesRef = useRef(messages);
+  useLayoutEffect(() => {
+    messagesRef.current = messages;
+  }, [messages]);
 
   useEffect(() => {
     setSession(null);
@@ -116,7 +122,7 @@ export function ConversationImageGalleryProvider({
 
   const openGallery = useCallback(
     (uiMessageKey: string) => {
-      const nextSession = buildGalleryWindow(messages, uiMessageKey, GALLERY_RADIUS);
+      const nextSession = buildGalleryWindow(messagesRef.current, uiMessageKey, GALLERY_RADIUS);
 
       if (!nextSession) {
         return;
@@ -124,7 +130,7 @@ export function ConversationImageGalleryProvider({
 
       setSession(nextSession);
     },
-    [messages],
+    [],
   );
 
   const closeGallery = useCallback(() => {

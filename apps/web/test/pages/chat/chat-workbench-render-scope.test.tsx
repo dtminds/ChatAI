@@ -1,10 +1,14 @@
 import { act, screen, waitFor } from "@testing-library/react";
+import type { LexicalEditor } from "lexical";
+import type { RefObject } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   createMockWorkbenchService,
   setWorkbenchService,
 } from "@/pages/chat/api/workbench-service";
 import { useWorkbenchStore } from "@/store/workbench-store";
+import type { ChatMessage, Message } from "@/pages/chat/chat-types";
+import { INSERT_COMPOSER_MENTION_COMMAND } from "@/pages/chat/components/composer/lexical-commands";
 import {
   installChatWorkbenchTestEnvironment,
   renderChatWorkbenchPage,
@@ -17,38 +21,68 @@ const conversationListPanelRenderMock = vi.hoisted(() => vi.fn());
 vi.mock("@/pages/chat/components/chat-panel", () => ({
   ChatPanel: (props: {
     activeConversation?: { id: string; isShadowGroup?: boolean };
+    composerRef: RefObject<LexicalEditor | null>;
     groupMembers: unknown;
-    messages: unknown;
+    messages: Message[];
+    messageViewportRef: RefObject<HTMLDivElement | null>;
     onCancelFileUpload: unknown;
     onClearQuotedMessage: unknown;
+    onCollectMaterial?: unknown;
+    onDismissSmartReply?: unknown;
     onDownloadMessageFile?: unknown;
+    onEnterMultiSelectMode?: unknown;
     onFileSelect: unknown;
+    onFillSmartReplyComposer?: unknown;
+    onForwardMessage?: unknown;
+    onLoadOlderMessages: unknown;
+    onLoadSendFailReason?: unknown;
     onLoadMoreCollectedExpressions?: unknown;
+    onMakeShorterSmartReply?: unknown;
     onMentionMessage?: unknown;
+    onMessageViewportScroll: unknown;
     onOpenQuotedMessage?: unknown;
     onQuoteMessage?: unknown;
     onRevokeMessage?: unknown;
+    onRetryMessage: unknown;
     onSendDraft: unknown;
+    onSendSmartReply?: unknown;
+    onToggleMessageSelection?: unknown;
     onTranscribeVoice?: unknown;
+    onTriggerSmartReply?: unknown;
     onVoicePlaybackReady?: unknown;
   }) => {
     chatPanelRenderMock({
       activeConversationId: props.activeConversation?.id ?? null,
+      composerRef: props.composerRef,
       isShadowGroup: props.activeConversation?.isShadowGroup,
       messageComposerBoundaryProps: {
         groupMembers: props.groupMembers,
         messages: props.messages,
         onCancelFileUpload: props.onCancelFileUpload,
         onClearQuotedMessage: props.onClearQuotedMessage,
+        onCollectMaterial: props.onCollectMaterial,
+        onDismissSmartReply: props.onDismissSmartReply,
         onDownloadMessageFile: props.onDownloadMessageFile,
+        onEnterMultiSelectMode: props.onEnterMultiSelectMode,
         onFileSelect: props.onFileSelect,
+        onFillSmartReplyComposer: props.onFillSmartReplyComposer,
+        onForwardMessage: props.onForwardMessage,
+        onLoadOlderMessages: props.onLoadOlderMessages,
+        onLoadSendFailReason: props.onLoadSendFailReason,
         onLoadMoreCollectedExpressions:
           props.onLoadMoreCollectedExpressions,
+        onMakeShorterSmartReply: props.onMakeShorterSmartReply,
         onMentionMessage: props.onMentionMessage,
+        onMessageViewportScroll: props.onMessageViewportScroll,
         onOpenQuotedMessage: props.onOpenQuotedMessage,
         onQuoteMessage: props.onQuoteMessage,
+        onRevokeMessage: props.onRevokeMessage,
+        onRetryMessage: props.onRetryMessage,
         onSendDraft: props.onSendDraft,
+        onSendSmartReply: props.onSendSmartReply,
+        onToggleMessageSelection: props.onToggleMessageSelection,
         onTranscribeVoice: props.onTranscribeVoice,
+        onTriggerSmartReply: props.onTriggerSmartReply,
         onVoicePlaybackReady: props.onVoicePlaybackReady,
       },
       onRevokeMessage: props.onRevokeMessage,
@@ -57,6 +91,11 @@ vi.mock("@/pages/chat/components/chat-panel", () => ({
     return (
       <div data-testid="mock-chat-panel">
         {props.activeConversation?.id ?? "no-conversation"}
+        <div ref={props.messageViewportRef}>
+          {props.messages.map((message) => (
+            <div data-scroll-anchor={message.uiMessageKey} key={message.uiMessageKey} />
+          ))}
+        </div>
       </div>
     );
   },
@@ -210,6 +249,117 @@ describe("ChatWorkbenchPage render scope", () => {
           : [name],
       ),
     ).toEqual([]);
+  });
+
+  it("keeps the quote callback stable when messages append and locates the new message", async () => {
+    await renderReadyWorkbenchPage();
+    await screen.findByTestId("mock-chat-panel");
+    const firstProps = chatPanelRenderMock.mock.lastCall?.[0];
+    const conversationId = firstProps.activeConversationId as string;
+    const firstMessages = useWorkbenchStore.getState().messagesByConversationId[conversationId] ?? [];
+    const appendedMessage: Message = {
+      author: "客户",
+      content: { text: "追加的消息", type: "text" },
+      conversationId,
+      msgid: "appended-message",
+      role: "customer",
+      sender: { id: "customer-001", name: "客户" },
+      sentAt: "2026-09-23T10:00:00+08:00",
+      seq: 123456,
+      status: "sent",
+      uiMessageKey: "appended-message",
+    };
+
+    act(() => {
+      useWorkbenchStore.setState((state) => ({
+        messagesByConversationId: {
+          ...state.messagesByConversationId,
+          [conversationId]: [...firstMessages, appendedMessage],
+        },
+      }));
+    });
+
+    const nextProps = chatPanelRenderMock.mock.lastCall?.[0];
+    expect(nextProps.messageComposerBoundaryProps.messages).toHaveLength(firstMessages.length + 1);
+    expect(
+      Object.entries(nextProps.messageComposerBoundaryProps).flatMap(([name, value]) =>
+        value === firstProps.messageComposerBoundaryProps[
+          name as keyof typeof firstProps.messageComposerBoundaryProps
+        ]
+          ? []
+          : [name],
+      ),
+    ).toEqual(["messages"]);
+
+    const anchor = document.querySelector<HTMLElement>(
+      '[data-scroll-anchor="appended-message"]',
+    );
+    expect(anchor).not.toBeNull();
+    const scrollIntoView = vi.fn();
+    anchor!.scrollIntoView = scrollIntoView;
+
+    act(() => {
+      (nextProps.messageComposerBoundaryProps.onOpenQuotedMessage as (id: string) => void)(
+        "123456",
+      );
+    });
+
+    expect(scrollIntoView).toHaveBeenCalledWith({ behavior: "smooth", block: "start" });
+  });
+
+  it("keeps the mention callback stable while using refreshed group members", async () => {
+    await renderReadyWorkbenchPage();
+    await act(async () => {
+      await useWorkbenchStore.getState().setActiveMode("group");
+    });
+    await waitFor(() => {
+      expect(chatPanelRenderMock.mock.lastCall?.[0].activeConversationId).toBe("conv-004");
+    });
+    const firstProps = chatPanelRenderMock.mock.lastCall?.[0];
+    const onMentionMessage = firstProps.messageComposerBoundaryProps.onMentionMessage as (
+      message: ChatMessage,
+    ) => void;
+    const dispatchCommand = vi.fn();
+    firstProps.composerRef.current = {
+      dispatchCommand,
+      focus: vi.fn(),
+    } as unknown as LexicalEditor;
+
+    act(() => {
+      useWorkbenchStore.setState((state) => ({
+        groupMembersByConversationId: {
+          ...state.groupMembersByConversationId,
+          "conv-004": [
+            ...(state.groupMembersByConversationId["conv-004"] ?? []),
+            { displayName: "新群成员", id: "new-member", type: 0 },
+          ],
+        },
+      }));
+    });
+
+    expect(chatPanelRenderMock.mock.lastCall?.[0].messageComposerBoundaryProps.onMentionMessage)
+      .toBe(onMentionMessage);
+
+    act(() => {
+      onMentionMessage({
+        author: "新群成员",
+        content: { text: "你好", type: "text" },
+        conversationId: "conv-004",
+        isGroupConversation: true,
+        isOwnMessage: false,
+        msgid: "group-message",
+        role: "customer",
+        sender: { groupMemberId: "new-member", id: "new-member", name: "新群成员" },
+        sentAt: "2026-09-23T10:00:00+08:00",
+        status: "sent",
+        uiMessageKey: "group-message",
+      });
+    });
+
+    expect(dispatchCommand).toHaveBeenCalledWith(INSERT_COMPOSER_MENTION_COMMAND, {
+      displayName: "新群成员",
+      memberId: "new-member",
+    });
   });
 
   it("does not expose the revoke handler for shadow group conversations", async () => {

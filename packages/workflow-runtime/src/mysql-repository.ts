@@ -4490,7 +4490,10 @@ export class MysqlWorkflowRuntimeRepository implements
         ]))
         .orderBy("run.id", "asc")
         .limit(limit + 1)
-        .forUpdate()
+        // Skipping a locked Definition makes the LEFT JOIN report it as missing.
+        // Keep FOR SHARE first so SKIP LOCKED applies only to the Run lock clause.
+        .forShare("definition")
+        .forUpdate("run")
         .skipLocked();
       if (input.afterRunId) query = query.where("run.id", ">", input.afterRunId);
       const rows = await query.execute();

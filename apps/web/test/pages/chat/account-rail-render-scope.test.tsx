@@ -1,4 +1,4 @@
-import { memo } from "react";
+import { memo, type ReactNode } from "react";
 import { render } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -8,6 +8,14 @@ import { resetTicketCountStore } from "@/pages/chat/tickets/ticket-count-store";
 import { useAuthStore } from "@/store/auth-store";
 
 const accountItemRenderMock = vi.hoisted(() => vi.fn());
+const scrollAreaRenderMock = vi.hoisted(() => vi.fn());
+vi.mock("@/components/ui/scroll-area", () => ({
+  ScrollArea: ({ children }: { children: ReactNode }) => {
+    scrollAreaRenderMock();
+    return <div>{children}</div>;
+  },
+}));
+
 vi.mock("@/pages/chat/components/account-sidebar-item", () => ({
   AccountSidebarItem: memo(({ account }: { account: Account }) => {
     accountItemRenderMock(account.id);
@@ -29,6 +37,7 @@ const account: Account = {
 describe("AccountRail render scope", () => {
   beforeEach(() => {
     accountItemRenderMock.mockClear();
+    scrollAreaRenderMock.mockClear();
     resetTicketCountStore();
     useAuthStore.setState(useAuthStore.getInitialState(), true);
   });
@@ -42,7 +51,9 @@ describe("AccountRail render scope", () => {
       </MemoryRouter>,
     );
     const initialRenderCount = accountItemRenderMock.mock.calls.length;
+    const initialRailRenderCount = scrollAreaRenderMock.mock.calls.length;
     expect(initialRenderCount).toBeGreaterThan(0);
+    expect(initialRailRenderCount).toBeGreaterThan(0);
 
     rerender(
       <MemoryRouter>
@@ -50,6 +61,7 @@ describe("AccountRail render scope", () => {
       </MemoryRouter>,
     );
     expect(accountItemRenderMock).toHaveBeenCalledTimes(initialRenderCount);
+    expect(scrollAreaRenderMock).toHaveBeenCalledTimes(initialRailRenderCount);
 
     rerender(
       <MemoryRouter>
@@ -61,5 +73,6 @@ describe("AccountRail render scope", () => {
     );
     expect(accountItemRenderMock).toHaveBeenCalledTimes(initialRenderCount + 1);
     expect(accountItemRenderMock.mock.lastCall?.[0]).toBe("seat-2");
+    expect(scrollAreaRenderMock).toHaveBeenCalledTimes(initialRailRenderCount + 1);
   });
 });

@@ -17,6 +17,17 @@ import {
 
 const chatPanelRenderMock = vi.hoisted(() => vi.fn());
 const conversationListPanelRenderMock = vi.hoisted(() => vi.fn());
+const accountRailRenderMock = vi.hoisted(() => vi.fn());
+
+vi.mock("@/pages/chat/components/account-rail", async () => {
+  const { memo } = await import("react");
+  return {
+    AccountRail: memo((props: Record<string, unknown>) => {
+      accountRailRenderMock(props);
+      return <div data-testid="mock-account-rail" />;
+    }),
+  };
+});
 
 vi.mock("@/pages/chat/components/chat-panel", () => ({
   ChatPanel: (props: {
@@ -130,6 +141,45 @@ describe("ChatWorkbenchPage render scope", () => {
     installChatWorkbenchTestEnvironment();
     chatPanelRenderMock.mockClear();
     conversationListPanelRenderMock.mockClear();
+    accountRailRenderMock.mockClear();
+  });
+
+  it("keeps the account rail idle on other conversation updates but refreshes changed seats", async () => {
+    await renderReadyWorkbenchPage();
+    await screen.findByTestId("mock-account-rail");
+    const firstProps = accountRailRenderMock.mock.lastCall?.[0];
+    const state = useWorkbenchStore.getState();
+    const otherConversationId = state.conversationListsByScope[state.activeAccountId]
+      .find((conversation) => conversation.id !== state.activeConversationId)!.id;
+    accountRailRenderMock.mockClear();
+
+    act(() => {
+      useWorkbenchStore.setState((state) => ({
+        conversationListsByScope: {
+          ...state.conversationListsByScope,
+          [state.activeAccountId]: (
+            state.conversationListsByScope[state.activeAccountId] ?? []
+          ).map((conversation) =>
+            conversation.id === otherConversationId
+              ? { ...conversation, unread: conversation.unread + 1 }
+              : conversation,
+          ),
+        },
+      }));
+    });
+    expect(accountRailRenderMock).not.toHaveBeenCalled();
+
+    act(() => {
+      useWorkbenchStore.setState((state) => ({
+        accounts: state.accounts.map((account) =>
+          account.id !== state.activeAccountId
+            ? { ...account, unreadCount: (account.unreadCount ?? 0) + 1 }
+            : account,
+        ),
+      }));
+    });
+    expect(accountRailRenderMock).toHaveBeenCalledTimes(1);
+    expect(accountRailRenderMock.mock.lastCall?.[0].accounts).not.toBe(firstProps.accounts);
   });
 
   it("does not re-render ChatPanel when smart reply or empty poll updates", async () => {
@@ -254,6 +304,7 @@ describe("ChatWorkbenchPage render scope", () => {
   it("keeps the quote callback stable when messages append and locates the new message", async () => {
     await renderReadyWorkbenchPage();
     await screen.findByTestId("mock-chat-panel");
+    accountRailRenderMock.mockClear();
     const firstProps = chatPanelRenderMock.mock.lastCall?.[0];
     const conversationId = firstProps.activeConversationId as string;
     const firstMessages = useWorkbenchStore.getState().messagesByConversationId[conversationId] ?? [];
@@ -280,6 +331,7 @@ describe("ChatWorkbenchPage render scope", () => {
     });
 
     const nextProps = chatPanelRenderMock.mock.lastCall?.[0];
+    expect(accountRailRenderMock).not.toHaveBeenCalled();
     expect(nextProps.messageComposerBoundaryProps.messages).toHaveLength(firstMessages.length + 1);
     expect(
       Object.entries(nextProps.messageComposerBoundaryProps).flatMap(([name, value]) =>

@@ -747,10 +747,10 @@ function ChatWorkbenchContent({
   } = useAccountRailResize();
   const isMobileWorkbenchLayout = useMediaQuery("(max-width: 767px)");
 
-  const handleAccountRailCollapseChange = (nextIsCollapsed: boolean) => {
+  const handleAccountRailCollapseChange = useCallback((nextIsCollapsed: boolean) => {
     setIsAccountRailCollapsed(nextIsCollapsed);
     writeAccountRailCollapsed(nextIsCollapsed);
-  };
+  }, []);
 
   const handleMobileBackToConversationList = useCallback(() => {
     setMobilePane("list");
@@ -2518,6 +2518,29 @@ function ChatWorkbenchContent({
     }
   };
 
+  const handleAccountRailNavItemSelect = useCallback((label: string) => {
+    if (label === "客户") {
+      setMobilePane("list");
+      onNavigateCustomerPage?.();
+      return;
+    }
+
+    if (label === "聊天") {
+      setMobilePane("list");
+      if (activeView !== "chat") {
+        onNavigateChat?.();
+      }
+    }
+  }, [activeView, onNavigateChat, onNavigateCustomerPage]);
+
+  const handleAccountRailSelectAccount = useCallback(async (accountId: string) => {
+    setMobilePane("list");
+    if (activeView !== "chat") {
+      onNavigateChat?.();
+    }
+    await setActiveAccount(accountId);
+  }, [activeView, onNavigateChat, setActiveAccount]);
+
   const accountRailNode = (
     <AccountRail
       accounts={accounts}
@@ -2537,31 +2560,12 @@ function ChatWorkbenchContent({
       onCollapseChange={
         isMobileWorkbenchLayout ? undefined : handleAccountRailCollapseChange
       }
-      onNavItemSelect={(label) => {
-        if (label === "客户") {
-          setMobilePane("list");
-          onNavigateCustomerPage?.();
-          return;
-        }
-
-        if (label === "聊天") {
-          setMobilePane("list");
-          if (activeView !== "chat") {
-            onNavigateChat?.();
-          }
-        }
-      }}
+      onNavItemSelect={handleAccountRailNavItemSelect}
       onResizeStart={
         isMobileWorkbenchLayout ? undefined : handleAccountRailResizeStart
       }
       onRefreshBroadcastProtection={refreshBroadcastProtection}
-      onSelectAccount={async (accountId) => {
-        setMobilePane("list");
-        if (activeView !== "chat") {
-          onNavigateChat?.();
-        }
-        await setActiveAccount(accountId);
-      }}
+      onSelectAccount={handleAccountRailSelectAccount}
       onTakeOverAccount={handleTakeOverAccount}
       takeoverStatusByAccountId={takeoverStatusByAccountId}
     />

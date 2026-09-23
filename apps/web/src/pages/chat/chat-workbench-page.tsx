@@ -93,6 +93,7 @@ import type {
   Conversation,
   CustomerChatStartInput,
   FileUploadQueueItem,
+  GroupMember,
   QuotedMessagePreviewContent,
 } from "@/pages/chat/chat-types";
 import { uploadWorkbenchFile } from "@/pages/chat/api/media-upload-service";
@@ -159,6 +160,8 @@ import {
 const ACCOUNT_RAIL_COLLAPSED_STORAGE_KEY = "chatai.accountRailCollapsed";
 const CONVERSATION_VIEW_STORAGE_KEY = "chatai.conversationView";
 const EMPTY_CONVERSATIONS: Conversation[] = [];
+const EMPTY_GROUP_MEMBERS: GroupMember[] = [];
+const EMPTY_MESSAGES: ChatMessage[] = [];
 
 const CustomerPage = lazy(() =>
   import("@/pages/chat/customer-page").then(({ CustomerPage }) => ({
@@ -905,6 +908,7 @@ function ChatWorkbenchContent({
     activeViewConversations.find(
       (conversation) => conversation.id === activeConversationId,
     );
+  const resolvedActiveConversationId = activeConversation?.id;
   const isActiveConversationTicketSupported =
     isConversationTicketSupported(activeConversation);
   const ticketReminderDisplayMode = useTicketCountStore(
@@ -933,11 +937,18 @@ function ChatWorkbenchContent({
   }, [activeConversation?.id, closeHistoryPanel]);
   const activeMessages =
     (activeConversation && messagesByConversationId[activeConversation.id]) ??
-    [];
+    EMPTY_MESSAGES;
   const activeGroupMembers =
     activeConversation?.mode === "group"
-      ? (groupMembersByConversationId[activeConversation.id] ?? [])
-      : [];
+      ? (groupMembersByConversationId[activeConversation.id] ??
+        EMPTY_GROUP_MEMBERS)
+      : EMPTY_GROUP_MEMBERS;
+  const activeMessagesRef = useRef(activeMessages);
+  const activeGroupMembersRef = useRef(activeGroupMembers);
+  useLayoutEffect(() => {
+    activeMessagesRef.current = activeMessages;
+    activeGroupMembersRef.current = activeGroupMembers;
+  }, [activeMessages, activeGroupMembers]);
   const isActiveGroupMembersLoading =
     activeConversation?.mode === "group"
       ? groupMembersLoadingByConversationId[activeConversation.id] === true
@@ -1077,19 +1088,20 @@ function ChatWorkbenchContent({
 
   const hasActiveFileUploads = () => fileUploadQueueRef.current.length > 0;
 
-  const setFileUploadQueueState = (
-    updater: (queue: typeof fileUploadQueue) => typeof fileUploadQueue,
-  ) => {
-    if (!isMountedRef.current) {
-      return;
-    }
+  const setFileUploadQueueState = useCallback(
+    (updater: (queue: typeof fileUploadQueue) => typeof fileUploadQueue) => {
+      if (!isMountedRef.current) {
+        return;
+      }
 
-    setFileUploadQueue((currentQueue) => {
-      const nextQueue = updater(currentQueue);
-      fileUploadQueueRef.current = nextQueue;
-      return nextQueue;
-    });
-  };
+      setFileUploadQueue((currentQueue) => {
+        const nextQueue = updater(currentQueue);
+        fileUploadQueueRef.current = nextQueue;
+        return nextQueue;
+      });
+    },
+    [],
+  );
 
   const {
     handleLoadOlderMessages,
@@ -1690,14 +1702,17 @@ function ChatWorkbenchContent({
     saveComposerDraft(conversationId, action.draft);
   };
 
-  const resetComposerUI = (options?: { keepQuote?: boolean }) => {
-    composerRef.current?.dispatchCommand(CLEAR_COMPOSER_COMMAND, undefined);
-    draftRef.current = "";
-    composerSegmentsRef.current = [];
-    if (!options?.keepQuote) {
-      setQuotedMessage(null);
-    }
-  };
+  const resetComposerUI = useCallback(
+    (options?: { keepQuote?: boolean }) => {
+      composerRef.current?.dispatchCommand(CLEAR_COMPOSER_COMMAND, undefined);
+      draftRef.current = "";
+      composerSegmentsRef.current = [];
+      if (!options?.keepQuote) {
+        setQuotedMessage(null);
+      }
+    },
+    [],
+  );
 
   const restoreComposerDraftForConversation = (conversationId: string) => {
     const savedDraft = composerDraftsByConversationId[conversationId];
@@ -1715,13 +1730,16 @@ function ChatWorkbenchContent({
     });
   };
 
-  const clearComposer = (options?: { keepQuote?: boolean }) => {
-    resetComposerUI(options);
+  const clearComposer = useCallback(
+    (options?: { keepQuote?: boolean }) => {
+      resetComposerUI(options);
 
-    if (activeConversationIdRef.current) {
-      clearComposerDraft(activeConversationIdRef.current);
-    }
-  };
+      if (activeConversationIdRef.current) {
+        clearComposerDraft(activeConversationIdRef.current);
+      }
+    },
+    [clearComposerDraft, resetComposerUI],
+  );
 
   useEffect(() => {
     if (activeView !== "chat") {
@@ -1797,6 +1815,10 @@ function ChatWorkbenchContent({
     },
     [],
   );
+  const handleMaterialSent = useCallback(() => {
+    setIsEmojiPickerOpen(false);
+    scrollMessageViewportToBottom();
+  }, [scrollMessageViewportToBottom]);
 
   const {
     activeMaterialLibraryBizType,
@@ -1844,12 +1866,9 @@ function ChatWorkbenchContent({
     bootstrapStatus,
     isMountedRef,
     onSendFailure: handleSmartReplySendFailure,
-    onSent: () => {
-      setIsEmojiPickerOpen(false);
-      scrollMessageViewportToBottom();
-    },
+    onSent: handleMaterialSent,
     requestActiveConversationRead,
-    resolvedActiveConversationId: activeConversation?.id,
+    resolvedActiveConversationId,
     sendAgentMessageSegments,
   });
 
@@ -1920,261 +1939,307 @@ function ChatWorkbenchContent({
     sendSmartReply,
   });
 
-  const handleSendDraft = async (segments: ComposerSegment[]) => {
-    const sendConversationId = activeConversation?.id;
-    const normalizedSegments = segments.length > 0 ? segments : [];
-    const mentionState = extractComposerMentionState(segments);
-    const hasMention = mentionState.memberIds.length > 0 || mentionState.mentionAll;
-    const mention =
-      hasMention
+  const handleSendDraft = useCallback(
+    async (segments: ComposerSegment[]) => {
+      const sendConversationId = resolvedActiveConversationId;
+      const normalizedSegments = segments.length > 0 ? segments : [];
+      const mentionState = extractComposerMentionState(segments);
+      const hasMention =
+        mentionState.memberIds.length > 0 || mentionState.mentionAll;
+      const mention = hasMention
         ? {
             all: mentionState.mentionAll || undefined,
-            location: mentionState.mentionAll ? "start" as const : "any" as const,
+            location: mentionState.mentionAll
+              ? ("start" as const)
+              : ("any" as const),
             memberIds: mentionState.memberIds,
           }
         : undefined;
 
-    if (normalizedSegments.length === 0 || !canSendMessage) {
-      return;
-    }
+      if (normalizedSegments.length === 0 || !canSendMessage) {
+        return;
+      }
 
-    if (isSendingDraftRef.current) {
-      return;
-    }
+      if (isSendingDraftRef.current) {
+        return;
+      }
 
-    isSendingDraftRef.current = true;
-    setIsSendingDraft(true);
+      isSendingDraftRef.current = true;
+      setIsSendingDraft(true);
 
-    try {
-      const result = await sendAgentMessageSegments(normalizedSegments, {
-        mention,
-        quote: quotedMessage?.quoteMsgId
-          ? {
-              quoteMsgId: quotedMessage.quoteMsgId,
-              quotedMessage: {
-                contentType: quotedMessage.contentType,
-                fallbackText: quotedMessage.fallbackText,
-                imageUrl: quotedMessage.imageUrl,
-                senderName: quotedMessage.senderName,
-                text: quotedMessage.text,
-                title: quotedMessage.title,
-              },
+      try {
+        const result = await sendAgentMessageSegments(normalizedSegments, {
+          mention,
+          quote: quotedMessage?.quoteMsgId
+            ? {
+                quoteMsgId: quotedMessage.quoteMsgId,
+                quotedMessage: {
+                  contentType: quotedMessage.contentType,
+                  fallbackText: quotedMessage.fallbackText,
+                  imageUrl: quotedMessage.imageUrl,
+                  senderName: quotedMessage.senderName,
+                  text: quotedMessage.text,
+                  title: quotedMessage.title,
+                },
+              }
+            : undefined,
+          onImageUploaded({ nextSegment, previousSegment }) {
+            if (
+              nextSegment.type !== "image" ||
+              previousSegment.type !== "image" ||
+              !nextSegment.url
+            ) {
+              return;
             }
-          : undefined,
-        onImageUploaded({ nextSegment, previousSegment }) {
-          if (
-            nextSegment.type !== "image" ||
-            previousSegment.type !== "image" ||
-            !nextSegment.url
-          ) {
-            return;
-          }
 
-          composerRef.current?.dispatchCommand(UPDATE_COMPOSER_IMAGE_COMMAND, {
-            clientId: previousSegment.clientId,
-            fileId: nextSegment.fileId,
-            localUrl: nextSegment.localUrl ?? previousSegment.localUrl,
-            previousSrc: previousSegment.url ?? previousSegment.localUrl ?? "",
-            src: nextSegment.url,
-          });
-        },
-      });
-
-      if (
-        !isMountedRef.current ||
-        activeConversationIdRef.current !== sendConversationId
-      ) {
-        return;
-      }
-
-      if (!result.ok) {
-        setSendFailureDialog(
-          getSendFailureDialogCopy(
-            result.reason,
-            result.errorCode,
-            result.errorMessage,
-          ),
-        );
-        composerRef.current?.focus();
-        return;
-      }
-
-      clearComposer({
-        keepQuote: quotedMessage !== null && !result.didConsumeQuote,
-      });
-      scrollMessageViewportToBottom();
-      void requestActiveConversationRead({ force: true });
-    } finally {
-      isSendingDraftRef.current = false;
-      if (isMountedRef.current) {
-        shouldRestoreComposerFocusRef.current =
-          activeConversationIdRef.current === sendConversationId;
-        setIsSendingDraft(false);
-      }
-    }
-  };
-
-  const removeFileUpload = (uploadId: string) => {
-    fileUploadAbortControllersRef.current.delete(uploadId);
-    setFileUploadQueueState((currentQueue) =>
-      currentQueue.filter((item) => item.id !== uploadId),
-    );
-  };
-
-  const handleCancelFileUpload = (uploadId: string) => {
-    fileUploadAbortControllersRef.current.get(uploadId)?.abort();
-    removeFileUpload(uploadId);
-  };
-
-  const handleFileSelect = (fileList: FileList | File[] | null) => {
-    const files = Array.from(fileList ?? []);
-
-    if (files.length === 0) {
-      return;
-    }
-
-    if (!activeConversation || !canSendMessage) {
-      setSendFailureDialog(
-        getSendFailureDialogCopy("unavailable", "UNAVAILABLE"),
-      );
-      return;
-    }
-
-    for (const file of files) {
-      if (!isSupportedComposerFile(file)) {
-        toast.warning("仅支持 PDF、Excel、Word、TXT、PPT 文件");
-        continue;
-      }
-
-      if (!isComposerFileSizeAllowed(file)) {
-        setSendFailureDialog(getOversizedComposerFileDialogCopy());
-        continue;
-      }
-
-      const uploadId = `file-upload-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-      const nextUpload: FileUploadQueueItem = {
-        fileName: file.name,
-        id: uploadId,
-        progress: 1,
-        status: "uploading",
-      };
-      const abortController = new AbortController();
-      fileUploadAbortControllersRef.current.set(uploadId, abortController);
-
-      setFileUploadQueueState((currentQueue) => [...currentQueue, nextUpload]);
-
-      void (async () => {
-        try {
-          const fileSegment = await uploadWorkbenchFile(
-            activeConversation.id,
-            file,
-            {
-              onProgress(progress) {
-                setFileUploadQueueState((currentQueue) =>
-                  currentQueue.map((item) =>
-                    item.id === uploadId
-                      ? {
-                          ...item,
-                          progress: Math.max(
-                            item.progress,
-                            Math.min(100, progress),
-                          ),
-                        }
-                      : item,
-                  ),
-                );
+            composerRef.current?.dispatchCommand(
+              UPDATE_COMPOSER_IMAGE_COMMAND,
+              {
+                clientId: previousSegment.clientId,
+                fileId: nextSegment.fileId,
+                localUrl: nextSegment.localUrl ?? previousSegment.localUrl,
+                previousSrc:
+                  previousSegment.url ?? previousSegment.localUrl ?? "",
+                src: nextSegment.url,
               },
-              signal: abortController.signal,
-            },
-          );
+            );
+          },
+        });
 
-          if (
-            !fileUploadQueueRef.current.some((item) => item.id === uploadId)
-          ) {
-            return;
-          }
+        if (
+          !isMountedRef.current ||
+          activeConversationIdRef.current !== sendConversationId
+        ) {
+          return;
+        }
 
-          setFileUploadQueueState((currentQueue) =>
-            currentQueue.map((item) =>
-              item.id === uploadId
-                ? { ...item, progress: 100, status: "sending" }
-                : item,
+        if (!result.ok) {
+          setSendFailureDialog(
+            getSendFailureDialogCopy(
+              result.reason,
+              result.errorCode,
+              result.errorMessage,
             ),
           );
-
-          const result = await sendAgentMessageSegments([fileSegment]);
-
-          if (!isMountedRef.current) {
-            return;
-          }
-
-          if (!result.ok) {
-            setSendFailureDialog(
-              getSendFailureDialogCopy(
-                result.reason,
-                result.errorCode,
-                result.errorMessage,
-              ),
-            );
-            composerRef.current?.focus();
-            return;
-          }
-        } catch (error) {
-          if (!isMountedRef.current) {
-            return;
-          }
-
-          if (fileUploadQueueRef.current.some((item) => item.id === uploadId)) {
-            setSendFailureDialog(
-              getSendFailureDialogCopy(
-                "file-upload",
-                getSendErrorCode(error),
-                getSendErrorMessage(error),
-              ),
-            );
-            composerRef.current?.focus();
-          }
-        } finally {
-          removeFileUpload(uploadId);
+          composerRef.current?.focus();
+          return;
         }
-      })();
-    }
-  };
 
-  const handleDownloadMessageFile = (message: ChatMessage) => {
-    void startMessageFileDownload(message, {
-      activeConversationId: activeConversation?.id,
-      downloadMessageFile,
-      isMounted: () => isMountedRef.current,
-      onTransferError: () => {
-        toast.warning("下载失败，请稍后重试");
-      },
-      updateDownloadContent: updateMessageDownloadContent,
-    });
-  };
+        clearComposer({
+          keepQuote: quotedMessage !== null && !result.didConsumeQuote,
+        });
+        scrollMessageViewportToBottom();
+        void requestActiveConversationRead({ force: true });
+      } finally {
+        isSendingDraftRef.current = false;
+        if (isMountedRef.current) {
+          shouldRestoreComposerFocusRef.current =
+            activeConversationIdRef.current === sendConversationId;
+          setIsSendingDraft(false);
+        }
+      }
+    },
+    [
+      canSendMessage,
+      clearComposer,
+      quotedMessage,
+      requestActiveConversationRead,
+      resolvedActiveConversationId,
+      scrollMessageViewportToBottom,
+      sendAgentMessageSegments,
+    ],
+  );
 
-  const handleVoicePlaybackReady = (
-    message: ChatMessage,
-    payload: { playbackUrl: string },
-  ) => {
-    if (message.content.type !== "voice" || !message.seq) {
-      return;
-    }
+  const removeFileUpload = useCallback(
+    (uploadId: string) => {
+      fileUploadAbortControllersRef.current.delete(uploadId);
+      setFileUploadQueueState((currentQueue) =>
+        currentQueue.filter((item) => item.id !== uploadId),
+      );
+    },
+    [setFileUploadQueueState],
+  );
 
-    void confirmVoicePlaybackReady(
-      message.conversationId,
-      message.uiMessageKey,
-      payload.playbackUrl,
-    );
-  };
+  const handleCancelFileUpload = useCallback(
+    (uploadId: string) => {
+      fileUploadAbortControllersRef.current.get(uploadId)?.abort();
+      removeFileUpload(uploadId);
+    },
+    [removeFileUpload],
+  );
 
-  const handleTranscribeVoice = async (message: ChatMessage) => {
-    if (message.content.type !== "voice") {
-      throw new Error("当前消息不支持转文字");
-    }
+  const handleFileSelect = useCallback(
+    (fileList: FileList | File[] | null) => {
+      const files = Array.from(fileList ?? []);
 
-    return transcribeVoiceMessage(message.conversationId, message.uiMessageKey);
-  };
+      if (files.length === 0) {
+        return;
+      }
+
+      if (!resolvedActiveConversationId || !canSendMessage) {
+        setSendFailureDialog(
+          getSendFailureDialogCopy("unavailable", "UNAVAILABLE"),
+        );
+        return;
+      }
+
+      for (const file of files) {
+        if (!isSupportedComposerFile(file)) {
+          toast.warning("仅支持 PDF、Excel、Word、TXT、PPT 文件");
+          continue;
+        }
+
+        if (!isComposerFileSizeAllowed(file)) {
+          setSendFailureDialog(getOversizedComposerFileDialogCopy());
+          continue;
+        }
+
+        const uploadId = `file-upload-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+        const nextUpload: FileUploadQueueItem = {
+          fileName: file.name,
+          id: uploadId,
+          progress: 1,
+          status: "uploading",
+        };
+        const abortController = new AbortController();
+        fileUploadAbortControllersRef.current.set(uploadId, abortController);
+
+        setFileUploadQueueState((currentQueue) => [
+          ...currentQueue,
+          nextUpload,
+        ]);
+
+        void (async () => {
+          try {
+            const fileSegment = await uploadWorkbenchFile(
+              resolvedActiveConversationId,
+              file,
+              {
+                onProgress(progress) {
+                  setFileUploadQueueState((currentQueue) =>
+                    currentQueue.map((item) =>
+                      item.id === uploadId
+                        ? {
+                            ...item,
+                            progress: Math.max(
+                              item.progress,
+                              Math.min(100, progress),
+                            ),
+                          }
+                        : item,
+                    ),
+                  );
+                },
+                signal: abortController.signal,
+              },
+            );
+
+            if (
+              !fileUploadQueueRef.current.some((item) => item.id === uploadId)
+            ) {
+              return;
+            }
+
+            setFileUploadQueueState((currentQueue) =>
+              currentQueue.map((item) =>
+                item.id === uploadId
+                  ? { ...item, progress: 100, status: "sending" }
+                  : item,
+              ),
+            );
+
+            const result = await sendAgentMessageSegments([fileSegment]);
+
+            if (!isMountedRef.current) {
+              return;
+            }
+
+            if (!result.ok) {
+              setSendFailureDialog(
+                getSendFailureDialogCopy(
+                  result.reason,
+                  result.errorCode,
+                  result.errorMessage,
+                ),
+              );
+              composerRef.current?.focus();
+              return;
+            }
+          } catch (error) {
+            if (!isMountedRef.current) {
+              return;
+            }
+
+            if (
+              fileUploadQueueRef.current.some((item) => item.id === uploadId)
+            ) {
+              setSendFailureDialog(
+                getSendFailureDialogCopy(
+                  "file-upload",
+                  getSendErrorCode(error),
+                  getSendErrorMessage(error),
+                ),
+              );
+              composerRef.current?.focus();
+            }
+          } finally {
+            removeFileUpload(uploadId);
+          }
+        })();
+      }
+    },
+    [
+      canSendMessage,
+      removeFileUpload,
+      resolvedActiveConversationId,
+      sendAgentMessageSegments,
+      setFileUploadQueueState,
+    ],
+  );
+
+  const handleDownloadMessageFile = useCallback(
+    (message: ChatMessage) => {
+      void startMessageFileDownload(message, {
+        activeConversationId: resolvedActiveConversationId,
+        downloadMessageFile,
+        isMounted: () => isMountedRef.current,
+        onTransferError: () => {
+          toast.warning("下载失败，请稍后重试");
+        },
+        updateDownloadContent: updateMessageDownloadContent,
+      });
+    },
+    [resolvedActiveConversationId, updateMessageDownloadContent],
+  );
+
+  const handleVoicePlaybackReady = useCallback(
+    (message: ChatMessage, payload: { playbackUrl: string }) => {
+      if (message.content.type !== "voice" || !message.seq) {
+        return;
+      }
+
+      void confirmVoicePlaybackReady(
+        message.conversationId,
+        message.uiMessageKey,
+        payload.playbackUrl,
+      );
+    },
+    [confirmVoicePlaybackReady],
+  );
+
+  const handleTranscribeVoice = useCallback(
+    async (message: ChatMessage) => {
+      if (message.content.type !== "voice") {
+        throw new Error("当前消息不支持转文字");
+      }
+
+      return transcribeVoiceMessage(
+        message.conversationId,
+        message.uiMessageKey,
+      );
+    },
+    [transcribeVoiceMessage],
+  );
 
   const handleSelectQuickReply = (quickReply: WorkbenchQuickReplyDto) => {
     const result = resolveQuickReplyInsert(quickReply, canSendMessage);
@@ -2282,27 +2347,30 @@ function ChatWorkbenchContent({
     [activeMode, setActiveMode],
   );
 
-  const handleOpenQuotedMessage = (quoteMsgId: string) => {
-    const quoteSeq = Number(quoteMsgId);
-    const originalMessage = Number.isSafeInteger(quoteSeq)
-      ? activeMessages.find((message) => message.seq === quoteSeq)
-      : undefined;
-    const viewport = messageViewportRef.current;
-    const anchor =
-      viewport && originalMessage
-        ? findViewportAnchor(viewport, originalMessage.uiMessageKey)
-        : null;
+  const handleOpenQuotedMessage = useCallback(
+    (quoteMsgId: string) => {
+      const quoteSeq = Number(quoteMsgId);
+      const originalMessage = Number.isSafeInteger(quoteSeq)
+        ? activeMessagesRef.current.find((message) => message.seq === quoteSeq)
+        : undefined;
+      const viewport = messageViewportRef.current;
+      const anchor =
+        viewport && originalMessage
+          ? findViewportAnchor(viewport, originalMessage.uiMessageKey)
+          : null;
 
-    if (!anchor) {
-      toast.warning("当前未加载原始消息");
-      return;
-    }
+      if (!anchor) {
+        toast.warning("当前未加载原始消息");
+        return;
+      }
 
-    anchor.scrollIntoView({
-      behavior: "smooth",
-      block: "start",
-    });
-  };
+      anchor.scrollIntoView({
+        behavior: "smooth",
+        block: "start",
+      });
+    },
+    [],
+  );
 
   const handleViewHandoffMessage = () => {
     const handoffMsgId = activeConversation?.handoffMsgId;
@@ -2339,7 +2407,7 @@ function ChatWorkbenchContent({
     }
   };
 
-  const handleQuoteMessage = (message: ChatMessage) => {
+  const handleQuoteMessage = useCallback((message: ChatMessage) => {
     if (
       message.isRevoked ||
       message.content.type === "voice-call" ||
@@ -2356,41 +2424,47 @@ function ChatWorkbenchContent({
 
     setQuotedMessage(quotePreview);
     composerRef.current?.focus();
-  };
+  }, []);
 
-  const handleMentionMessage = (message: ChatMessage) => {
-    if (
-      !message.isGroupConversation ||
-      message.isOwnMessage ||
-      !message.sender.groupMemberId
-    ) {
-      return;
-    }
+  const handleMentionMessage = useCallback(
+    (message: ChatMessage) => {
+      if (
+        !message.isGroupConversation ||
+        message.isOwnMessage ||
+        !message.sender.groupMemberId
+      ) {
+        return;
+      }
 
-    const activeGroupMember = findGroupMemberForMention(
-      activeGroupMembers,
-      message.sender.groupMemberId,
-    );
+      const activeGroupMember = findGroupMemberForMention(
+        activeGroupMembersRef.current,
+        message.sender.groupMemberId,
+      );
 
-    if (!activeGroupMember) {
-      const retryDialogState = {
-        conversationId: message.conversationId,
-        displayName: message.senderDisplayName || message.sender.name,
-        groupMemberId: message.sender.groupMemberId,
-        refreshedOnce: false,
-      };
+      if (!activeGroupMember) {
+        const retryDialogState = {
+          conversationId: message.conversationId,
+          displayName: message.senderDisplayName || message.sender.name,
+          groupMemberId: message.sender.groupMemberId,
+          refreshedOnce: false,
+        };
 
-      mentionRetryDialogStateRef.current = retryDialogState;
-      setMentionRetryDialogState(retryDialogState);
-      return;
-    }
+        mentionRetryDialogStateRef.current = retryDialogState;
+        setMentionRetryDialogState(retryDialogState);
+        return;
+      }
 
-    composerRef.current?.dispatchCommand(INSERT_COMPOSER_MENTION_COMMAND, {
-      displayName: activeGroupMember.displayName,
-      memberId: activeGroupMember.id,
-    });
-    composerRef.current?.focus();
-  };
+      composerRef.current?.dispatchCommand(INSERT_COMPOSER_MENTION_COMMAND, {
+        displayName: activeGroupMember.displayName,
+        memberId: activeGroupMember.id,
+      });
+      composerRef.current?.focus();
+    },
+    [],
+  );
+  const handleClearQuotedMessage = useCallback(() => {
+    setQuotedMessage(null);
+  }, []);
 
   const handleRetryMentionTarget = async () => {
     const dialogState = mentionRetryDialogState;
@@ -2613,7 +2687,7 @@ function ChatWorkbenchContent({
         void handleMarkHandoffHandled();
       }}
       onViewHandoffMessage={handleViewHandoffMessage}
-      onClearQuotedMessage={() => setQuotedMessage(null)}
+      onClearQuotedMessage={handleClearQuotedMessage}
       onCollectMaterial={handleCollectMaterial}
       onEnterMultiSelectMode={messageForward.enterMultiSelectMode}
       onForwardMessage={messageForward.handleForwardMessage}
@@ -2674,9 +2748,7 @@ function ChatWorkbenchContent({
       onHistorySetSenderId={(senderId) => {
         void setHistoryPanelSenderId(senderId);
       }}
-      onLoadMoreCollectedExpressions={() => {
-        void handleLoadMoreCollectedExpressions();
-      }}
+      onLoadMoreCollectedExpressions={handleLoadMoreCollectedExpressions}
       onOpenCollectedExpressions={handleOpenCollectedExpressions}
       onRefreshGroupMembers={() => {
         void loadActiveGroupMembers({ force: true });

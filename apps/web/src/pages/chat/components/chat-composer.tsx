@@ -1,4 +1,5 @@
 import {
+  memo,
   type DragEvent as ReactDragEvent,
   type ReactElement,
   type RefObject,
@@ -194,7 +195,7 @@ function createComposerImageClientId() {
   return `composer-image-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
-export function ChatComposer({
+export const ChatComposer = memo(function ChatComposer({
   canConfigureSeatAIHosting,
   canConfigureSeatSemiAuto,
   canToggleConversationAIHosting,
@@ -1462,7 +1463,7 @@ export function ChatComposer({
     </div>
     </TooltipProvider>
   );
-}
+});
 
 function AgentDialogContent({
   accountAvatarUrl,

@@ -1,6 +1,6 @@
 import { act, fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { useLayoutEffect } from "react";
+import { memo, useLayoutEffect } from "react";
 import { describe, expect, it, vi } from "vitest";
 import { toast } from "sonner";
 import type { ChatMessage, ImageMessageContent } from "@/pages/chat/chat-types";
@@ -11,6 +11,7 @@ import {
   ConversationImageGalleryProvider,
   GALLERY_RADIUS,
 } from "@/pages/chat/components/message/conversation-image-gallery";
+import { useConversationImageGallery } from "@/pages/chat/components/message/conversation-image-gallery-context";
 import {
   getPreviewMessageImageUrl,
   getOptimizedMessageImageUrl,
@@ -1554,6 +1555,58 @@ describe("Conversation image gallery", () => {
       "src",
       "https://cdn.example.com/chat/photo-1.jpg",
     );
+  });
+
+  it("keeps existing image consumers idle on append and opens newly appended images", async () => {
+    const user = userEvent.setup();
+    const renderedImages = vi.fn();
+    const GalleryTrigger = memo(function GalleryTrigger({ id }: { id: string }) {
+      const gallery = useConversationImageGallery();
+      renderedImages(id);
+      return <button onClick={() => gallery?.openGallery(id)}>查看图片 {id}</button>;
+    });
+    const firstImage = createImageMessage({
+      alt: "第一张",
+      imageUrl: "https://cdn.example.com/chat/photo-1.jpg",
+      type: "image",
+    });
+    const secondImage = createImageMessage({
+      alt: "第二张",
+      imageUrl: "https://cdn.example.com/chat/photo-2.jpg",
+      type: "image",
+    }, "msg-image-2");
+    const firstImages = [firstImage];
+    const appendedImages = [firstImage, secondImage];
+    const { rerender } = render(
+      <ConversationImageGalleryProvider conversationId="conv-image" messages={firstImages}>
+        {firstImages.map((image) => (
+          <GalleryTrigger id={image.uiMessageKey} key={image.uiMessageKey} />
+        ))}
+      </ConversationImageGalleryProvider>,
+    );
+
+    rerender(
+      <ConversationImageGalleryProvider
+        conversationId="conv-image"
+        messages={appendedImages}
+      >
+        {appendedImages.map((image) => (
+          <GalleryTrigger id={image.uiMessageKey} key={image.uiMessageKey} />
+        ))}
+      </ConversationImageGalleryProvider>,
+    );
+
+    expect(renderedImages.mock.calls.flat()).toEqual([
+      firstImage.uiMessageKey,
+      secondImage.uiMessageKey,
+    ]);
+
+    await user.click(screen.getByRole("button", { name: `查看图片 ${secondImage.uiMessageKey}` }));
+    expect(screen.getByTestId("image-preview-full")).toHaveAttribute(
+      "src",
+      "https://cdn.example.com/chat/photo-2.jpg",
+    );
+    expect(screen.getByTestId("image-preview-gallery-counter")).toHaveTextContent("2 / 2");
   });
 
   it("shows an error state when the preview image fails to load", async () => {

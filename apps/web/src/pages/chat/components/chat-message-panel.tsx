@@ -1,5 +1,7 @@
 import {
+  memo,
   startTransition,
+  useCallback,
   useMemo,
   type RefObject,
 } from "react";
@@ -68,7 +70,7 @@ type ChatMessagePanelProps = {
   messageViewportRef: RefObject<HTMLDivElement | null>;
 };
 
-export function ChatMessagePanel({
+export const ChatMessagePanel = memo(function ChatMessagePanel({
   activeHistoryStatus,
   canCollectMaterialActions = true,
   canUseMessageActions = true,
@@ -130,25 +132,36 @@ export function ChatMessagePanel({
       refreshInitializingMessage: state.refreshInitializingMessage,
     })),
   );
-  const handleRefreshInitializingMessage = async (message: Message) => {
-    if (!isValidMessageSeq(message.seq)) {
-      toast.error("消息刷新失败");
-      return;
-    }
+  const handleRefreshInitializingMessage = useCallback(
+    async (message: Message) => {
+      if (!isValidMessageSeq(message.seq)) {
+        toast.error("消息刷新失败");
+        return;
+      }
 
-    try {
-      const result = await refreshInitializingMessage(
-        message.conversationId,
-        message.seq,
-      );
+      try {
+        const result = await refreshInitializingMessage(
+          message.conversationId,
+          message.seq,
+        );
 
-      if (result === "missing") {
+        if (result === "missing") {
+          toast.error("消息刷新失败");
+        }
+      } catch {
         toast.error("消息刷新失败");
       }
-    } catch {
-      toast.error("消息刷新失败");
-    }
-  };
+    },
+    [refreshInitializingMessage],
+  );
+  const handleRetryMessage = useCallback(
+    (uiMessageKey: string) => {
+      startTransition(() => {
+        void onRetryMessage(uiMessageKey);
+      });
+    },
+    [onRetryMessage],
+  );
   const supportsSmartReplyUi =
     (conversationMode === "single" || conversationMode === "group") &&
     smartReplyCanDisplay;
@@ -258,11 +271,7 @@ export function ChatMessagePanel({
                 onRevokeMessage={onRevokeMessage}
                 onTranscribeVoice={onTranscribeVoice}
                 onVoicePlaybackReady={onVoicePlaybackReady}
-                onRetryMessage={(uiMessageKey) => {
-                  startTransition(() => {
-                    void onRetryMessage(uiMessageKey);
-                  });
-                }}
+                onRetryMessage={handleRetryMessage}
                 onLoadSendFailReason={onLoadSendFailReason}
                 retryingMessageIds={retryingMessageIds}
                 smartReplyAutoPendingByMessageId={
@@ -297,4 +306,4 @@ export function ChatMessagePanel({
       ) : null}
     </section>
   );
-}
+});

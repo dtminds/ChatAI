@@ -854,6 +854,258 @@ describe("MySQL workflow runtime repository contract", () => {
     ]);
   });
 
+  describe("unavailable Workflow cancellation locks", () => {
+    async function createRun(suffix: string, workflowId = "31") {
+      if (!database) throw new Error("MySQL contract database is not initialized");
+      const repository = new MysqlWorkflowRuntimeRepository(database);
+      const created = await repository.createRunWithInitialTask({
+        activeRunLimit: 10_000,
+        context: {},
+        entryEventId: `cancellation-lock-event-${suffix}`,
+        entryPolicy: { mode: "never" },
+        initialNodeId: "start",
+        initialNodeKind: "start",
+        occurredAt: new Date("2099-01-01T00:00:00+08:00"),
+        revision: 1,
+        shardId: 0,
+        subjectId: `cancellation-lock-subject-${suffix}`,
+        subjectType: workflowId === "32" ? "wecom_contact" : "chatai_contact",
+        uid: 9,
+        workflowId,
+        workflowType: workflowId === "32" ? "wecom_sop" : "chatai_sop",
+      });
+      if (created.kind !== "success") throw new Error(`Run creation failed: ${created.kind}`);
+      return { ...created, repository };
+    }
+
+    it.each(["active", "paused"] as const)("preserves %s Runs when another transaction holds a Definition share lock", async status => {
+      if (!database || !workflowPool) throw new Error("MySQL contract database is not initialized");
+      const { repository, run, task } = await createRun(status);
+      await database.updateTable("xy_wap_embed_workflow_definition")
+        .set({ runtime_status: status }).where("id", "=", "31").executeTakeFirstOrThrow();
+      const reader = await workflowPool.promise().getConnection();
+      try {
+        await reader.beginTransaction();
+        await reader.query("SELECT id FROM xy_wap_embed_workflow_definition WHERE uid = 9 AND id = 31 FOR SHARE");
+
+        await expect(repository.cancelUnavailableWorkflowRuns({ limit: 100 }))
+          .resolves.toEqual({ cancelled: 0, hasMore: false, lastRunId: null });
+        await expect(repository.findRun(9, run.id)).resolves.toMatchObject({
+          status: "queued",
+          terminalReason: null,
+        });
+        await expect(repository.findTask(9, task.id)).resolves.toMatchObject({ status: "pending" });
+        await expect(database.selectFrom("xy_wap_embed_workflow_capacity_guard")
+          .select("active_run_count").where("uid", "=", 9).executeTakeFirstOrThrow())
+          .resolves.toEqual({ active_run_count: 1 });
+      } finally {
+        await reader.rollback();
+        reader.release();
+      }
+    });
+
+    it("cancels a stopped Workflow while an earlier active Definition is being renamed", async () => {
+      if (!database || !workflowPool) throw new Error("MySQL contract database is not initialized");
+      const { repository, run: activeRun } = await createRun("active-writer");
+      const { run: stoppedRun } = await createRun("unrelated-stopped", "32");
+      await database.updateTable("xy_wap_embed_workflow_definition")
+        .set({ runtime_status: "stopped" }).where("id", "=", "32").execute();
+      const writer = await workflowPool.promise().getConnection();
+      try {
+        await writer.beginTransaction();
+        await writer.query("UPDATE xy_wap_embed_workflow_definition SET name = 'renaming' WHERE id = 31");
+        await expect(repository.cancelUnavailableWorkflowRuns({ limit: 100 }))
+          .resolves.toEqual({ cancelled: 1, hasMore: false, lastRunId: stoppedRun.id });
+        await expect(repository.findRun(9, activeRun.id)).resolves.toMatchObject({ status: "queued" });
+        await expect(repository.findRun(9, stoppedRun.id)).resolves.toMatchObject({ status: "cancelled" });
+      } finally {
+        await writer.rollback();
+        writer.release();
+      }
+    });
+
+    it.each(["commit", "rollback"] as const)("skips a locked cancellation candidate and respects the writer's %s on the next sweep", async outcome => {
+      if (!database || !workflowPool) throw new Error("MySQL contract database is not initialized");
+      const { repository, run, task } = await createRun(outcome);
+      const { run: otherRun } = await createRun(`other-${outcome}`, "32");
+      await database.updateTable("xy_wap_embed_workflow_definition")
+        .set({ runtime_status: "inactive" }).where("id", "in", ["31", "32"]).execute();
+      const writer = await workflowPool.promise().getConnection();
+      try {
+        await writer.beginTransaction();
+        await writer.query("UPDATE xy_wap_embed_workflow_definition SET runtime_status = 'active' WHERE id = 31");
+        await expect(repository.cancelUnavailableWorkflowRuns({ limit: 1 }))
+          .resolves.toEqual({ cancelled: 0, hasMore: true, lastRunId: run.id });
+        await expect(repository.findRun(9, run.id)).resolves.toMatchObject({ status: "queued" });
+        await expect(repository.findTask(9, task.id)).resolves.toMatchObject({ status: "pending" });
+        await expect(repository.cancelUnavailableWorkflowRuns({ limit: 1, afterRunId: run.id }))
+          .resolves.toEqual({ cancelled: 1, hasMore: false, lastRunId: otherRun.id });
+        if (outcome === "commit") await writer.commit();
+        else await writer.rollback();
+        await expect(repository.cancelUnavailableWorkflowRuns({ limit: 100 }))
+          .resolves.toMatchObject({ cancelled: outcome === "rollback" ? 1 : 0 });
+        await expect(repository.findRun(9, run.id)).resolves.toMatchObject({
+          status: outcome === "rollback" ? "cancelled" : "queued",
+          terminalReason: outcome === "rollback" ? "workflow_stopped" : null,
+        });
+        await expect(database.selectFrom("xy_wap_embed_workflow_capacity_guard")
+          .select("active_run_count").where("uid", "=", 9).executeTakeFirstOrThrow())
+          .resolves.toEqual({ active_run_count: outcome === "rollback" ? 0 : 1 });
+      } finally {
+        await writer.rollback();
+        writer.release();
+      }
+    });
+
+    it.each(["active", "paused"] as const)("preserves candidates whose Definition becomes %s after discovery", async status => {
+      if (!database) throw new Error("MySQL contract database is not initialized");
+      const contractDatabase = database;
+      const { run, task } = await createRun(`changed-${status}`);
+      await database.updateTable("xy_wap_embed_workflow_definition")
+        .set({ runtime_status: "inactive" }).where("id", "=", "31").execute();
+      let discovered = false;
+      // Commit the state change after the real candidate SELECT, before its result is consumed.
+      const repository = new MysqlWorkflowRuntimeRepository(database.withPlugin({
+        transformQuery: args => args.node,
+        async transformResult(args) {
+          if (!discovered) {
+            discovered = true;
+            await contractDatabase.updateTable("xy_wap_embed_workflow_definition")
+              .set({ runtime_status: status }).where("id", "=", "31").execute();
+          }
+          return args.result;
+        },
+      }));
+      await expect(repository.cancelUnavailableWorkflowRuns({ limit: 100 }))
+        .resolves.toEqual({ cancelled: 0, hasMore: false, lastRunId: run.id });
+      await expect(repository.findRun(9, run.id)).resolves.toMatchObject({ status: "queued" });
+      await expect(repository.findTask(9, task.id)).resolves.toMatchObject({ status: "pending" });
+      await expect(database.selectFrom("xy_wap_embed_workflow_capacity_guard")
+        .select("active_run_count").where("uid", "=", 9).executeTakeFirstOrThrow())
+        .resolves.toEqual({ active_run_count: 1 });
+    });
+
+    it("does not overwrite a Run completed after candidate discovery", async () => {
+      if (!database) throw new Error("MySQL contract database is not initialized");
+      const contractDatabase = database;
+      const { run, task } = await createRun("completed-after-scan");
+      await database.updateTable("xy_wap_embed_workflow_definition")
+        .set({ runtime_status: "inactive" }).where("id", "=", "31").execute();
+      let discovered = false;
+      const repository = new MysqlWorkflowRuntimeRepository(database.withPlugin({
+        transformQuery: args => args.node,
+        async transformResult(args) {
+          if (!discovered) {
+            discovered = true;
+            await contractDatabase.transaction().execute(async trx => {
+              await trx.updateTable("xy_wap_embed_workflow_run")
+                .set({ status: "completed", completed_at: new Date() }).where("id", "=", run.id).execute();
+              await trx.updateTable("xy_wap_embed_workflow_task")
+                .set({ status: "completed" }).where("id", "=", task.id).execute();
+              await trx.updateTable("xy_wap_embed_workflow_capacity_guard")
+                .set({ active_run_count: 0 }).where("uid", "=", 9).execute();
+            });
+          }
+          return args.result;
+        },
+      }));
+      await expect(repository.cancelUnavailableWorkflowRuns({ limit: 100 }))
+        .resolves.toEqual({ cancelled: 0, hasMore: false, lastRunId: run.id });
+      await expect(repository.findRun(9, run.id)).resolves.toMatchObject({ status: "completed", terminalReason: null });
+      await expect(repository.findTask(9, task.id)).resolves.toMatchObject({ status: "completed" });
+      await expect(database.selectFrom("xy_wap_embed_workflow_capacity_guard")
+        .select("active_run_count").where("uid", "=", 9).executeTakeFirstOrThrow())
+        .resolves.toEqual({ active_run_count: 0 });
+    });
+
+    it("releases capacity once when two sweepers discover the same Run", async () => {
+      if (!database) throw new Error("MySQL contract database is not initialized");
+      const { run, task } = await createRun("concurrent-sweeps");
+      await database.updateTable("xy_wap_embed_workflow_definition")
+        .set({ runtime_status: "inactive" }).where("id", "=", "31").execute();
+      const discovered = Promise.withResolvers<void>();
+      let readers = 0;
+      const repositories = [0, 1].map(() => {
+        let firstQuery = true;
+        return new MysqlWorkflowRuntimeRepository(database!.withPlugin({
+          transformQuery: args => args.node,
+          async transformResult(args) {
+            if (firstQuery) {
+              firstQuery = false;
+              readers += 1;
+              if (readers === 2) discovered.resolve();
+              await discovered.promise;
+            }
+            return args.result;
+          },
+        }));
+      });
+      const outcomes = await Promise.allSettled(repositories.map(repository =>
+        repository.cancelUnavailableWorkflowRuns({ limit: 100 }).catch(error => {
+          discovered.resolve();
+          throw error;
+        })));
+      const results = outcomes.map(outcome => {
+        if (outcome.status === "rejected") throw outcome.reason;
+        return outcome.value;
+      });
+      expect(results.reduce((total, result) => total + result.cancelled, 0)).toBe(1);
+      await expect(repositories[0]!.findRun(9, run.id)).resolves.toMatchObject({ status: "cancelled" });
+      await expect(repositories[0]!.findTask(9, task.id)).resolves.toMatchObject({ status: "cancelled" });
+      await expect(database.selectFrom("xy_wap_embed_workflow_capacity_guard")
+        .select("active_run_count").where("uid", "=", 9).executeTakeFirstOrThrow())
+        .resolves.toEqual({ active_run_count: 0 });
+    });
+
+    it.each(["inactive", "stopped", "deleted", "missing"] as const)("still cancels Runs for a genuinely %s Definition", async state => {
+      if (!database) throw new Error("MySQL contract database is not initialized");
+      const { repository, run, task } = await createRun(state);
+      if (state === "missing") {
+        await database.deleteFrom("xy_wap_embed_workflow_definition")
+          .where("id", "=", "31").executeTakeFirstOrThrow();
+      } else {
+        await database.updateTable("xy_wap_embed_workflow_definition").set({
+          biz_status: state === "deleted" ? 0 : 1,
+          runtime_status: state === "deleted" ? "active" : state,
+        }).where("id", "=", "31").executeTakeFirstOrThrow();
+      }
+
+      await expect(repository.cancelUnavailableWorkflowRuns({ limit: 100 }))
+        .resolves.toEqual({ cancelled: 1, hasMore: false, lastRunId: run.id });
+      await expect(repository.findRun(9, run.id)).resolves.toMatchObject({
+        status: "cancelled",
+        terminalReason: "workflow_stopped",
+      });
+      await expect(repository.findTask(9, task.id)).resolves.toMatchObject({ status: "cancelled" });
+      await expect(database.selectFrom("xy_wap_embed_workflow_capacity_guard")
+        .select("active_run_count").where("uid", "=", 9).executeTakeFirstOrThrow())
+        .resolves.toEqual({ active_run_count: 0 });
+    });
+
+    it("skips a locked Run and cancels it on a later sweep", async () => {
+      if (!database || !workflowPool) throw new Error("MySQL contract database is not initialized");
+      const { repository, run: lockedRun } = await createRun("locked");
+      const { run: unlockedRun } = await createRun("unlocked");
+      await database.updateTable("xy_wap_embed_workflow_definition")
+        .set({ runtime_status: "stopped" }).where("id", "=", "31").executeTakeFirstOrThrow();
+      const holder = await workflowPool.promise().getConnection();
+      try {
+        await holder.beginTransaction();
+        await holder.query("SELECT id FROM xy_wap_embed_workflow_run WHERE id = ? FOR UPDATE", [lockedRun.id]);
+        await expect(repository.cancelUnavailableWorkflowRuns({ limit: 1 }))
+          .resolves.toEqual({ cancelled: 0, hasMore: true, lastRunId: lockedRun.id });
+        await expect(repository.cancelUnavailableWorkflowRuns({ limit: 1, afterRunId: lockedRun.id }))
+          .resolves.toEqual({ cancelled: 1, hasMore: false, lastRunId: unlockedRun.id });
+        await expect(repository.findRun(9, lockedRun.id)).resolves.toMatchObject({ status: "queued" });
+      } finally {
+        await holder.rollback();
+        holder.release();
+      }
+      await expect(repository.cancelUnavailableWorkflowRuns({ limit: 1 }))
+        .resolves.toEqual({ cancelled: 1, hasMore: false, lastRunId: lockedRun.id });
+    });
+  });
+
   it("maintains Workflow totals and daily terminal outcomes without double-counting", async () => {
     if (!database) throw new Error("MySQL contract database is not initialized");
     const repository = new MysqlWorkflowRuntimeRepository(database);

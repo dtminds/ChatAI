@@ -2796,6 +2796,7 @@ function createUnavailableRunScanDbMock() {
     wheres: [] as unknown[][],
     selectFrom() {
       const builder = {
+        forShare() { return builder; },
         forUpdate() { return builder; },
         leftJoin() { return builder; },
         limit() { return builder; },

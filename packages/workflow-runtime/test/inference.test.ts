@@ -1,4 +1,5 @@
 import type { WorkflowExecutionNode } from "@chatai/contracts";
+import { VOLCENGINE_ARK_WORKFLOW_AI_INTENT_MODEL } from "@chatai/llm";
 import { describe, expect, it } from "vitest";
 import {
   createWorkflowAiIntentInferenceRequest,
@@ -185,7 +186,10 @@ describe("workflow inference payloads", () => {
         },
         { content: [{ text: "退款什么时候到账", type: "text" }], role: "user" },
       ],
-      modelTarget: { endpointId: "ep-20260227145914-nxcmn", kind: "endpoint" },
+      modelTarget: {
+        endpointId: VOLCENGINE_ARK_WORKFLOW_AI_INTENT_MODEL,
+        kind: "endpoint",
+      },
       reasoningEffort: "low",
       responseFormat: {
         fields: [

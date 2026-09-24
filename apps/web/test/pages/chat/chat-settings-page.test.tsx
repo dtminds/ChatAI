@@ -1056,9 +1056,15 @@ describe("Chat settings pages", () => {
     fireEvent.mouseMove(document, {
       clientY: 20,
     });
+    vi.useFakeTimers();
+    // dnd-kit keeps a capturing document click listener for 50ms after drag end.
     fireEvent.mouseUp(document, {
       clientY: 20,
     });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(50);
+    });
+    vi.useRealTimers();
     rectSpies.forEach((spy) => spy.mockRestore());
     await waitFor(() => {
       expect(mock.history.put.some((request) => request.url === "/server/settings/sidebar-items/sort")).toBe(
@@ -1074,7 +1080,7 @@ describe("Chat settings pages", () => {
 
     await user.click(screen.getByRole("button", { name: "打开 客户详情 操作菜单" }));
     await user.click(screen.getByRole("menuitem", { name: "删除" }));
-    expect(screen.getByRole("alertdialog", { name: "删除侧边栏页面" })).toBeInTheDocument();
+    expect(await screen.findByRole("alertdialog", { name: "删除侧边栏页面" })).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "确认删除" }));
     await waitFor(() => {
       expect(mock.history.delete[0]?.url).toBe("/server/settings/sidebar-items/203");
@@ -1402,7 +1408,7 @@ describe("Chat settings pages", () => {
 
     await user.click(screen.getByRole("button", { name: "打开 客服二号 操作菜单" }));
     await user.click(screen.getByRole("menuitem", { name: "删除" }));
-    expect(screen.getByRole("alertdialog", { name: "删除子账号" })).toBeInTheDocument();
+    expect(await screen.findByRole("alertdialog", { name: "删除子账号" })).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "确认删除" }));
     await waitFor(() => {
       expect(mock.history.delete[0]?.url).toBe("/server/settings/sub-accounts/12");

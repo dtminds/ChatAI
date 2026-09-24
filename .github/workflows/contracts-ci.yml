@@ -25,7 +25,7 @@ permissions:
 jobs:
   changes:
     name: Detect Contracts Changes
-    runs-on: ubuntu-latest
+    runs-on: ${{ vars.CI_MAC_RUNNER || 'mac-mini' }}
     outputs:
       contracts: ${{ steps.filter.outputs.contracts }}
     steps:
@@ -51,22 +51,22 @@ jobs:
     name: Contracts
     needs: changes
     if: github.event_name == 'workflow_dispatch' || needs.changes.outputs.contracts == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ${{ vars.CI_MAC_RUNNER || 'mac-mini' }}
     steps:
       - name: Checkout
         uses: actions/checkout@v7
-
-      - name: Enable pnpm
-        run: corepack enable
 
       - name: Setup Node.js
         uses: actions/setup-node@v7
         with:
           node-version: 24
-          cache: pnpm
+          cache: ${{ vars.CI_MAC_RUNNER == 'ubuntu-latest' && 'pnpm' || '' }}
+
+      - name: Enable pnpm
+        run: corepack enable
 
       - name: Install dependencies
-        run: pnpm install --frozen-lockfile
+        run: pnpm install --filter @chatai/contracts... --frozen-lockfile
 
       - name: Typecheck contracts
         run: pnpm contracts:typecheck

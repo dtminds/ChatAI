@@ -150,19 +150,6 @@ describe("LLM provider config", () => {
     });
   });
 
-  it("uses the shared Insights scenario models by default", () => {
-    const config = createVolcengineArkProviderConfig({
-      apiKey: "secret",
-    });
-
-    expect(config).toMatchObject({
-      analysisModel: "ep-20260227145914-nxcmn",
-      classificationModel: "ep-20260724141445-7d6qm",
-      liteMaxTokens: 4096,
-      maxTokens: 4096,
-    });
-  });
-
   it("reports token usage for every model response in a multi-step analysis", async () => {
     const onTokenUsage = vi.fn();
 

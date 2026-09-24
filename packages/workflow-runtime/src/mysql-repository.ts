@@ -4475,31 +4475,66 @@ export class MysqlWorkflowRuntimeRepository implements
   ) {
     const limit = boundBatchLimit(input.limit);
     if (limit <= 0) return { cancelled: 0, hasMore: false, lastRunId: null };
-    return this.db.transaction().execute(async (trx) => {
-      let query = trx.selectFrom(`${RUN_TABLE} as run`)
-        .leftJoin("xy_wap_embed_workflow_definition as definition", join => join
-          .onRef("definition.uid", "=", "run.uid")
-          .onRef("definition.id", "=", "run.workflow_id"))
-        .select(["run.current_node_id", "run.id", "run.revision", "run.shard_id", "run.uid", "run.workflow_id"])
-        .where("run.completed_at", "is", null)
-        .where("run.status", "in", ["queued", "running", "waiting"])
-        .where(eb => eb.or([
-          eb("definition.id", "is", null),
-          eb("definition.biz_status", "=", 0),
-          eb("definition.runtime_status", "in", ["inactive", "stopped"]),
-        ]))
-        .orderBy("run.id", "asc")
-        .limit(limit + 1)
-        // Skipping a locked Definition makes the LEFT JOIN report it as missing.
-        // Keep FOR SHARE first so SKIP LOCKED applies only to the Run lock clause.
-        .forShare("definition")
-        .forUpdate("run")
-        .skipLocked();
-      if (input.afterRunId) query = query.where("run.id", ">", input.afterRunId);
-      const rows = await query.execute();
-      const selected = rows.slice(0, limit);
+    // Discover cancellation candidates without locking unrelated active Definitions or Runs.
+    let query = this.db.selectFrom(`${RUN_TABLE} as run`)
+      .leftJoin("xy_wap_embed_workflow_definition as definition", join => join
+        .onRef("definition.uid", "=", "run.uid")
+        .onRef("definition.id", "=", "run.workflow_id"))
+      .select(["run.id", "definition.id as definition_id"])
+      .where("run.completed_at", "is", null)
+      .where("run.status", "in", ["queued", "running", "waiting"])
+      .where(eb => eb.or([
+        eb("definition.id", "is", null),
+        eb("definition.biz_status", "=", 0),
+        eb("definition.runtime_status", "in", ["inactive", "stopped"]),
+      ]))
+      .orderBy("run.id", "asc")
+      .limit(limit + 1);
+    if (input.afterRunId) query = query.where("run.id", ">", input.afterRunId);
+    const candidates = await query.execute();
+    const page = candidates.slice(0, limit);
+    // Advance past skipped candidates too; the next complete sweep retries them.
+    const progress = {
+      hasMore: candidates.length > page.length,
+      lastRunId: page.length > 0 ? normalizeId(page.at(-1)!.id) : null,
+    };
+    if (page.length === 0) return { cancelled: 0, ...progress };
+    return this.db.transaction().setIsolationLevel("read committed").execute(async (trx) => {
+      const runs = await trx.selectFrom(RUN_TABLE)
+        .select(["current_node_id", "id", "revision", "shard_id", "uid", "workflow_id"])
+        .where("id", "in", page.map(row => row.id))
+        .where("completed_at", "is", null)
+        .where("status", "in", ["queued", "running", "waiting"])
+        .orderBy("id", "asc")
+        .forUpdate().skipLocked().execute();
+      if (runs.length === 0) return { cancelled: 0, ...progress };
+      const definitionIds = [...new Set(runs.map(run => run.workflow_id))];
+      const definitions = await trx.selectFrom("xy_wap_embed_workflow_definition")
+        .select(["id", "uid", "biz_status", "runtime_status"])
+        .where("id", "in", definitionIds)
+        .orderBy("id", "asc")
+        .forShare().skipLocked().execute();
+      const definitionsByKey = new Map(definitions.map(row => [`${row.uid}:${row.id}`, row]));
+      const missingCandidateIds = new Set(page.filter(row => row.definition_id === null).map(row => row.id));
+      const missingDefinitionIds = [...new Set(runs
+        .filter(run => missingCandidateIds.has(run.id)).map(run => run.workflow_id))];
+      // SKIP LOCKED absence is not deletion. Recheck only Definitions already missing at discovery.
+      // Definition IDs are not reused; normal deletion is a biz_status change under the lock above.
+      const existingDefinitions = missingDefinitionIds.length === 0 ? [] : await trx
+        .selectFrom("xy_wap_embed_workflow_definition").select(["id", "uid"])
+        .where("id", "in", missingDefinitionIds).execute();
+      const existingDefinitionKeys = new Set(existingDefinitions.map(row => `${row.uid}:${row.id}`));
+      const selected = runs.filter(run => {
+        const key = `${run.uid}:${run.workflow_id}`;
+        const definition = definitionsByKey.get(key);
+        if (definition) {
+          return definition.biz_status === 0 || definition.runtime_status === "inactive"
+            || definition.runtime_status === "stopped";
+        }
+        return missingCandidateIds.has(run.id) && !existingDefinitionKeys.has(key);
+      });
       const runIds = selected.map(row => row.id);
-      if (runIds.length === 0) return { cancelled: 0, hasMore: false, lastRunId: null };
+      if (runIds.length === 0) return { cancelled: 0, ...progress };
       const now = new Date();
       const runUpdate = await trx.updateTable(RUN_TABLE).set({
         completed_at: now,
@@ -4552,8 +4587,7 @@ export class MysqlWorkflowRuntimeRepository implements
       await failRunningNodeExecutions(trx, runIds, now, "WORKFLOW_RUN_CANCELLED", "流程已停止运行");
       return {
         cancelled: Number(runUpdate.numUpdatedRows),
-        hasMore: rows.length > selected.length,
-        lastRunId: normalizeId(runIds.at(-1)),
+        ...progress,
       };
     });
   }

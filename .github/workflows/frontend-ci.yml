@@ -78,7 +78,7 @@ jobs:
         run: corepack enable
 
       - name: Install dependencies
-        run: pnpm install --frozen-lockfile
+        run: pnpm install --filter @chatai/web... --frozen-lockfile
 
       - name: Test frontend (unit)
         run: pnpm --filter @chatai/web test:unit --shard=${{ matrix.shard }}
@@ -102,7 +102,7 @@ jobs:
         run: corepack enable
 
       - name: Install dependencies
-        run: pnpm install --frozen-lockfile
+        run: pnpm install --filter @chatai/web... --frozen-lockfile
 
       - name: Typecheck frontend
         run: pnpm --filter @chatai/web typecheck

@@ -314,8 +314,8 @@ importers:
         specifier: ^3.3.0
         version: 3.6.0
       thinking-orbs:
-        specifier: 0.2.0
-        version: 0.2.0(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
+        specifier: 0.3.2
+        version: 0.3.2(react@19.2.8)
       zustand:
         specifier: ^5.0.0
         version: 5.0.15(@types/react@19.2.18)(react@19.2.8)(use-sync-external-store@1.7.0(react@19.2.8))
@@ -4235,11 +4235,10 @@ packages:
     resolution: {integrity: sha512-MFO/QzvtAOmJbkhOaCTvbGcFN9L9b+JunIsDwaKljSOdcLMea3NJ1k9Usz/rjdfSXTq4dfzfeS7W4p4YOAAHeA==}
     engines: {node: '>=18'}
 
-  thinking-orbs@0.2.0:
-    resolution: {integrity: sha512-CQux/YsLlB9nY60BDpZ/uW7knAvXg+U2T/gzrzuLRw8xlzfJPLXZxAg2tbbIBGp/nE2Kol1GfbMOJnoH+tcb/A==}
+  thinking-orbs@0.3.2:
+    resolution: {integrity: sha512-QZFeBaPEzqhjiZoXy961EvDgaXk2WgXacF3Rbz+Sj5IfzDzBvTC86vdREUHniBffYibJFKSwbfllxLUdI/Xv6g==}
     peerDependencies:
       react: '>=18.0.0'
-      react-dom: '>=18.0.0'
 
   thread-stream@3.2.0:
     resolution: {integrity: sha512-zLBvqpwr4Esa0kRjcrzGU6zL25lePWaCLMx0RQFrmteozIfeNdaMLpG5U7PeHzvlFkAWaRKA9/KVW4F60iB+qw==}
@@ -8332,10 +8331,9 @@ snapshots:
       minizlib: 3.1.0
       yallist: 5.0.0
 
-  thinking-orbs@0.2.0(react-dom@19.2.8(react@19.2.8))(react@19.2.8):
+  thinking-orbs@0.3.2(react@19.2.8):
     dependencies:
       react: 19.2.8
-      react-dom: 19.2.8(react@19.2.8)
 
   thread-stream@3.2.0:
     dependencies:

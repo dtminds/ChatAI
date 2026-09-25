@@ -6,9 +6,9 @@ import { PollingPausedDialog } from "@/pages/chat/components/polling-paused-dial
 describe("PollingPausedDialog", () => {
   it("shows other-tab pause copy and the refresh action", async () => {
     const user = userEvent.setup();
-    const onRefresh = vi.fn();
+    const onAction = vi.fn();
 
-    render(<PollingPausedDialog onRefresh={onRefresh} reason="other-tab" />);
+    render(<PollingPausedDialog onAction={onAction} reason="other-tab" />);
 
     expect(screen.getByRole("alertdialog")).toBeInTheDocument();
     expect(screen.getByText("实时同步已被其他页面占用")).toBeInTheDocument();
@@ -19,13 +19,13 @@ describe("PollingPausedDialog", () => {
 
     await user.click(screen.getByRole("button", { name: "刷新页面" }));
 
-    expect(onRefresh).toHaveBeenCalledTimes(1);
+    expect(onAction).toHaveBeenCalledTimes(1);
   });
 
   it("shows cursor-invalidation copy when the pause reason is a sync gap", () => {
-    render(<PollingPausedDialog onRefresh={vi.fn()} reason="sync-gap" />);
+    render(<PollingPausedDialog onAction={vi.fn()} reason="sync-gap" />);
 
     expect(screen.getByText("消息同步已暂停")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "刷新页面" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "重新同步" })).toBeInTheDocument();
   });
 });

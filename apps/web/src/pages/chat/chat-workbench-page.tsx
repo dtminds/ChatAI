@@ -451,6 +451,7 @@ function ChatWorkbenchContent({
     pollPauseReason,
     pollStatus,
     pollWorkbench,
+    recoverFromCursorInvalidation,
     dismissSmartReply,
     requestSmartReplyGeneralAnswer,
     requestSmartReplyMakeShorter,
@@ -561,6 +562,7 @@ function ChatWorkbenchContent({
       pollPauseReason: state.pollState.pauseReason,
       pollStatus: state.pollState.status,
       pollWorkbench: state.pollWorkbench,
+      recoverFromCursorInvalidation: state.recoverFromCursorInvalidation,
       readReceiptError: state.readReceiptError,
       refreshSeatSummaries: state.refreshSeatSummaries,
       requestSmartReplyGeneralAnswer: state.requestSmartReplyGeneralAnswer,
@@ -3092,8 +3094,17 @@ function ChatWorkbenchContent({
         </AlertDialogContent>
       </AlertDialog>
       <PollingPausedDialog
-        onRefresh={() => {
-          window.location.reload();
+        onAction={async () => {
+          if (pollingPauseReason === "sync-gap") {
+            const recovered = await recoverFromCursorInvalidation();
+            if (recovered) {
+              setPollingPauseReason(null);
+            } else {
+              window.location.reload();
+            }
+          } else {
+            window.location.reload();
+          }
         }}
         reason={pollingPauseReason}
       />

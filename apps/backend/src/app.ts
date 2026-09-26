@@ -44,7 +44,15 @@ export async function buildApp(options: AppBuildOptions = {}) {
   const app = Fastify({
     disableRequestLogging: shouldDisableRequestLogging,
     logger: {
+      formatters: {
+        level: (label) => ({ level: label.toUpperCase() }),
+      },
       level: process.env.LOG_LEVEL ?? "info",
+      timestamp: () => {
+        const time = Date.now();
+        const formatted = new Date(time + 8 * 60 * 60 * 1000).toISOString().replace("Z", "+08:00");
+        return `,"time":${JSON.stringify(formatted)}`;
+      },
     },
   });
 

@@ -403,6 +403,13 @@ TKE / CLS 侧配置建议：
 - 保留 TKE 自动附带的 `namespace`、`pod_name`、`container_name`、`pod_label_*` 等元数据。
 - 为常用排障字段开启索引：`reqId`、`requestId`、`operation`、`subUserId`、`seatId`、`conversationId`、`messageId`、`clientMessageId`、`uid`、`platform`、`path`、`status`、`error`。
 
+CLS 检索视图建议：
+
+- 主要展示完整日期时间（含毫秒、UTC+8 时区）、`level`、`msg`、`reqId` 和请求方法/路径；排查响应时展开状态码和耗时。
+- `time` 使用带 `+08:00` 时区的 ISO 8601 日期时间。默认展示可隐藏重复的 `time`、`pid` 和 `hostname`，完整 JSON 仍可在日志详情中查看。
+- Backend、Backend Worker 和 Workflow Worker 的 `level` 均输出大写文本（如 `INFO`、`WARN`、`ERROR`）。
+- 变更发布后，核对日志时间列与 `time` 对应，且三个服务的文本 `level` 均可见。
+
 应用侧日志字段约定：
 
 - 所有业务日志必须是结构化对象，不拼接自由文本承载排障字段。

@@ -1,8 +1,7 @@
 import pino from "pino";
 
-export function createWorkflowWorkerLogger(level = "info") {
+export function createBackendWorkerLogger(level: string) {
   return pino({
-    base: { service: "workflow-worker" },
     formatters: {
       level: (label) => ({ level: label.toUpperCase() }),
     },
@@ -11,19 +10,6 @@ export function createWorkflowWorkerLogger(level = "info") {
       const time = Date.now();
       const formatted = new Date(time + 8 * 60 * 60 * 1000).toISOString().replace("Z", "+08:00");
       return `,"time":${JSON.stringify(formatted)}`;
-    },
-    redact: {
-      censor: "[REDACTED]",
-      paths: [
-        "token",
-        "*.token",
-        "password",
-        "*.password",
-        "payload",
-        "*.payload",
-        "messageText",
-        "*.messageText",
-      ],
     },
   });
 }

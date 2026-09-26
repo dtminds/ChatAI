@@ -116,6 +116,38 @@ describe("backend app", () => {
     delete process.env.PLAYABLE_MEDIA_HOST;
   });
 
+  it("writes readable log levels and timestamps", async () => {
+    vi.stubEnv("LOG_LEVEL", "info");
+    const lines: string[] = [];
+    vi.spyOn(process.stdout, "write").mockImplementation((chunk) => {
+      lines.push(String(chunk));
+      return true;
+    });
+    vi.spyOn(Date, "now").mockReturnValue(1790063240071);
+    let app: Awaited<ReturnType<typeof buildApp>> | undefined;
+    try {
+      app = await buildApp();
+      await app.inject({ method: "GET", url: "/healthz" });
+      app.log.warn("log readability check");
+
+      const records = lines
+        .flatMap((chunk) => chunk.split("\n"))
+        .filter((line) => line.trim().startsWith("{"))
+        .map((line) => JSON.parse(line) as Record<string, unknown>);
+      expect(records).toEqual(expect.arrayContaining([
+        expect.objectContaining({ level: "INFO", msg: "incoming request", time: "2026-09-22T15:47:20.071+08:00" }),
+        expect.objectContaining({ level: "WARN", msg: "log readability check", time: "2026-09-22T15:47:20.071+08:00" }),
+      ]));
+    } finally {
+      try {
+        await app?.close();
+      } finally {
+        vi.restoreAllMocks();
+        vi.unstubAllEnvs();
+      }
+    }
+  });
+
   it("serves health and readiness endpoints", async () => {
     const app = await buildApp();
     app.db = createReadyDbMock();

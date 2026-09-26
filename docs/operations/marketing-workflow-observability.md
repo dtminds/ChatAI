@@ -6,7 +6,7 @@ The Workflow runtime uses JSON logs, Worker health endpoints, and read-only MySQ
 
 ## Worker Log Policy
 
-The Worker writes JSON to stdout through Pino. Production uses `LOG_LEVEL=info`.
+The Worker writes JSON to stdout through Pino with an uppercase text `level` and an ISO 8601 `time` in UTC+8. Production uses `LOG_LEVEL=info`.
 
 | Level | Meaning |
 | --- | --- |

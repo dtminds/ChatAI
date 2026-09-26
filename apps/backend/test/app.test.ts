@@ -117,6 +117,7 @@ describe("backend app", () => {
   });
 
   it("writes readable log levels and timestamps", async () => {
+    vi.stubEnv("LOG_LEVEL", "info");
     const lines: string[] = [];
     vi.spyOn(process.stdout, "write").mockImplementation((chunk) => {
       lines.push(String(chunk));
@@ -142,6 +143,7 @@ describe("backend app", () => {
         await app?.close();
       } finally {
         vi.restoreAllMocks();
+        vi.unstubAllEnvs();
       }
     }
   });

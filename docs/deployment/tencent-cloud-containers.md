@@ -407,8 +407,8 @@ CLS 检索视图建议：
 
 - 主要展示完整日期时间（含毫秒、UTC+8 时区）、`level`、`msg`、`reqId` 和请求方法/路径；排查响应时展开状态码和耗时。
 - 原始 `time` 是 Unix 毫秒时间戳，保留给采集和检索。默认展示可隐藏重复的 `time`、`pid` 和 `hostname`，完整 JSON 仍可在日志详情中查看。
-- Backend 的 `level` 输出为大写文本（如 `INFO`、`WARN`、`ERROR`）。已有按 `level=30/40/50` 筛选的 CLS 查询或告警需同步改为文本条件。
-- 变更发布后，核对日志时间列与原始 `time` 对应，且 INFO/WARN 查询能命中新日志。
+- Backend、Backend Worker 和 Workflow Worker 的 `level` 均输出大写文本（如 `INFO`、`WARN`、`ERROR`）。
+- 变更发布后，核对日志时间列与原始 `time` 对应，且三个服务的文本 `level` 均可见。
 
 应用侧日志字段约定：
 

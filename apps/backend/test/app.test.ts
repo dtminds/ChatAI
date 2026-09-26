@@ -122,20 +122,26 @@ describe("backend app", () => {
       lines.push(String(chunk));
       return true;
     });
-    const app = await buildApp();
-
+    let app: Awaited<ReturnType<typeof buildApp>> | undefined;
     try {
+      app = await buildApp();
       await app.inject({ method: "GET", url: "/healthz" });
       app.log.warn("log readability check");
 
-      const records = lines.map((line) => JSON.parse(line) as Record<string, unknown>);
+      const records = lines
+        .flatMap((chunk) => chunk.split("\n"))
+        .filter((line) => line.trim().startsWith("{"))
+        .map((line) => JSON.parse(line) as Record<string, unknown>);
       expect(records).toEqual(expect.arrayContaining([
         expect.objectContaining({ level: "INFO", msg: "incoming request", time: expect.any(Number) }),
         expect.objectContaining({ level: "WARN", msg: "log readability check", time: expect.any(Number) }),
       ]));
     } finally {
-      await app.close();
-      write.mockRestore();
+      try {
+        await app?.close();
+      } finally {
+        write.mockRestore();
+      }
     }
   });
 

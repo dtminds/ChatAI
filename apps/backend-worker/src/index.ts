@@ -4,11 +4,11 @@ import {
 } from "@chatai/database";
 import { createInsightsWorkerRuntime } from "@chatai/insights/worker";
 import { createUserMemoryWorkerRuntime } from "@chatai/user-memory/worker";
-import pino from "pino";
 import { parseBackendWorkerConfig } from "./config.js";
+import { createBackendWorkerLogger } from "./logger.js";
 
 const config = parseBackendWorkerConfig();
-const logger = pino({ level: config.logLevel });
+const logger = createBackendWorkerLogger(config.logLevel);
 const db = createDatabase(config.databaseUrl);
 
 try {

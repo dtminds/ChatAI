@@ -406,9 +406,9 @@ TKE / CLS 侧配置建议：
 CLS 检索视图建议：
 
 - 主要展示完整日期时间（含毫秒、UTC+8 时区）、`level`、`msg`、`reqId` 和请求方法/路径；排查响应时展开状态码和耗时。
-- 原始 `time` 是 Unix 毫秒时间戳，保留给采集和检索。默认展示可隐藏重复的 `time`、`pid` 和 `hostname`，完整 JSON 仍可在日志详情中查看。
+- `time` 使用带 `+08:00` 时区的 ISO 8601 日期时间。默认展示可隐藏重复的 `time`、`pid` 和 `hostname`，完整 JSON 仍可在日志详情中查看。
 - Backend、Backend Worker 和 Workflow Worker 的 `level` 均输出大写文本（如 `INFO`、`WARN`、`ERROR`）。
-- 变更发布后，核对日志时间列与原始 `time` 对应，且三个服务的文本 `level` 均可见。
+- 变更发布后，核对日志时间列与 `time` 对应，且三个服务的文本 `level` 均可见。
 
 应用侧日志字段约定：
 

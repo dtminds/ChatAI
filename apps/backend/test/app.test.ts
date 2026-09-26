@@ -116,12 +116,13 @@ describe("backend app", () => {
     delete process.env.PLAYABLE_MEDIA_HOST;
   });
 
-  it("writes readable log levels and keeps millisecond timestamps", async () => {
+  it("writes readable log levels and timestamps", async () => {
     const lines: string[] = [];
-    const write = vi.spyOn(process.stdout, "write").mockImplementation((chunk) => {
+    vi.spyOn(process.stdout, "write").mockImplementation((chunk) => {
       lines.push(String(chunk));
       return true;
     });
+    vi.spyOn(Date, "now").mockReturnValue(1790063240071);
     let app: Awaited<ReturnType<typeof buildApp>> | undefined;
     try {
       app = await buildApp();
@@ -133,14 +134,14 @@ describe("backend app", () => {
         .filter((line) => line.trim().startsWith("{"))
         .map((line) => JSON.parse(line) as Record<string, unknown>);
       expect(records).toEqual(expect.arrayContaining([
-        expect.objectContaining({ level: "INFO", msg: "incoming request", time: expect.any(Number) }),
-        expect.objectContaining({ level: "WARN", msg: "log readability check", time: expect.any(Number) }),
+        expect.objectContaining({ level: "INFO", msg: "incoming request", time: "2026-09-22T15:47:20.071+08:00" }),
+        expect.objectContaining({ level: "WARN", msg: "log readability check", time: "2026-09-22T15:47:20.071+08:00" }),
       ]));
     } finally {
       try {
         await app?.close();
       } finally {
-        write.mockRestore();
+        vi.restoreAllMocks();
       }
     }
   });

@@ -116,6 +116,29 @@ describe("backend app", () => {
     delete process.env.PLAYABLE_MEDIA_HOST;
   });
 
+  it("writes readable log levels and keeps millisecond timestamps", async () => {
+    const lines: string[] = [];
+    const write = vi.spyOn(process.stdout, "write").mockImplementation((chunk) => {
+      lines.push(String(chunk));
+      return true;
+    });
+    const app = await buildApp();
+
+    try {
+      await app.inject({ method: "GET", url: "/healthz" });
+      app.log.warn("log readability check");
+
+      const records = lines.map((line) => JSON.parse(line) as Record<string, unknown>);
+      expect(records).toEqual(expect.arrayContaining([
+        expect.objectContaining({ level: "INFO", msg: "incoming request", time: expect.any(Number) }),
+        expect.objectContaining({ level: "WARN", msg: "log readability check", time: expect.any(Number) }),
+      ]));
+    } finally {
+      await app.close();
+      write.mockRestore();
+    }
+  });
+
   it("serves health and readiness endpoints", async () => {
     const app = await buildApp();
     app.db = createReadyDbMock();

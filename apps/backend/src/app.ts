@@ -44,6 +44,9 @@ export async function buildApp(options: AppBuildOptions = {}) {
   const app = Fastify({
     disableRequestLogging: shouldDisableRequestLogging,
     logger: {
+      formatters: {
+        level: (label) => ({ level: label.toUpperCase() }),
+      },
       level: process.env.LOG_LEVEL ?? "info",
     },
   });
